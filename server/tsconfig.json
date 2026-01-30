@@ -19,7 +19,15 @@
     "outDir": "dist",
     "sourceMap": true,
     "declaration": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@infra/*": ["src/infra/*"],
+      "@engine/*": ["src/engine/*"],
+      "@modules/*": ["src/modules/*"],
+      "@mcp/*": ["src/mcp/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]

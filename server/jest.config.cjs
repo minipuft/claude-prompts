@@ -33,6 +33,11 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'mjs'],
   // Handle ES module imports properly - map .js imports to TypeScript files and preserve ES modules
   moduleNameMapper: {
+    '^@shared/(.*)$': '<rootDir>/src/shared/$1',
+    '^@infra/(.*)$': '<rootDir>/src/infra/$1',
+    '^@engine/(.*)$': '<rootDir>/src/engine/$1',
+    '^@modules/(.*)$': '<rootDir>/src/modules/$1',
+    '^@mcp/(.*)$': '<rootDir>/src/mcp/$1',
     '^(?:\\.{1,2}/)+dist/(.*)\\.js$': '<rootDir>/src/$1',
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },

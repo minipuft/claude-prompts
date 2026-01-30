@@ -70,6 +70,15 @@ const require = __createRequire(import.meta.url);`,
     'process.env.BUILD_TIME': JSON.stringify(new Date().toISOString()),
   },
 
+  // Path aliases matching tsconfig.json paths
+  alias: {
+    '@shared': './src/shared',
+    '@infra': './src/infra',
+    '@engine': './src/engine',
+    '@modules': './src/modules',
+    '@mcp': './src/mcp',
+  },
+
   // Enable tree-shaking
   treeShaking: true,
 
