@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Skills Sync CLI** (`tsx scripts/skills-sync.ts`): Compiler-style tool that exports canonical YAML resources to client-native skill packages
+  - Two adapter paths: Claude Code (frontmatter format) + Agent Skills (Cursor, Codex, OpenCode variants)
+  - Three commands: `export` (write skill packages), `diff` (detect source/output drift), `pull` (generate .patch files)
+  - Hash-based drift detection manifest per client
+  - Interactive scope prompt (user/project) with TTY detection fallback
+  - Config-driven per-client capabilities via `skills-sync.yaml`
+  - Auto-deregistration: prompts in the `exports` list are automatically hidden from MCP `prompts/list` at startup — no manual `registerWithMcp: false` needed
+  - npm scripts: `skills:export`, `skills:diff`, `skills:pull`
+
 ### Changed
+
+- **CLI argument parsing migrated to `node:util parseArgs`**: Replaced hand-rolled argument parsing across server entrypoint, runtime options, and path resolution with Node.js built-in `parseArgs` (zero new dependencies)
+  - New canonical `parseServerCliArgs()` in `runtime/cli.ts` — single parse, consumed everywhere
+  - CLI flags now accept both `--flag=value` and `--flag value` formats (previously `=` was required for path flags)
+  - `skills-sync.ts` uses `strict: true` to reject unknown flags (catches typos like `--dryrun`)
+  - Added `--styles` CLI flag for custom styles directory override
+  - Added `-h` short alias for `--help`
+
+- Renamed `analysis/review` prompt to `analysis/module_audit` to resolve ID collision with `development/review`
 
 - **BREAKING**: Removed implicit `process.cwd()` path guessing from all services and loaders
   - All runtime-state paths must now be explicitly configured via `PathResolver` or passed to constructors
@@ -189,37 +209,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.0](https://github.com/minipuft/claude-prompts/compare/v1.6.0...v1.7.0) (2026-01-23)
 
-
 ### Features
 
-* **ci:** migrate to OIDC trusted publishing for npm ([e71d272](https://github.com/minipuft/claude-prompts/commit/e71d272f833d1e983f717eb11d31b6a492c24a59))
-* **config:** add registerWithMcp toggle for MCP resources ([471ed14](https://github.com/minipuft/claude-prompts/commit/471ed14e8a2a4bd63dd44aabbec8f97a5869e513))
-* **config:** expand resources config with granular per-type controls ([ddcdba2](https://github.com/minipuft/claude-prompts/commit/ddcdba2f62a700bfaf013f17ee16f21927cba110))
-* **docs:** add Remotion animation system for documentation videos ([0a40c4d](https://github.com/minipuft/claude-prompts/commit/0a40c4de20807ae4600294bee983ce852992311f))
-* extension dep sync, repetition operator, hook fuzzy matching ([efbdc30](https://github.com/minipuft/claude-prompts/commit/efbdc3018b44b50bb7383d30f23b3239cc0b7905))
-* **hooks:** add chain step visibility with IDs for workflow preview ([ff25d5e](https://github.com/minipuft/claude-prompts/commit/ff25d5ec0f26c1556f55353fb41e97e897ff6792))
-* **hooks:** improve prompt_engine directive clarity and token efficiency ([b62f8d3](https://github.com/minipuft/claude-prompts/commit/b62f8d3dd3e7aa4794e9b29bccb0ccc081bd49b1))
-* **hooks:** validate operator values against registered server resources ([30cba3a](https://github.com/minipuft/claude-prompts/commit/30cba3ac12c88e74b0b7e70bbcd8bfe079a9505b))
-* **resources:** add MCP logs resources for runtime observability ([5f0025f](https://github.com/minipuft/claude-prompts/commit/5f0025fcece76e3ed593246d30da54554e7be58f))
-* **resources:** implement MCP Resources protocol for token-efficient access ([80d56d2](https://github.com/minipuft/claude-prompts/commit/80d56d22a4b25b93270e9d8718c3b0ad95641f68))
-
+- **ci:** migrate to OIDC trusted publishing for npm ([e71d272](https://github.com/minipuft/claude-prompts/commit/e71d272f833d1e983f717eb11d31b6a492c24a59))
+- **config:** add registerWithMcp toggle for MCP resources ([471ed14](https://github.com/minipuft/claude-prompts/commit/471ed14e8a2a4bd63dd44aabbec8f97a5869e513))
+- **config:** expand resources config with granular per-type controls ([ddcdba2](https://github.com/minipuft/claude-prompts/commit/ddcdba2f62a700bfaf013f17ee16f21927cba110))
+- **docs:** add Remotion animation system for documentation videos ([0a40c4d](https://github.com/minipuft/claude-prompts/commit/0a40c4de20807ae4600294bee983ce852992311f))
+- extension dep sync, repetition operator, hook fuzzy matching ([efbdc30](https://github.com/minipuft/claude-prompts/commit/efbdc3018b44b50bb7383d30f23b3239cc0b7905))
+- **hooks:** add chain step visibility with IDs for workflow preview ([ff25d5e](https://github.com/minipuft/claude-prompts/commit/ff25d5ec0f26c1556f55353fb41e97e897ff6792))
+- **hooks:** improve prompt_engine directive clarity and token efficiency ([b62f8d3](https://github.com/minipuft/claude-prompts/commit/b62f8d3dd3e7aa4794e9b29bccb0ccc081bd49b1))
+- **hooks:** validate operator values against registered server resources ([30cba3a](https://github.com/minipuft/claude-prompts/commit/30cba3ac12c88e74b0b7e70bbcd8bfe079a9505b))
+- **resources:** add MCP logs resources for runtime observability ([5f0025f](https://github.com/minipuft/claude-prompts/commit/5f0025fcece76e3ed593246d30da54554e7be58f))
+- **resources:** implement MCP Resources protocol for token-efficient access ([80d56d2](https://github.com/minipuft/claude-prompts/commit/80d56d22a4b25b93270e9d8718c3b0ad95641f68))
 
 ### Bug Fixes
 
-* **parsers:** preserve arguments after * N repetition operator ([649bae3](https://github.com/minipuft/claude-prompts/commit/649bae3d3dcaf7c6ec53fda1da18a90aaed6d705))
+- **parsers:** preserve arguments after \* N repetition operator ([649bae3](https://github.com/minipuft/claude-prompts/commit/649bae3d3dcaf7c6ec53fda1da18a90aaed6d705))
 
 ## [1.6.0](https://github.com/minipuft/claude-prompts/compare/v1.5.0...v1.6.0) (2026-01-22)
 
-
 ### Features
 
-* **ci:** modernize Release Please and npm-publish workflows ([7bb1303](https://github.com/minipuft/claude-prompts/commit/7bb1303a53f998ca10bab6f621eecf548864881a))
-
+- **ci:** modernize Release Please and npm-publish workflows ([7bb1303](https://github.com/minipuft/claude-prompts/commit/7bb1303a53f998ca10bab6f621eecf548864881a))
 
 ### Bug Fixes
 
-* **ci:** handle Release Please PR output as JSON ([8559c74](https://github.com/minipuft/claude-prompts/commit/8559c74e2c819961c644b769bc34f5a06e4f0c82))
-* **tests:** update E2E plugin validation for current structure ([053b0be](https://github.com/minipuft/claude-prompts/commit/053b0be8bdd3f3443c5e68b9415e9e0e716d8739))
+- **ci:** handle Release Please PR output as JSON ([8559c74](https://github.com/minipuft/claude-prompts/commit/8559c74e2c819961c644b769bc34f5a06e4f0c82))
+- **tests:** update E2E plugin validation for current structure ([053b0be](https://github.com/minipuft/claude-prompts/commit/053b0be8bdd3f3443c5e68b9415e9e0e716d8739))
 
 ## [1.5.0] - 2026-01-21
 

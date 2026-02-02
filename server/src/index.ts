@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 
 import { EventEmittingConfigManager } from './infra/config/index.js';
 import { startApplication } from './runtime/application.js';
+import { parseServerCliArgs, type ServerCliArgs } from './runtime/cli.js';
 import { RuntimeLaunchOptions, resolveRuntimeLaunchOptions } from './runtime/options.js';
 
 import type { Logger } from './infra/logging/index.js';
@@ -529,46 +530,24 @@ Next steps:
 }
 
 /**
- * Parse and validate command line arguments
+ * Validate pre-parsed CLI arguments and handle early-exit commands (--help, --init).
  */
-function parseCommandLineArgs(): { shouldExit: boolean; exitCode: number } {
-  const args = process.argv.slice(2);
-
-  // Check for help flag
-  if (args.includes('--help') || args.includes('-h')) {
+function validateAndHandleEarlyExit(cli: ServerCliArgs): { shouldExit: boolean; exitCode: number } {
+  if (cli.help) {
     showHelp();
     return { shouldExit: true, exitCode: 0 };
   }
 
-  // Check for init flag
-  const initArg = args.find((arg) => arg.startsWith('--init'));
-  if (initArg !== undefined) {
-    // Parse the target path
-    let targetPath: string | undefined;
-    if (initArg.includes('=')) {
-      targetPath = initArg.split('=')[1];
-    } else {
-      // Check if next argument is a path (not another flag)
-      const initIndex = args.indexOf(initArg);
-      const nextArg = args[initIndex + 1];
-      if (nextArg !== undefined && nextArg.length > 0 && !nextArg.startsWith('-')) {
-        targetPath = nextArg;
-      } else {
-        console.error('Error: --init requires a path. Usage: --init=/path/to/workspace');
-        console.error('Example: npx claude-prompts --init=~/my-prompts');
-        return { shouldExit: true, exitCode: 1 };
-      }
-    }
-
-    if (targetPath === undefined || targetPath.length === 0) {
+  if (cli.init !== undefined) {
+    let targetPath = cli.init;
+    if (targetPath.length === 0) {
       console.error('Error: --init requires a path. Usage: --init=/path/to/workspace');
+      console.error('Example: npx claude-prompts --init=~/my-prompts');
       return { shouldExit: true, exitCode: 1 };
     }
 
-    // Expand ~ to home directory
     if (targetPath.startsWith('~')) {
-      const homedir = process.env['HOME'] ?? process.env['USERPROFILE'] ?? '';
-      targetPath = targetPath.replace('~', homedir);
+      targetPath = targetPath.replace('~', process.env['HOME'] ?? process.env['USERPROFILE'] ?? '');
     }
 
     const result = initWorkspace(targetPath);
@@ -576,49 +555,29 @@ function parseCommandLineArgs(): { shouldExit: boolean; exitCode: number } {
     return { shouldExit: true, exitCode: result.success ? 0 : 1 };
   }
 
-  // Validate transport argument
-  const transportArg = args.find((arg) => arg.startsWith('--transport='));
-  if (transportArg !== undefined) {
-    const transport = transportArg.slice('--transport='.length);
-    if (!['stdio', 'sse', 'streamable-http'].includes(transport)) {
-      console.error(
-        `Error: Invalid transport '${transport}'. Supported: stdio, sse, streamable-http`
-      );
-      console.error('Use --help for usage information');
-      return { shouldExit: true, exitCode: 1 };
-    }
-  }
-
-  // Validate log-level argument
-  const logLevelArg = args.find((arg) => arg.startsWith('--log-level='));
-  if (logLevelArg !== undefined) {
-    const level = logLevelArg.slice('--log-level='.length).toLowerCase();
-    if (!['debug', 'info', 'warn', 'error'].includes(level)) {
-      console.error(`Error: Invalid log level '${level}'. Supported: debug, info, warn, error`);
-      console.error('Use --help for usage information');
-      return { shouldExit: true, exitCode: 1 };
-    }
-  }
-
-  // Validate that conflicting flags aren't used together
-  const isQuiet = args.includes('--quiet');
-  const isVerbose = args.includes('--verbose') || args.includes('--debug-startup');
-
-  if (isQuiet && isVerbose) {
-    console.error('Error: Cannot use --quiet and --verbose flags together');
+  if (cli.transport !== undefined && !['stdio', 'sse', 'streamable-http'].includes(cli.transport)) {
+    console.error(
+      `Error: Invalid transport '${cli.transport}'. Supported: stdio, sse, streamable-http`
+    );
     console.error('Use --help for usage information');
     return { shouldExit: true, exitCode: 1 };
   }
 
-  // Validate path flags have values (not just --workspace without =)
-  const pathFlags = ['--workspace', '--config', '--prompts', '--methodologies', '--gates'];
-  for (const flag of pathFlags) {
-    const matchingArg = args.find((arg) => arg.startsWith(flag));
-    if (matchingArg !== undefined && !matchingArg.includes('=')) {
-      console.error(`Error: ${flag} requires a value. Use ${flag}=/path/to/directory`);
-      console.error('Use --help for usage information');
-      return { shouldExit: true, exitCode: 1 };
-    }
+  if (
+    cli.logLevel !== undefined &&
+    !['debug', 'info', 'warn', 'error'].includes(cli.logLevel.toLowerCase())
+  ) {
+    console.error(
+      `Error: Invalid log level '${cli.logLevel}'. Supported: debug, info, warn, error`
+    );
+    console.error('Use --help for usage information');
+    return { shouldExit: true, exitCode: 1 };
+  }
+
+  if (cli.quiet && (cli.verbose || cli.debugStartup)) {
+    console.error('Error: Cannot use --quiet and --verbose flags together');
+    console.error('Use --help for usage information');
+    return { shouldExit: true, exitCode: 1 };
   }
 
   return { shouldExit: false, exitCode: 0 };
@@ -629,16 +588,15 @@ function parseCommandLineArgs(): { shouldExit: boolean; exitCode: number } {
  */
 async function main(): Promise<void> {
   try {
-    // Parse and validate command line arguments
-    const { shouldExit, exitCode } = parseCommandLineArgs();
+    // Parse, validate, and handle early-exit CLI commands
+    const cli = parseServerCliArgs();
+    const { shouldExit, exitCode } = validateAndHandleEarlyExit(cli);
     if (shouldExit) {
       process.exit(exitCode);
     }
 
-    // Check for startup validation mode (for GitHub Actions)
-    const fullArgv = process.argv;
-    const args = fullArgv.slice(2);
-    const runtimeOptions = resolveRuntimeLaunchOptions(args, fullArgv);
+    // Resolve runtime options from pre-parsed CLI args
+    const runtimeOptions = resolveRuntimeLaunchOptions(cli);
     const isStartupTest = runtimeOptions.startupTest;
     const isVerbose = runtimeOptions.verbose;
 

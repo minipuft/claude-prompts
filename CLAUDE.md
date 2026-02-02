@@ -47,6 +47,7 @@ This handbook trains Claude Code (and any assistant) to behave like a senior dev
 | Chains                         | `docs/concepts/chains-lifecycle.md`          |
 | Gate system                    | `docs/guides/gates.md`           |
 | Troubleshooting                | `docs/guides/troubleshooting.md` |
+| Skills Sync CLI                | `docs/guides/skills-sync.md`     |
 | Release highlights             | `CHANGELOG.md`                   |
 | Docs lifecycle overview        | `docs/README.md`                 |
 
@@ -79,7 +80,7 @@ Rules auto-load when editing files matching their glob patterns. Universal rules
 
 | Subsystem               | Dist Path                                      | Notes                                                                                                                               |
 | ----------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime orchestrator    | `runtime/application.js`, `runtime/startup.js` | Four-phase startup (foundation → data → modules → launch). Manages config, logging, text references, transports.                    |
+| Runtime orchestrator    | `runtime/application.js`, `runtime/startup.js`, `runtime/cli.js` | Four-phase startup (foundation → data → modules → launch). `cli.ts` provides single `parseServerCliArgs()` call consumed by all runtime modules. |
 | Prompts & hot reload    | `prompts/*.js`, `text-references/*.js`         | PromptAssetManager, Converter, FileObserver, HotReloadManager. Argument tracking, conversation management. Keeps registry + text references synchronized. |
 | Frameworks              | `frameworks/*.js`                              | FrameworkManager + FrameworkStateManager + MethodologyRegistry. Methodologies in `server/methodologies/*/methodology.yaml`. State in `runtime-state/framework-state.json`. |
 | Execution               | `mcp-tools/prompt-engine/**`, `execution/**`   | Consolidated prompt engine, symbolic command parser, chain executor, planning/validation pipeline (stages 00-11).                   |
@@ -94,6 +95,7 @@ Rules auto-load when editing files matching their glob patterns. Universal rules
 | Tooling contracts       | `tooling/contracts/**`                         | Source of truth for MCP parameters. Run `npm run generate:contracts` to regenerate schemas.                                         |
 | MCP contracts (gen)     | `src/mcp-contracts/schemas/**`                 | Generated Zod schemas, TypeScript types, tool descriptions. DO NOT EDIT - regenerate from contracts.                                |
 | Action metadata         | `src/action-metadata/**`                       | Action definitions, telemetry tracking for MCP tools.                                                                               |
+| Skills Sync             | `scripts/skills-sync.ts`, `skills-sync.example.yaml`  | CLI tool that compiles YAML resources to client-native skill packages. User copies example to `skills-sync.yaml` (git-ignored). Exports list auto-deregisters prompts from MCP at startup.   |
 
 Use these paths to verify implementation details before documenting or reasoning about behavior.
 
@@ -125,6 +127,9 @@ Use these paths to verify implementation details before documenting or reasoning
 | `npm run validate:filesize`             | Check file size against baseline limits.                                                |
 | `npm run validate:metadata`             | Verify action-metadata inventory integrity.                                             |
 | `npm run validate:all`                  | Full validation suite (includes full ESLint, architecture, metadata, contracts, etc.).  |
+| `npm run skills:export`                 | Export prompts from `skills-sync.yaml` exports list to client-native skill packages.   |
+| `npm run skills:diff`                   | Detect drift between source YAML and exported skills via SHA-256 manifests.            |
+| `npm run skills:pull`                   | Generate `.patch` files for out-of-sync exported skills.                               |
 
 Hooks in `.husky/` (repo root) run subsets automatically. Do not bypass without explicit approval.
 
@@ -452,6 +457,16 @@ Files in `runtime-state/` (never commit — per-instance state):
 | `gate-system-state.json` | Gate system state |
 | `argument-history.json` | Argument tracking history |
 
+### Skills Sync Auto-Deregistration
+
+Prompts listed in `skills-sync.yaml` `exports` are automatically hidden from MCP `prompts/list` at startup. The data-loader reads the exports list, parses `prompt:{category}/{id}` entries, and passes the set to `PromptRegistry`. No manual `registerWithMcp: false` needed — the exports list is the single source of truth. The file is git-ignored (personal config); `skills-sync.example.yaml` is committed as the template.
+
+```
+skills-sync.yaml exports → data-loader reads at startup → registry skips registration
+```
+
+Prompts remain in the internal registry (accessible via `resource_manager inspect`) but are excluded from MCP protocol responses.
+
 ### Blocked/Deprecated Parameters
 
 | Parameter | Status | Alternative |
@@ -502,7 +517,7 @@ grep -rn "paramName" src/versioning/ src/gates/ src/frameworks/
 
 **Pipeline State Management**: Use centralized state via `context.gates` (GateAccumulator), `context.frameworkAuthority` (FrameworkDecisionAuthority), and `context.diagnostics` (DiagnosticAccumulator). Never mutate gate arrays directly or resolve framework IDs manually in stages. See `docs/architecture/overview.md#pipeline-state-management` for patterns.
 
-**Configuration**: CLI flags and env vars for path overrides (`MCP_WORKSPACE`, `MCP_CONFIG_PATH`, `MCP_PROMPTS_PATH`, `MCP_METHODOLOGIES_PATH`, `MCP_GATES_PATH`), separate server/prompts config, modular imports, absolute paths for Claude Desktop
+**Configuration**: CLI flags and env vars for path overrides (`MCP_WORKSPACE`, `MCP_CONFIG_PATH`, `MCP_PROMPTS_PATH`, `MCP_METHODOLOGIES_PATH`, `MCP_GATES_PATH`, `MCP_SCRIPTS_PATH`, `MCP_STYLES_PATH`), separate server/prompts config, modular imports, absolute paths for Claude Desktop. CLI flags accept both `--flag=value` and `--flag value` formats.
 
 **Error Handling**: Comprehensive boundaries (all orchestration levels), structured logging (verbose/quiet modes), meaningful error messages (diagnostics), rollback mechanisms (startup failures)
 
@@ -550,7 +565,7 @@ tests/
     └── cli/                # Server lifecycle
 ```
 
-**Environment Variables**: `MCP_WORKSPACE` (base workspace directory for prompts, config, etc.), `MCP_PROMPTS_PATH` (direct path to prompts config), `MCP_CONFIG_PATH` (direct path to config.json), `MCP_STYLES_PATH` (direct path to styles directory). CLI flags take priority: `--workspace`, `--prompts`, `--config`, `--methodologies`, `--gates`, `--styles`
+**Environment Variables**: `MCP_WORKSPACE` (base workspace directory for prompts, config, etc.), `MCP_PROMPTS_PATH` (direct path to prompts config), `MCP_CONFIG_PATH` (direct path to config.json), `MCP_STYLES_PATH` (direct path to styles directory), `MCP_SCRIPTS_PATH` (direct path to scripts directory). CLI flags take priority: `--workspace`, `--prompts`, `--config`, `--methodologies`, `--gates`, `--scripts`, `--styles`
 
 **Lifecycle Management**: For refactoring and migration work, refer to `~/.claude/REFACTORING.md` domain rules for universal lifecycle state tagging, module boundary enforcement, and deletion criteria patterns.
 

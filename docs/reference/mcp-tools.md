@@ -59,24 +59,24 @@ MCP Resources provide a **read-only, token-efficient** alternative to tool-based
 
 #### Content Resources (Prompts, Gates, Methodologies)
 
-| URI Pattern | Returns | Use Case |
-|-------------|---------|----------|
-| `resource://prompt/` | All prompts (minimal metadata) | Discovery - find available prompts |
-| `resource://prompt/{id}` | Full prompt with metadata + template | Inspect a specific prompt |
-| `resource://prompt/{id}/template` | Raw template content only | Minimal token usage |
-| `resource://gate/` | All gates (minimal metadata) | Discovery - find available gates |
-| `resource://gate/{id}` | Gate definition + guidance | Inspect a specific gate |
-| `resource://gate/{id}/guidance` | Raw guidance content only | Minimal token usage |
-| `resource://methodology/` | All frameworks (name, enabled) | Discovery - find methodologies |
-| `resource://methodology/{id}` | Framework config + system prompt | Inspect methodology details |
+| URI Pattern                       | Returns                              | Use Case                           |
+| --------------------------------- | ------------------------------------ | ---------------------------------- |
+| `resource://prompt/`              | All prompts (minimal metadata)       | Discovery - find available prompts |
+| `resource://prompt/{id}`          | Full prompt with metadata + template | Inspect a specific prompt          |
+| `resource://prompt/{id}/template` | Raw template content only            | Minimal token usage                |
+| `resource://gate/`                | All gates (minimal metadata)         | Discovery - find available gates   |
+| `resource://gate/{id}`            | Gate definition + guidance           | Inspect a specific gate            |
+| `resource://gate/{id}/guidance`   | Raw guidance content only            | Minimal token usage                |
+| `resource://methodology/`         | All frameworks (name, enabled)       | Discovery - find methodologies     |
+| `resource://methodology/{id}`     | Framework config + system prompt     | Inspect methodology details        |
 
 #### Observability Resources (Sessions, Metrics)
 
-| URI Pattern | Returns | Use Case |
-|-------------|---------|----------|
-| `resource://session/` | Active chain sessions | Context recovery - what chains are running? |
-| `resource://session/{chainId}` | Session state + progress | Inspect chain for resumption |
-| `resource://metrics/pipeline` | Execution analytics (lean) | Observability - system health |
+| URI Pattern                    | Returns                    | Use Case                                    |
+| ------------------------------ | -------------------------- | ------------------------------------------- |
+| `resource://session/`          | Active chain sessions      | Context recovery - what chains are running? |
+| `resource://session/{chainId}` | Session state + progress   | Inspect chain for resumption                |
+| `resource://metrics/pipeline`  | Execution analytics (lean) | Observability - system health               |
 
 > **Note:** Session URIs use the user-facing `chainId` (e.g., `chain-quick_decision#1`) — the same identifier used to resume chains with `chain_id` parameter.
 
@@ -84,12 +84,12 @@ MCP Resources provide a **read-only, token-efficient** alternative to tool-based
 
 Resources are **4-30x more token efficient** than equivalent tool calls:
 
-| Operation | Tool Call | Resource | Savings |
-|-----------|-----------|----------|---------|
-| List 80 prompts | ~4500 chars | ~2800 chars | **38%** |
-| List 13 gates | ~600 chars | ~400 chars | **33%** |
-| List 5 methodologies | ~350 chars | ~200 chars | **43%** |
-| Pipeline metrics | ~15KB (raw samples) | ~500 bytes | **97%** |
+| Operation            | Tool Call           | Resource    | Savings |
+| -------------------- | ------------------- | ----------- | ------- |
+| List 80 prompts      | ~4500 chars         | ~2800 chars | **38%** |
+| List 13 gates        | ~600 chars          | ~400 chars  | **33%** |
+| List 5 methodologies | ~350 chars          | ~200 chars  | **43%** |
+| Pipeline metrics     | ~15KB (raw samples) | ~500 bytes  | **97%** |
 
 ### Session Resources — Context Recovery
 
@@ -132,14 +132,14 @@ prompt_engine(chain_id:"chain-quick_decision#1", user_response:"your output here
 
 Both MCP Resources and `resource_manager` tool can list/inspect content. Use the right one:
 
-| Need | Use | Why |
-|------|-----|-----|
-| **Discovery** (list, browse) | Resources | 4-30x fewer tokens |
-| **Inspection** (read details) | Resources | Direct URI, no params needed |
-| **Context recovery** | Resources | Sessions use `chainId` directly |
-| **Create/Update/Delete** | Tools | Resources are read-only |
-| **Filtered search** | Tools | `filter:"category:analysis"` supported |
-| **Client lacks resources support** | Tools | Fallback compatibility |
+| Need                               | Use       | Why                                    |
+| ---------------------------------- | --------- | -------------------------------------- |
+| **Discovery** (list, browse)       | Resources | 4-30x fewer tokens                     |
+| **Inspection** (read details)      | Resources | Direct URI, no params needed           |
+| **Context recovery**               | Resources | Sessions use `chainId` directly        |
+| **Create/Update/Delete**           | Tools     | Resources are read-only                |
+| **Filtered search**                | Tools     | `filter:"category:analysis"` supported |
+| **Client lacks resources support** | Tools     | Fallback compatibility                 |
 
 **Default rule: Resources for READ, Tools for WRITE.**
 
@@ -188,14 +188,14 @@ prompt_engine(command:"@ReACT analysis --> synthesis --> report :: 'include data
 
 ### Operators Quick Reference
 
-| Operator     | Syntax         | Example                    | Purpose                      |
-| ------------ | -------------- | -------------------------- | ---------------------------- |
-| Framework    | `@NAME`        | `@CAGEERF prompt`          | Apply methodology            |
-| Chain        | `-->`          | `step1 --> step2`          | Sequential execution         |
+| Operator     | Syntax         | Example                    | Purpose                                 |
+| ------------ | -------------- | -------------------------- | --------------------------------------- |
+| Framework    | `@NAME`        | `@CAGEERF prompt`          | Apply methodology                       |
+| Chain        | `-->`          | `step1 --> step2`          | Sequential execution                    |
 | Repetition   | `* N`          | `>>prompt * 3`             | Repeat with same args (chain shorthand) |
-| Gate (anon)  | `:: "text"`    | `:: 'cite sources'`        | Anonymous quality criteria   |
-| Gate (named) | `:: id:"text"` | `:: security:"no secrets"` | Named gate with trackable ID |
-| Style        | `#id`          | `#analytical`              | Response formatting          |
+| Gate (anon)  | `:: "text"`    | `:: 'cite sources'`        | Anonymous quality criteria              |
+| Gate (named) | `:: id:"text"` | `:: security:"no secrets"` | Named gate with trackable ID            |
+| Style        | `#id`          | `#analytical`              | Response formatting                     |
 
 **Repetition (`* N`) - Same Arguments:**
 
@@ -226,10 +226,10 @@ prompt_engine(command:">>validate input:'step1' --> >>validate input:'step2' -->
 
 **Repetition vs Chain Decision:**
 
-| Pattern | Syntax | Use When |
-| ------- | ------ | -------- |
-| Same-args | `>>p * N` | Same task repeated for variety (brainstorming, validation) |
-| Varied-args | `>>p arg1 --> >>p arg2` | Different inputs per step |
+| Pattern     | Syntax                  | Use When                                                   |
+| ----------- | ----------------------- | ---------------------------------------------------------- |
+| Same-args   | `>>p * N`               | Same task repeated for variety (brainstorming, validation) |
+| Varied-args | `>>p arg1 --> >>p arg2` | Different inputs per step                                  |
 
 > **Context propagation:** Each chain step receives the previous step's output automatically, regardless of whether you use `* N` or explicit chains.
 
@@ -264,15 +264,15 @@ prompt_engine(command:"%judge analysis_report")
 
 ### Parameters
 
-| Parameter       | Type    | Purpose                                                |
-| --------------- | ------- | ------------------------------------------------------ |
-| `command`       | string  | Prompt ID with operators and arguments                 |
-| `chain_id`      | string  | Resume token for continuing chains                     |
-| `user_response` | string  | Your output from previous step (for chain resume)      |
+| Parameter       | Type    | Purpose                                                                                                                                                                                                                           |
+| --------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`       | string  | Prompt ID with operators and arguments                                                                                                                                                                                            |
+| `chain_id`      | string  | Resume token for continuing chains                                                                                                                                                                                                |
+| `user_response` | string  | Your output from previous step (for chain resume)                                                                                                                                                                                 |
 | `gate_verdict`  | string  | Gate review verdict. Preferred: `GATE_REVIEW: PASS/FAIL - reason`. Also accepts `GATE PASS/FAIL - reason` or minimal `PASS/FAIL - reason` (minimal only via `gate_verdict`, not parsed from `user_response`). Rationale required. |
-| `gate_action`   | enum    | `retry`, `skip`, or `abort` after gate failure         |
-| `gates`         | array   | Quality gates (IDs, quick checks, or full definitions) |
-| `force_restart` | boolean | Restart chain from step 1                              |
+| `gate_action`   | enum    | `retry`, `skip`, or `abort` after gate failure                                                                                                                                                                                    |
+| `gates`         | array   | Quality gates (IDs, quick checks, or full definitions)                                                                                                                                                                            |
+| `force_restart` | boolean | Restart chain from step 1                                                                                                                                                                                                         |
 
 ### Chain Execution
 
@@ -295,7 +295,7 @@ prompt_engine(
 
 **Handle gate reviews:**
 
-```bash
+````bash
 prompt_engine(
   chain_id:"chain-research#2",
   gate_verdict:"GATE_REVIEW: PASS - All sources cited"
@@ -309,12 +309,14 @@ prompt_engine(
   user_response:"Step 2 output...",
   gate_verdict:"GATE_REVIEW: PASS - criteria met"
 )
-```
+````
 
 Notes:
+
 - Verdicts are only read from `gate_verdict`; they are not parsed from `user_response`.
 - On PASS without an existing review, the chain continues; on FAIL, a review screen is created with context. Use `gate_action:"retry|skip|abort"` when retries are exhausted.
-```
+
+````
 
 ### Gates: Four Ways to Validate
 
@@ -336,7 +338,7 @@ prompt_engine(command:"code_review", gates:[
   {"name": "Test Coverage", "description": "All functions have unit tests"},
   {"name": "Error Handling", "description": "Proper try/catch patterns"}
 ])
-```
+````
 
 **Named inline gates** (`:: id:"criteria"`) are useful when you want:
 
@@ -382,11 +384,11 @@ prompt_engine(command:">>bugfix :: verify:'npm test' :full loop:true")
 
 **Options:**
 
-| Option    | Description                                   |
-| --------- | --------------------------------------------- |
-| `max:N`   | Override max attempts                         |
-| `timeout:N` | Override timeout in seconds                 |
-| `loop:true` | Enable autonomous Stop hook integration     |
+| Option      | Description                             |
+| ----------- | --------------------------------------- |
+| `max:N`     | Override max attempts                   |
+| `timeout:N` | Override timeout in seconds             |
+| `loop:true` | Enable autonomous Stop hook integration |
 
 See [Ralph Loops Guide](../guides/ralph-loops.md) for advanced patterns including context isolation and checkpoints.
 
@@ -461,17 +463,17 @@ resource_manager(resource_type:"prompt|gate|methodology", action:"...", ...)
 
 All resource types support these actions:
 
-| Action     | Purpose                  | Required Params                    | Note |
-| ---------- | ------------------------ | ---------------------------------- | ---- |
-| `list`     | List all resources       | —                                  | *Prefer `resource://` URIs* |
-| `inspect`  | Get resource details     | `id`                               | *Prefer `resource://` URIs* |
-| `create`   | Create new resource      | `id`, type-specific                | |
-| `update`   | Modify existing resource | `id`, fields to update             | |
-| `delete`   | Remove resource          | `id`, `confirm:true`               | |
-| `reload`   | Hot-reload from disk     | `id` (optional)                    | |
-| `history`  | View version history     | `id`                               | |
-| `rollback` | Restore previous version | `id`, `version`, `confirm:true`    | |
-| `compare`  | Compare two versions     | `id`, `from_version`, `to_version` | |
+| Action     | Purpose                  | Required Params                    | Note                        |
+| ---------- | ------------------------ | ---------------------------------- | --------------------------- |
+| `list`     | List all resources       | —                                  | _Prefer `resource://` URIs_ |
+| `inspect`  | Get resource details     | `id`                               | _Prefer `resource://` URIs_ |
+| `create`   | Create new resource      | `id`, type-specific                |                             |
+| `update`   | Modify existing resource | `id`, fields to update             |                             |
+| `delete`   | Remove resource          | `id`, `confirm:true`               |                             |
+| `reload`   | Hot-reload from disk     | `id` (optional)                    |                             |
+| `history`  | View version history     | `id`                               |                             |
+| `rollback` | Restore previous version | `id`, `version`, `confirm:true`    |                             |
+| `compare`  | Compare two versions     | `id`, `from_version`, `to_version` |                             |
 
 > **Note:** For `list` and `inspect`, prefer [MCP Resources](#mcp-resources--token-efficient-discovery) (4-30x more token efficient). Use tool actions as fallback when filtering is needed or client doesn't support resources.
 
@@ -629,14 +631,14 @@ system_control(action:"gates", operation:"list")
 
 ### Actions
 
-| Action      | Operations                            | Purpose                       |
-| ----------- | ------------------------------------- | ----------------------------- |
-| `status`    | —                                     | Runtime overview              |
-| `framework` | `list`, `switch`, `enable`, `disable` | Methodology management        |
-| `gates`     | `list`, `enable`, `disable`, `status` | Gate management               |
-| `analytics` | —                                     | Execution metrics             |
-| `config`    | —                                     | View config overlays          |
-| `changes`   | `list`                                | Resource change audit log     |
+| Action      | Operations                            | Purpose                   |
+| ----------- | ------------------------------------- | ------------------------- |
+| `status`    | —                                     | Runtime overview          |
+| `framework` | `list`, `switch`, `enable`, `disable` | Methodology management    |
+| `gates`     | `list`, `enable`, `disable`, `status` | Gate management           |
+| `analytics` | —                                     | Execution metrics         |
+| `config`    | —                                     | View config overlays      |
+| `changes`   | `list`                                | Resource change audit log |
 
 ### Resource Change Tracking
 
@@ -705,11 +707,11 @@ prompt_engine(command:"%lean code_review file:'api.ts'")
   "injection": {
     "system-prompt": {
       "enabled": true,
-      "frequency": {"mode": "every", "interval": 2}
+      "frequency": { "mode": "every", "interval": 2 }
     },
     "gate-guidance": {
       "enabled": true,
-      "frequency": {"mode": "every", "interval": 1}
+      "frequency": { "mode": "every", "interval": 1 }
     }
   }
 }
@@ -735,9 +737,9 @@ prompt_engine(
 | Full         | `GATE_REVIEW: PASS - reason` |
 | Full (colon) | `GATE_REVIEW: FAIL: reason`  |
 | Simplified   | `GATE PASS - reason`         |
-| Minimal*     | `PASS - reason`              |
+| Minimal\*    | `PASS - reason`              |
 
-*Minimal format only works via `gate_verdict` parameter, not in `user_response`.
+\*Minimal format only works via `gate_verdict` parameter, not in `user_response`.
 
 **Requirements:**
 
@@ -915,25 +917,27 @@ Override resource paths via CLI flags or environment variables.
 
 ### CLI Flags
 
+All flags accept both `--flag=value` and `--flag value` formats.
+
 ```bash
-node dist/index.js --transport=stdio \
-  --prompts=/path/to/prompts \
-  --gates=/path/to/gates \
-  --methodologies=/path/to/methodologies \
-  --styles=/path/to/styles \
-  --scripts=/path/to/scripts \
-  --workspace=/path/to/workspace \
-  --config=/path/to/config.json
+node dist/index.js --transport stdio \
+  --prompts /path/to/prompts \
+  --gates /path/to/gates \
+  --methodologies /path/to/methodologies \
+  --styles /path/to/styles \
+  --scripts /path/to/scripts \
+  --workspace /path/to/workspace \
+  --config /path/to/config.json
 ```
 
 ### Transport Options
 
-| Transport         | Flag                          | Use Case                              |
-| ----------------- | ----------------------------- | ------------------------------------- |
-| STDIO             | `--transport=stdio`           | Claude Desktop, Claude Code           |
-| Streamable HTTP   | `--transport=streamable-http` | Web dashboards, remote APIs (**use this for HTTP**) |
-| SSE (deprecated)  | `--transport=sse`             | Legacy integrations                   |
-| Dual mode         | `--transport=both`            | STDIO + SSE simultaneously            |
+| Transport        | Flag                          | Use Case                                            |
+| ---------------- | ----------------------------- | --------------------------------------------------- |
+| STDIO            | `--transport=stdio`           | Claude Desktop, Claude Code                         |
+| Streamable HTTP  | `--transport=streamable-http` | Web dashboards, remote APIs (**use this for HTTP**) |
+| SSE (deprecated) | `--transport=sse`             | Legacy integrations                                 |
+| Dual mode        | `--transport=both`            | STDIO + SSE simultaneously                          |
 
 For HTTP clients, use Streamable HTTP. It's the current MCP standard and replaces SSE.
 
@@ -954,7 +958,7 @@ For HTTP clients, use Streamable HTTP. It's the current MCP standard and replace
 
 Path resolution follows this priority (first match wins):
 
-1. **CLI flags** — `--prompts=/path` (highest priority, explicit override)
+1. **CLI flags** — `--prompts /path` (highest priority, explicit override)
 2. **Individual env vars** — `MCP_PROMPTS_PATH` (per-resource override)
 3. **Unified env var** — `MCP_RESOURCES_PATH/prompts/` (all resources)
 4. **Package defaults** — `server/resources/prompts/` (lowest priority)
@@ -979,15 +983,15 @@ Path resolution follows this priority (first match wins):
 
 ## Reference
 
-| Component          | Location                                            |
-| ------------------ | --------------------------------------------------- |
+| Component          | Location                                               |
+| ------------------ | ------------------------------------------------------ |
 | Prompt definitions | `server/resources/prompts/{category}/{id}/prompt.yaml` |
-| Gate definitions   | `server/resources/gates/{id}/gate.yaml`             |
-| Style definitions  | `server/resources/styles/{id}/style.yaml`           |
+| Gate definitions   | `server/resources/gates/{id}/gate.yaml`                |
+| Style definitions  | `server/resources/styles/{id}/style.yaml`              |
 | Methodologies      | `server/resources/methodologies/{id}/methodology.yaml` |
-| Chain sessions     | `runtime-state/chain-sessions.json`                 |
-| Resource changes   | `runtime-state/resource-changes.jsonl`              |
-| Server config      | `server/config.json`                                |
+| Chain sessions     | `runtime-state/chain-sessions.json`                    |
+| Resource changes   | `runtime-state/resource-changes.jsonl`                 |
+| Server config      | `server/config.json`                                   |
 
 **Related docs:**
 

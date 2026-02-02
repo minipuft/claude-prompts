@@ -4,6 +4,7 @@
  * Centralizes CLI flag handling so verbose/quiet/test detection stays in sync.
  */
 
+import { parseServerCliArgs, type ServerCliArgs } from './cli.js';
 import { parsePathCliOptions, type PathResolverCliOptions } from './paths.js';
 
 /**
@@ -41,12 +42,12 @@ const TEST_ARG_HINTS = ['test', 'jest', 'mocha'];
  */
 export function detectRuntimeTestEnvironment(
   fullArgv: string[] = process.argv,
-  args: string[] = process.argv.slice(2)
+  cli: ServerCliArgs = parseServerCliArgs()
 ): boolean {
   return (
     process.env['NODE_ENV'] === 'test' ||
-    args.includes('--suppress-debug') ||
-    args.includes('--test-mode') ||
+    cli.suppressDebug ||
+    cli.testMode ||
     process.env['GITHUB_ACTIONS'] === 'true' ||
     process.env['CI'] === 'true' ||
     fullArgv.some((arg) => TEST_ARG_HINTS.some((hint) => arg.includes(hint))) ||
@@ -55,68 +56,36 @@ export function detectRuntimeTestEnvironment(
 }
 
 /**
- * Parse --log-level flag from arguments
- */
-function parseLogLevel(args: string[]): string | undefined {
-  const logLevelArg = args.find((arg) => arg.startsWith('--log-level='));
-  if (logLevelArg) {
-    const level = logLevelArg.split('=')[1]?.toLowerCase();
-    const validLevels = ['debug', 'info', 'warn', 'error'];
-    if (level && validLevels.includes(level)) {
-      return level;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Parse runtime launch options from CLI arguments.
+ * Resolve runtime launch options from pre-parsed CLI arguments.
  *
  * Zero-flag experience: When using STDIO transport (default), quiet mode is
  * automatically enabled unless --verbose is explicitly specified. This prevents
  * logging output from corrupting the MCP JSON-RPC protocol.
- *
- * Supported path flags:
- *   --workspace=/path       Base directory for user assets
- *   --config=/path          Direct path to config.json
- *   --prompts=/path         Direct path to prompts configuration
- *   --methodologies=/path   Custom methodologies directory
- *   --gates=/path           Custom gates directory
- *   --log-level=LEVEL       Log level (debug, info, warn, error)
  */
 export function resolveRuntimeLaunchOptions(
-  args: string[] = process.argv.slice(2),
+  cliArgs?: ServerCliArgs,
   fullArgv: string[] = process.argv
 ): RuntimeLaunchOptions {
-  const isVerbose = args.includes('--verbose') || args.includes('--debug-startup');
-  const explicitQuiet = args.includes('--quiet');
+  const cli = cliArgs ?? parseServerCliArgs();
 
-  // Detect transport mode (default is STDIO)
-  const transportArg = args.find((arg) => arg.startsWith('--transport='));
-  const transport = transportArg ? transportArg.split('=')[1] : 'stdio';
+  const isVerbose = cli.verbose || cli.debugStartup;
+  const transport = cli.transport ?? 'stdio';
   const isStdioTransport = transport === 'stdio';
-
-  // Auto-enable quiet mode for STDIO transport to prevent protocol corruption
-  // unless --verbose is explicitly specified (for debugging)
   const autoQuiet = isStdioTransport && !isVerbose;
 
-  // Parse path-related CLI options
-  const paths = parsePathCliOptions(args);
-
-  // Parse log level
-  const logLevel = parseLogLevel(args);
+  const paths = parsePathCliOptions(cli);
 
   const runtimeOptions: RuntimeLaunchOptions = {
-    args,
+    args: process.argv.slice(2),
     verbose: isVerbose,
-    quiet: explicitQuiet || autoQuiet,
-    startupTest: args.includes('--startup-test'),
-    testEnvironment: detectRuntimeTestEnvironment(fullArgv, args),
+    quiet: cli.quiet || autoQuiet,
+    startupTest: cli.startupTest,
+    testEnvironment: detectRuntimeTestEnvironment(fullArgv, cli),
     paths,
   };
 
-  if (logLevel) {
-    runtimeOptions.logLevel = logLevel;
+  if (cli.logLevel !== undefined) {
+    runtimeOptions.logLevel = cli.logLevel;
   }
 
   return runtimeOptions;

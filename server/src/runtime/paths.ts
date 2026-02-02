@@ -22,6 +22,8 @@
 import { existsSync, readdirSync } from 'fs';
 import { dirname, join, resolve, isAbsolute } from 'path';
 
+import type { ServerCliArgs } from './cli.js';
+
 /**
  * CLI flag values parsed from command line arguments
  */
@@ -32,6 +34,7 @@ export interface PathResolverCliOptions {
   methodologies?: string;
   gates?: string;
   scripts?: string;
+  styles?: string;
 }
 
 /**
@@ -618,39 +621,21 @@ export class PathResolver {
 // ============================================================================
 
 /**
- * Parse path-related CLI flags from command line arguments
+ * Extract path-related options from pre-parsed CLI arguments.
  *
- * Supported flags:
- *   --workspace=/path
- *   --config=/path
- *   --prompts=/path
- *   --methodologies=/path
- *   --gates=/path
- *   --scripts=/path
- *
- * @param args - Command line arguments (typically process.argv.slice(2))
- * @returns Parsed CLI options
+ * @param cliArgs - Pre-parsed server CLI arguments from cli.ts
+ * @returns Path resolver options
  */
-export function parsePathCliOptions(args: string[]): PathResolverCliOptions {
-  const options: PathResolverCliOptions = {};
-
-  for (const arg of args) {
-    if (arg.startsWith('--workspace=')) {
-      options.workspace = arg.slice('--workspace='.length);
-    } else if (arg.startsWith('--config=')) {
-      options.config = arg.slice('--config='.length);
-    } else if (arg.startsWith('--prompts=')) {
-      options.prompts = arg.slice('--prompts='.length);
-    } else if (arg.startsWith('--methodologies=')) {
-      options.methodologies = arg.slice('--methodologies='.length);
-    } else if (arg.startsWith('--gates=')) {
-      options.gates = arg.slice('--gates='.length);
-    } else if (arg.startsWith('--scripts=')) {
-      options.scripts = arg.slice('--scripts='.length);
-    }
-  }
-
-  return options;
+export function parsePathCliOptions(cliArgs: ServerCliArgs): PathResolverCliOptions {
+  return {
+    workspace: cliArgs.workspace,
+    config: cliArgs.config,
+    prompts: cliArgs.prompts,
+    methodologies: cliArgs.methodologies,
+    gates: cliArgs.gates,
+    scripts: cliArgs.scripts,
+    styles: cliArgs.styles,
+  };
 }
 
 /**
@@ -703,11 +688,11 @@ export function validatePathCliOptions(options: PathResolverCliOptions): string[
  * @returns Configured PathResolver instance
  */
 export function createPathResolver(
-  args: string[],
+  cliArgs: ServerCliArgs,
   packageRoot: string,
   debug = false
 ): PathResolver {
-  const cli = parsePathCliOptions(args);
+  const cli = parsePathCliOptions(cliArgs);
 
   return new PathResolver({
     cli,

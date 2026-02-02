@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 import { resolveRuntimeLaunchOptions, RuntimeLaunchOptions } from './options.js';
-import { PathResolver, createPathResolver } from './paths.js';
+import { PathResolver } from './paths.js';
 import { ServerRootDetector } from './startup.js';
 import { EventEmittingConfigManager } from '../infra/config/index.js';
 import { TransportManager } from '../infra/http/index.js';
@@ -46,9 +46,10 @@ export async function createRuntimeFoundation(
   // Determine server root (package root) using existing detection
   const serverRoot = await new ServerRootDetector().determineServerRoot();
 
-  // Create PathResolver with CLI options and package root
+  // Create PathResolver with pre-parsed CLI path options and package root
   const pathResolver =
-    dependencies.pathResolver ?? createPathResolver(options.args, serverRoot, options.verbose);
+    dependencies.pathResolver ??
+    new PathResolver({ cli: options.paths, packageRoot: serverRoot, debug: options.verbose });
 
   // Use PathResolver for config path (supports workspace override)
   const configPath = pathResolver.getConfigPath();

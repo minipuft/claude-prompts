@@ -340,6 +340,8 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
 | `MCP_PROMPTS_PATH`       | Direct path to a prompts directory              | `/path/to/prompts`               |
 | `MCP_METHODOLOGIES_PATH` | Custom methodologies directory                  | `/path/to/methodologies`         |
 | `MCP_GATES_PATH`         | Custom gates directory                          | `/path/to/gates`                 |
+| `MCP_SCRIPTS_PATH`       | Custom scripts directory                        | `/path/to/scripts`               |
+| `MCP_STYLES_PATH`        | Custom styles directory                         | `/path/to/styles`                |
 | `MCP_CONFIG_PATH`        | Custom server config.json                       | `/path/to/config.json`           |
 | `LOG_LEVEL`              | Logging verbosity                               | `debug`, `info`, `warn`, `error` |
 
@@ -349,30 +351,44 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
 
 ### CLI Flags
 
+All flags accept both `--flag=value` and `--flag value` formats.
+
 ```bash
 # Use a workspace
-npx claude-prompts --workspace=/path/to/workspace
+npx claude-prompts --workspace /path/to/workspace
 
 # Override specific paths
-npx claude-prompts --prompts=/path/to/prompts
+npx claude-prompts --prompts /path/to/prompts
+
+# Select transport
+npx claude-prompts --transport sse
 
 # Debugging
 npx claude-prompts --verbose
 npx claude-prompts --debug-startup
+npx claude-prompts --log-level debug
 
 # Validate setup without running
 npx claude-prompts --startup-test --verbose
 ```
 
-| Flag                    | Purpose                                    |
-| ----------------------- | ------------------------------------------ |
-| `--workspace=/path`     | Base directory for all user assets         |
-| `--prompts=/path`       | Direct path to a prompts directory         |
-| `--methodologies=/path` | Custom methodologies directory             |
-| `--gates=/path`         | Custom gates directory                     |
-| `--config=/path`        | Custom server config.json                  |
-| `--verbose`             | Detailed logging                           |
-| `--startup-test`        | Validate and exit (good for testing setup) |
+| Flag                    | Purpose                                      |
+| ----------------------- | -------------------------------------------- |
+| `-h`, `--help`          | Show help and exit                           |
+| `--init /path`          | Initialize a new workspace with starters     |
+| `--workspace /path`     | Base directory for all user assets           |
+| `--prompts /path`       | Direct path to a prompts directory           |
+| `--methodologies /path` | Custom methodologies directory               |
+| `--gates /path`         | Custom gates directory                       |
+| `--scripts /path`       | Custom scripts directory                     |
+| `--styles /path`        | Custom styles directory                      |
+| `--config /path`        | Custom server config.json                    |
+| `--transport MODE`      | Transport: `stdio`, `sse`, `streamable-http` |
+| `--log-level LEVEL`     | Log level: `debug`, `info`, `warn`, `error`  |
+| `--verbose`             | Detailed logging                             |
+| `--quiet`               | Suppress non-error output                    |
+| `--debug-startup`       | Verbose startup diagnostics                  |
+| `--startup-test`        | Validate and exit (good for testing setup)   |
 
 ---
 
@@ -408,6 +424,7 @@ Full guides in the [main repository](https://github.com/minipuft/claude-prompts)
 - [Prompt Authoring](https://github.com/minipuft/claude-prompts/blob/main/docs/tutorials/build-first-prompt.md) — Tutorial
 - [Chains](https://github.com/minipuft/claude-prompts/blob/main/docs/concepts/chains-lifecycle.md) — Multi-step patterns
 - [Gates](https://github.com/minipuft/claude-prompts/blob/main/docs/concepts/quality-gates.md) — Quality validation
+- [Skills Sync](https://github.com/minipuft/claude-prompts/blob/main/docs/guides/skills-sync.md) — Export prompts to client-native skills
 
 ---
 
@@ -419,6 +436,21 @@ cd claude-prompts/server
 npm install && npm run build
 npm run start:stdio
 ```
+
+### Skills Sync — Export prompts as native client skills
+
+Export YAML prompts to Claude Code, Cursor, Codex, and OpenCode as native skill packages. Exported prompts are auto-deregistered from MCP to avoid duplication.
+
+```bash
+cp skills-sync.example.yaml skills-sync.yaml  # First-time setup
+npm run skills:export   # Compile to client-native format
+npm run skills:diff     # Detect drift via SHA-256 manifests
+npm run skills:pull     # Generate .patch files for stale skills
+```
+
+Config: `skills-sync.yaml` (git-ignored, personal). See [Skills Sync Guide](docs/guides/skills-sync.md) for details.
+
+---
 
 ## License
 
