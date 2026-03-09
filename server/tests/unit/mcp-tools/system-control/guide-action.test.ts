@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
-import { createConsolidatedSystemControl } from '../../../../src/mcp/tools/system-control.js';
+import { createConsolidatedSystemControl } from '../../../../src/mcp/tools/system-control/index.js';
 
 import type { Logger } from '../../../../src/infra/logging/index.js';
 

@@ -1,0 +1,10 @@
+id: hello
+name: Hello Prompt
+description: A simple test prompt
+category: dev
+userMessageTemplateFile: user-message.md
+arguments:
+  - name: content
+    type: string
+    description: Content to process
+    required: true

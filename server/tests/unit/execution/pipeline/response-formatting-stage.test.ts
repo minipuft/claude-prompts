@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 import { ExecutionContext } from '../../../../src/engine/execution/context/execution-context.js';
+import { ResponseAssembler } from '../../../../src/engine/execution/formatting/response-assembler.js';
 import { ResponseFormattingStage } from '../../../../src/engine/execution/pipeline/stages/10-formatting-stage.js';
 import { ResponseFormatter } from '../../../../src/mcp/tools/prompt-engine/processors/response-formatter.js';
 
@@ -16,7 +17,7 @@ const createLogger = (): Logger => ({
 describe('ResponseFormattingStage', () => {
   test('formats chain responses with footer and structured metadata', async () => {
     const formatter = new ResponseFormatter(createLogger());
-    const stage = new ResponseFormattingStage(formatter, createLogger());
+    const stage = new ResponseFormattingStage(formatter, new ResponseAssembler(), createLogger());
 
     const context = new ExecutionContext({ command: '>>chain' });
     context.executionPlan = {
@@ -58,7 +59,7 @@ describe('ResponseFormattingStage', () => {
 
   test('passes simple prompt content through response formatter when no session data is present', async () => {
     const formatter = new ResponseFormatter(createLogger());
-    const stage = new ResponseFormattingStage(formatter, createLogger());
+    const stage = new ResponseFormattingStage(formatter, new ResponseAssembler(), createLogger());
 
     const context = new ExecutionContext({ command: '>>prompt' });
     context.executionPlan = {

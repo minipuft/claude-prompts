@@ -1,8 +1,11 @@
+// @lifecycle canonical - Defines internal execution context state contracts.
 import type {
   ConfirmationRequired,
+  RequestIdentityContext,
   ScriptExecutionResult,
   ToolResponse,
 } from '../../../shared/types/index.js';
+import type { RequestIdentitySource } from '../../../shared/types/request-identity.js';
 import type { PendingShellVerification, ShellVerifyResult } from '../../gates/shell/index.js';
 import type { GateEnforcementMode } from '../../gates/types.js';
 import type { InjectionState } from '../pipeline/decisions/injection/index.js';
@@ -95,6 +98,30 @@ export interface PipelineInternalState {
   };
 
   /**
+   * State related to Request Identity and Scope Resolution.
+   * Populated by IdentityResolutionStage from MCP SDK extra payload.
+   */
+  identity: {
+    /** Whether identity resolution has completed */
+    resolved: boolean;
+    /** Full identity context (workspace, organization, provenance) */
+    context?: RequestIdentityContext;
+    /** Composite scope ID for state store isolation (e.g., "org:ws" or "default") */
+    continuityScopeId: string;
+  };
+
+  /**
+   * State related to Continuity Scope (tenant isolation).
+   * Populated by IdentityResolutionStage, consumed by state managers.
+   */
+  scope: {
+    /** Resolved continuity scope ID (workspace → organization → 'default') */
+    continuityScopeId: string;
+    /** Source of the scope value */
+    source: RequestIdentitySource | 'default';
+  };
+
+  /**
    * State related to Gates and Validation.
    */
   gates: {
@@ -110,8 +137,6 @@ export interface PipelineInternalState {
     temporaryGateScopes?: Array<{ scope: string; scopeId: string }>;
     /** Validation results from the gate system */
     validationResults?: unknown[];
-    /** Call-to-action string returned by gate review */
-    reviewCallToAction?: string;
     /** IDs of methodology-specific gates registered for this execution */
     methodologyGateIds: string[];
     /** IDs of canonical gates that were resolved from temporary inputs */
@@ -122,12 +147,18 @@ export interface PipelineInternalState {
     retryLimitExceeded?: boolean;
     /** Gate IDs that have exhausted their retry attempts */
     retryExhaustedGateIds?: string[];
-    /** Advisory warnings from non-blocking gate failures */
+    /**
+     * Advisory warnings from non-blocking failures (pipeline-level display bucket).
+     * Writers: GateVerdictProcessor (advisory-mode failures), PhaseGuardVerificationStage (warn-mode).
+     * Reader: ResponseAssembler (formatting layer).
+     */
     advisoryWarnings: string[];
     /** Resolved enforcement mode for the current gate set (most restrictive wins) */
     enforcementMode?: GateEnforcementMode;
     /** Whether user choice is being awaited after retry exhaustion */
     awaitingUserChoice?: boolean;
+    /** Which subsystem triggered the escalation (retry exhaustion). */
+    escalationSource?: 'gate-review' | 'shell-verify';
     /** Accumulated gate IDs from enhancement stage for downstream use */
     accumulatedGateIds?: string[];
     /** Whether blocking gates are present that require review */
@@ -151,6 +182,11 @@ export interface PipelineInternalState {
       outcome?: string;
     };
     /**
+     * Set by Stage 08 when a verdict clears a phase-guard-created review.
+     * Stage 09b checks this to skip re-evaluation on the same request turn.
+     */
+    phaseGuardReviewCleared?: boolean;
+    /**
      * Pending shell verification gate for Ralph Wiggum loop execution.
      * Tracks command, attempt count, and previous results across iterations.
      */
@@ -168,6 +204,16 @@ export interface PipelineInternalState {
       type: 'bounce_back' | 'escalation';
       message: string;
     };
+    /**
+     * Gate IDs whose shell_verify criteria passed (exit 0) during Stage 08b.
+     * Downstream stages (10) use this to auto-clear gate reviews for these gates.
+     */
+    shellVerifyPassedForGates?: string[];
+    /**
+     * Per-gate verdicts parsed from the GATE_VERDICTS block in gate_verdict.
+     * Extracted alongside the overall verdict for granular delivery tracking.
+     */
+    perGateVerdicts?: Array<{ index: number; passed: boolean; rationale: string }>;
   };
 
   /**

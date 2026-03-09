@@ -7,7 +7,7 @@
  *
  * Registry-based architecture:
  * - GateRegistry: Lifecycle management for gate guides
- * - GenericGateGuide: Data-driven IGateGuide implementation
+ * - GenericGateGuide: Data-driven GateGuide implementation
  * - GateManager: Orchestration layer (Phase 4)
  * - GateHotReloadCoordinator: Hot reload support (Phase 4)
  */
@@ -20,7 +20,7 @@ export * from './registry/index.js';
 
 // Export gate services (Phase 3)
 export {
-  type IGateService,
+  type GateService,
   type GateEnhancementResult,
   type GateValidationResult as ServiceGateValidationResult,
   type GateServiceConfig,

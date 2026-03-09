@@ -144,39 +144,6 @@ export interface FrameworkStateInfo {
 }
 
 /**
- * Prompt guidance service interface
- */
-export interface IPromptGuidanceService {
-  /**
-   * Apply comprehensive guidance to a prompt
-   */
-  applyGuidance(
-    prompt: ConvertedPrompt,
-    config?: Partial<PromptGuidanceConfig>
-  ): Promise<PromptGuidanceResult>;
-
-  /**
-   * Get current methodology state
-   */
-  getCurrentMethodologyState(): MethodologyState;
-
-  /**
-   * Get framework state information
-   */
-  getFrameworkState(): FrameworkStateInfo;
-
-  /**
-   * Get guidance analytics
-   */
-  getAnalytics(): PromptGuidanceAnalytics;
-
-  /**
-   * Reset analytics and tracking data
-   */
-  resetAnalytics(): void;
-}
-
-/**
  * Methodology state information
  */
 export interface MethodologyState {

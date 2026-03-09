@@ -2,17 +2,18 @@
 /**
  * Gate Guide Type Definitions
  *
- * Contains the IGateGuide interface and related types for the registry-based
- * gate system architecture. This mirrors the IMethodologyGuide pattern from
+ * Contains the GateGuide interface and related types for the registry-based
+ * gate system architecture. This mirrors the MethodologyGuide pattern from
  * the framework system while being tailored for gate-specific functionality.
  *
- * Key differences from IMethodologyGuide:
+ * Key differences from MethodologyGuide:
  * - No dynamic tool descriptions (gates don't modify MCP tool descriptions)
  * - No judge prompt system (gate selection remains activation-rule based)
  * - Simpler interface focused on guidance and validation
  */
 
 import type { GateEnforcementMode, GatePassCriteria, GateSeverity } from './gate-primitives.js';
+import type { JudgeEvaluationConfig } from '../judge/types.js';
 
 // ============================================================================
 // Gate Activation Types
@@ -33,7 +34,7 @@ export interface GateActivationRules {
 
 /**
  * Context provided when checking if a gate should be activated.
- * Used by IGateGuide.isActive() to determine activation.
+ * Used by GateGuide.isActive() to determine activation.
  */
 export interface GateActivationContext {
   /** Current prompt category */
@@ -129,16 +130,23 @@ export interface GateDefinitionYaml {
   // Activation rules
   /** Rules determining when this gate should be activated */
   activation?: GateActivationRules;
+
+  /**
+   * Judge evaluation configuration.
+   * When mode is 'judge', gate review is delegated to a context-isolated sub-agent.
+   * Loaded from gate.yaml `evaluation` key.
+   */
+  evaluation?: JudgeEvaluationConfig;
 }
 
 // ============================================================================
-// IGateGuide Interface
+// GateGuide Interface
 // ============================================================================
 
 /**
  * Core interface for gate guides in the registry-based system.
  *
- * This interface mirrors IMethodologyGuide's pattern but is tailored for gates:
+ * This interface mirrors MethodologyGuide's pattern but is tailored for gates:
  * - No getToolDescriptions() - gates don't modify MCP tool descriptions
  * - No getJudgePrompt() - gate selection uses activation rules, not LLM selection
  * - Focus on guidance rendering and validation
@@ -156,7 +164,7 @@ export interface GateDefinitionYaml {
  * }
  * ```
  */
-export interface IGateGuide {
+export interface GateGuide {
   // -------------------------------------------------------------------------
   // Identification (readonly properties)
   // -------------------------------------------------------------------------
@@ -259,7 +267,7 @@ export type GateSource = 'yaml-runtime' | 'custom' | 'temporary';
  */
 export interface GateGuideEntry {
   /** The gate guide instance */
-  guide: IGateGuide;
+  guide: GateGuide;
   /** When this guide was registered */
   registeredAt: Date;
   /** Whether this is a built-in gate */
@@ -322,7 +330,7 @@ export interface GateSelectionContext {
  */
 export interface GateSelectionResult {
   /** Selected gate guides */
-  guides: IGateGuide[];
+  guides: GateGuide[];
   /** Gate IDs that were selected */
   selectedIds: string[];
   /** Gates that were skipped (disabled or inactive) */

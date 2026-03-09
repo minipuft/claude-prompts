@@ -97,4 +97,35 @@ describe('review-utils', () => {
     expect(parsed.decision).toBe('fail');
     expect(parsed.reasoning).toContain('Missing citations for claim 42.');
   });
+
+  test('composeReviewPrompt renders delivery framing for originalArgs', () => {
+    const promptsWithContext: GateReviewPrompt[] = [
+      {
+        gateId: 'code-quality',
+        criteriaSummary: 'Check code quality.',
+        previousResponse: 'Some code output',
+        executionContext: {
+          originalArgs: { command: '>>triage', request: 'Fix the login bug' },
+          previousResults: {},
+        },
+      },
+    ];
+
+    const result = composeReviewPrompt(promptsWithContext);
+
+    expect(result.combinedPrompt).toContain('## Original Request & Delivery Context');
+    expect(result.combinedPrompt).toContain(
+      'Verify that the output satisfies the original request intent:'
+    );
+    expect(result.combinedPrompt).toContain('- **command**: >>triage');
+    expect(result.combinedPrompt).toContain('- **request**: Fix the login bug');
+    expect(result.combinedPrompt).toContain(
+      'Does the output address what was originally asked for?'
+    );
+    expect(result.combinedPrompt).toContain(
+      'Are there aspects of the request that were missed or partially addressed?'
+    );
+    // Should NOT contain old label
+    expect(result.combinedPrompt).not.toContain('Original Arguments:');
+  });
 });

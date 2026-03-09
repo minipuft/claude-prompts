@@ -12,14 +12,14 @@ import yaml from 'js-yaml';
 import type { RuntimeLaunchOptions } from './options.js';
 import type { PathResolver } from './paths.js';
 import type { ConvertedPrompt } from '../engine/execution/types.js';
-import type { EventEmittingConfigManager } from '../infra/config/index.js';
+import type { ConfigLoader } from '../infra/config/index.js';
 import type { Logger } from '../infra/logging/index.js';
 import type { PromptAssetManager } from '../modules/prompts/index.js';
 import type { Category, PromptData } from '../modules/prompts/types.js';
 
 export interface PromptDataLoadParams {
   logger: Logger;
-  configManager: EventEmittingConfigManager;
+  configManager: ConfigLoader;
   promptManager: PromptAssetManager;
   runtimeOptions: RuntimeLaunchOptions;
   serverRoot?: string;
@@ -32,7 +32,7 @@ export interface PromptDataLoadParams {
       categories: Category[]
     ) => void;
   };
-  apiManager?: {
+  apiRouter?: {
     updateData: (
       prompts: PromptData[],
       categories: Category[],
@@ -122,7 +122,7 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
 
   // Update downstream managers if available
   params.mcpToolsManager?.updateData(promptsData, convertedPrompts, categories);
-  params.apiManager?.updateData(promptsData, categories, convertedPrompts);
+  params.apiRouter?.updateData(promptsData, categories, convertedPrompts);
 
   // Auto-deregister prompts exported as client skills via skills-sync.yaml
   const exportedPromptIds = await loadSkillsSyncExports(serverRoot, logger);

@@ -306,6 +306,7 @@ export class GateLoader implements GateDefinitionProvider {
       ...(retryConfig !== undefined ? { retry_config: retryConfig } : {}),
       ...(definition.activation !== undefined ? { activation: definition.activation } : {}),
       ...(definition.gate_type !== undefined ? { gate_type: definition.gate_type } : {}),
+      ...(definition.evaluation !== undefined ? { evaluation: definition.evaluation } : {}),
     };
   }
 

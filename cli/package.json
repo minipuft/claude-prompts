@@ -1,0 +1,24 @@
+{
+  "name": "cpm-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI tool for Claude Prompts MCP workspace management",
+  "type": "module",
+  "bin": {
+    "cpm": "dist/cpm.js"
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest --config jest.config.cjs",
+    "test:ci": "NODE_OPTIONS=\"--experimental-vm-modules\" jest --config jest.config.cjs --ci"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.8",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  }
+}

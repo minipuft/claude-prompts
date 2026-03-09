@@ -48,11 +48,12 @@ export class SessionManagementStage extends BasePipelineStage {
       const requestedChainId = explicitChainResume ? context.getRequestedChainId() : undefined;
 
       let resolvedSessionId = forceRestart ? undefined : context.getSessionId();
+      const scopeOptions = context.getScopeOptions();
       let existingSession: ChainSession | undefined =
         !forceRestart &&
         resolvedSessionId &&
         this.chainSessionManager.hasActiveSession(resolvedSessionId)
-          ? this.chainSessionManager.getSession(resolvedSessionId)
+          ? this.chainSessionManager.getSession(resolvedSessionId, scopeOptions)
           : undefined;
 
       if (!existingSession && !forceRestart && requestedChainId) {
@@ -60,6 +61,7 @@ export class SessionManagementStage extends BasePipelineStage {
           requestedChainId,
           {
             includeDormant: explicitChainResume,
+            ...scopeOptions,
           }
         );
         if (chainSession) {
@@ -108,14 +110,14 @@ export class SessionManagementStage extends BasePipelineStage {
         const chainId = this.buildChainId(baseChainId, isRestart);
 
         const blueprint = this.buildSessionBlueprint(context);
-        const options = blueprint ? { blueprint } : undefined;
+        const options = { ...scopeOptions, ...(blueprint ? { blueprint } : {}) };
 
         await this.chainSessionManager.createSession(
           resolvedSessionId,
           chainId,
           totalSteps,
           context.getPromptArgs(),
-          options
+          Object.keys(options).length > 0 ? options : undefined
         );
 
         sessionContext = {
@@ -203,7 +205,7 @@ export class SessionManagementStage extends BasePipelineStage {
       },
     };
 
-    const pendingReview = authority.createPendingReview(reviewOptions);
+    const pendingReview = await authority.createPendingReview(reviewOptions);
 
     // Persist to session manager and update context via authority
     await authority.setPendingReview(sessionContext.sessionId, pendingReview);

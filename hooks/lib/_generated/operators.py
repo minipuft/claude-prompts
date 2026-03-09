@@ -25,6 +25,12 @@ OPERATORS: dict[str, OperatorInfo] = {
         'pattern': re.compile(r'''-->'''),
         'examples': [">>step1 --> >>step2",">>analyze --> >>implement --> >>test"],
     },
+    'delegation': {
+        'symbol': '==>',
+        'description': 'Delegated chain step (sub-agent execution)',
+        'pattern': re.compile(r'''==>'''),
+        'examples': [">>step1 ==> >>step2",">>research --> >>summarize ==> >>review"],
+    },
     'gate': {
         'symbol': '::',
         'description': 'Quality gate for validation',

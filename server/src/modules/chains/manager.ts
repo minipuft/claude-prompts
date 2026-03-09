@@ -1,20 +1,20 @@
 // @lifecycle canonical - Manages chain session persistence and lifecycle promotion.
 /**
- * Chain Session Manager
+ * Chain Session Store
  *
  * Manages chain execution sessions, providing the bridge between MCP session IDs
  * and the persisted chain state/step capture utilities. This enables stateful
  * chain execution across multiple MCP tool calls.
  *
- * CRITICAL: Uses file-based persistence to survive STDIO transport's ephemeral processes.
+ * CRITICAL: Uses SQLite-backed persistence to survive STDIO transport's ephemeral processes.
  * Sessions are saved to disk after every change and loaded on initialization.
  */
 
-import * as path from 'path';
-
-import { FileBackedChainRunRegistry, type ChainRunRegistry } from './run-registry.js';
+import { SqliteChainRunRegistry, type ChainRunRegistry } from './run-registry.js';
+import { SqliteEngine } from '../../infra/database/sqlite-engine.js';
 import { StepState } from '../../shared/types/chain-execution.js';
-import { ArgumentHistoryTracker, TextReferenceManager } from '../text-refs/index.js';
+import { resolveContinuityScopeId } from '../../shared/utils/request-identity-scope.js';
+import { ArgumentHistoryTracker, TextReferenceStore } from '../text-refs/index.js';
 
 import type {
   ChainSession,
@@ -26,20 +26,31 @@ import type {
   PersistedChainRunRegistry,
   SessionBlueprint,
 } from './types.js';
+import type { StateStoreOptions } from '../../infra/database/stores/interface.js';
 import type {
   GateReviewHistoryEntry,
   PendingGateReview,
+  PendingShellVerificationSnapshot,
   StepMetadata,
   GateReviewPrompt,
 } from '../../shared/types/chain-execution.js';
 import type { Logger } from '../../shared/types/index.js';
 
-interface ChainSessionManagerOptions {
-  serverRoot: string;
+/** Callback invoked when a session is cleared (cleanup or explicit). */
+export type SessionClearedCallback = (
+  sessionId: string,
+  session: ChainSession
+) => void | Promise<void>;
+
+export interface ChainSessionStoreOptions {
+  serverRoot?: string;
   defaultSessionTimeoutMs?: number;
   reviewSessionTimeoutMs?: number;
   cleanupIntervalMs?: number;
 }
+
+/** @deprecated Use ChainSessionStoreOptions */
+export type ChainSessionManagerOptions = ChainSessionStoreOptions;
 
 const DEFAULT_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_REVIEW_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -48,59 +59,63 @@ const MAX_RUN_HISTORY = 10;
 const CHAIN_RUN_STORE_VERSION = 2;
 
 /**
- * Chain Session Manager class
+ * Chain Session Store
  *
  * Coordinates session state between MCP protocol, step capture, and execution context tracking.
  * Provides session-aware context retrieval for chain execution.
  */
-export class ChainSessionManager implements ChainSessionService {
+export class ChainSessionStore implements ChainSessionService {
   private logger: Logger;
-  private textReferenceManager: TextReferenceManager;
+  private textReferenceStore: TextReferenceStore;
   private argumentHistoryTracker?: ArgumentHistoryTracker;
   private activeSessions: Map<string, ChainSession> = new Map();
   private chainSessionMapping: Map<string, Set<string>> = new Map(); // chainId -> sessionIds
   private baseChainMapping: Map<string, string[]> = new Map(); // baseChainId -> ordered runIds
   private runChainToBase: Map<string, string> = new Map(); // runChainId -> baseChainId
-  private readonly runRegistry: ChainRunRegistry;
+  private runRegistry!: ChainRunRegistry;
+  private readonly sessionClearedCallbacks: SessionClearedCallback[] = [];
   private readonly serverRoot: string;
   private readonly defaultSessionTimeoutMs: number;
   private readonly reviewSessionTimeoutMs: number;
   private readonly cleanupIntervalMs: number;
   private cleanupIntervalHandle?: NodeJS.Timeout;
+  private injectedDbEngine?: SqliteEngine;
+  private resolvedDbEngine?: SqliteEngine;
+  private readonly serverPid = String(process.pid);
+  private initPromise!: Promise<void>;
 
   constructor(
     logger: Logger,
-    textReferenceManager: TextReferenceManager,
-    options: ChainSessionManagerOptions,
-    argumentHistoryTracker?: ArgumentHistoryTracker,
+    textReferenceStore: TextReferenceStore,
+    options: ChainSessionStoreOptions,
+    dbEngineOrTracker?: SqliteEngine | ArgumentHistoryTracker,
     sessionStore?: ChainRunRegistry
   ) {
     this.logger = logger;
-    this.textReferenceManager = textReferenceManager;
-    if (argumentHistoryTracker !== undefined) {
-      this.argumentHistoryTracker = argumentHistoryTracker;
+    this.textReferenceStore = textReferenceStore;
+
+    // Detect 4th arg type: SqliteEngine (DI for tests) or ArgumentHistoryTracker
+    if (dbEngineOrTracker instanceof SqliteEngine) {
+      this.injectedDbEngine = dbEngineOrTracker;
+    } else if (dbEngineOrTracker !== undefined) {
+      this.argumentHistoryTracker = dbEngineOrTracker;
     }
-    this.serverRoot = options.serverRoot;
+
+    this.serverRoot = options.serverRoot ?? '';
     this.defaultSessionTimeoutMs = options.defaultSessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
     this.reviewSessionTimeoutMs =
       options.reviewSessionTimeoutMs ?? DEFAULT_REVIEW_SESSION_TIMEOUT_MS;
     this.cleanupIntervalMs = options.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
 
-    // Set up file-based persistence path - use server root instead of process.cwd()
-    const runtimeStateDir = path.join(this.serverRoot, 'runtime-state');
-    const chainRunsFilePath = path.join(runtimeStateDir, 'chain-run-registry.json');
-    const legacyRunsPath = path.join(runtimeStateDir, 'chain-run-history.json');
-    const legacySessionsPath = path.join(runtimeStateDir, 'chain-sessions.json');
-    this.runRegistry =
-      sessionStore ??
-      new FileBackedChainRunRegistry(chainRunsFilePath, this.logger, {
-        fallbackPaths: [legacyRunsPath, legacySessionsPath],
-      });
+    // Store provided sessionStore or defer to initialize() for SQLite-backed default
+    if (sessionStore) {
+      this.runRegistry = sessionStore;
+    }
 
-    this.logger.debug('ChainSessionManager initialized with text reference manager integration');
+    this.logger.debug('ChainSessionStore initialized with text reference manager integration');
 
-    // Initialize asynchronously
-    this.initialize();
+    // Initialize asynchronously — store promise so callers can await it
+    this.initPromise = this.initialize();
     this.startCleanupScheduler();
   }
 
@@ -109,15 +124,33 @@ export class ChainSessionManager implements ChainSessionService {
    */
   private async initialize(): Promise<void> {
     try {
+      // Create SQLite-backed registry if no custom store was provided
+      if (!this.runRegistry) {
+        const dbManager = this.injectedDbEngine
+          ? this.injectedDbEngine
+          : await SqliteEngine.getInstance(this.serverRoot, this.logger);
+        await dbManager.initialize();
+        this.resolvedDbEngine = dbManager;
+        this.runRegistry = new SqliteChainRunRegistry(dbManager, this.logger);
+      }
       await this.runRegistry.ensureInitialized();
+      this.cleanupStaleSessionRows();
       await this.loadSessions();
     } catch (error) {
       this.logger.warn(
-        `Failed to initialize ChainSessionManager: ${
+        `Failed to initialize ChainSessionStore: ${
           error instanceof Error ? error.message : String(error)
         }`
       );
     }
+  }
+
+  /**
+   * Register a callback invoked when any session is cleared (explicit or stale cleanup).
+   * Used by pipeline wiring to clean up cross-layer state (e.g., verify-state.db).
+   */
+  onSessionCleared(callback: SessionClearedCallback): void {
+    this.sessionClearedCallbacks.push(callback);
   }
 
   /**
@@ -245,9 +278,115 @@ export class ChainSessionManager implements ChainSessionService {
     try {
       const data = this.serializeSessions();
       await this.runRegistry.save(data);
+      this.syncToSessionTable();
     } catch (error) {
       this.logger.error(
         `Failed to save sessions: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Dual-write active canonical sessions to the per-row `chain_sessions` table
+   * with `process.pid` as `tenant_id` for cross-client isolation.
+   *
+   * Hooks query this table with PID liveness checks to avoid blocking
+   * unrelated Claude Code instances sharing the same MCP server.
+   */
+  private syncToSessionTable(): void {
+    const db = this.resolvedDbEngine;
+    if (!db) return;
+
+    try {
+      const activeRows = this.collectActiveSessionRows();
+      db.beginTransaction();
+      try {
+        db.run('DELETE FROM chain_sessions WHERE tenant_id = ?', [this.serverPid]);
+        for (const row of activeRows) {
+          db.run(
+            `INSERT INTO chain_sessions (tenant_id, chain_id, run_number, state)
+             VALUES (?, ?, 1, ?)`,
+            [this.serverPid, row.chainId, row.state]
+          );
+        }
+        db.commit();
+      } catch (txError) {
+        db.rollback();
+        throw txError;
+      }
+    } catch (error) {
+      this.logger.debug(
+        `syncToSessionTable failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Collect active canonical sessions that need hook visibility.
+   * A session is "active" if it has steps remaining or pending review/verification.
+   */
+  private collectActiveSessionRows(): Array<{ chainId: string; state: string }> {
+    const rows: Array<{ chainId: string; state: string }> = [];
+    for (const session of this.activeSessions.values()) {
+      if (session.lifecycle !== 'canonical') continue;
+      if (!this.isSessionActiveForHooks(session)) continue;
+      rows.push({
+        chainId: session.chainId,
+        state: JSON.stringify({
+          sessionId: session.sessionId,
+          chainId: session.chainId,
+          currentStep: session.state.currentStep,
+          totalSteps: session.state.totalSteps,
+          lastActivity: session.lastActivity,
+          pendingGateReview: session.pendingGateReview ?? null,
+          pendingShellVerification: session.pendingShellVerification ?? null,
+        }),
+      });
+    }
+    return rows;
+  }
+
+  /** Whether a session should be visible to hooks (in-progress or pending review). */
+  private isSessionActiveForHooks(session: ChainSession): boolean {
+    const { currentStep, totalSteps } = session.state;
+    if (currentStep > 0 && currentStep < totalSteps) return true;
+    return (
+      currentStep > 0 &&
+      currentStep === totalSteps &&
+      (session.pendingGateReview != null || session.pendingShellVerification != null)
+    );
+  }
+
+  /**
+   * Remove chain_sessions rows belonging to dead server processes.
+   * Called once at startup to prevent stale rows from blocking hooks.
+   */
+  private cleanupStaleSessionRows(): void {
+    const db = this.resolvedDbEngine;
+    if (!db) return;
+
+    try {
+      const rows = db.query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM chain_sessions');
+      const stalePids: string[] = [];
+      for (const row of rows) {
+        const pid = parseInt(row.tenant_id, 10);
+        if (isNaN(pid)) continue;
+        // Check if process is alive
+        try {
+          process.kill(pid, 0);
+        } catch {
+          stalePids.push(row.tenant_id);
+        }
+      }
+      if (stalePids.length > 0) {
+        for (const pid of stalePids) {
+          db.run('DELETE FROM chain_sessions WHERE tenant_id = ?', [pid]);
+        }
+        this.logger.debug(`Cleaned up chain_sessions rows for ${stalePids.length} dead PIDs`);
+      }
+    } catch (error) {
+      this.logger.debug(
+        `cleanupStaleSessionRows failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -270,8 +409,10 @@ export class ChainSessionManager implements ChainSessionService {
     chainId: string,
     totalSteps: number,
     originalArgs: Record<string, any> = {},
-    options?: { blueprint?: SessionBlueprint }
+    options?: StateStoreOptions & { blueprint?: SessionBlueprint }
   ): Promise<ChainSession> {
+    await this.initPromise;
+    const resolvedScope = options?.continuityScopeId ?? resolveContinuityScopeId(options);
     const session: ChainSession = {
       sessionId,
       chainId,
@@ -286,6 +427,7 @@ export class ChainSessionManager implements ChainSessionService {
       startTime: Date.now(),
       lastActivity: Date.now(),
       originalArgs,
+      continuityScopeId: resolvedScope,
       ...(options?.blueprint !== undefined && {
         blueprint: this.cloneBlueprint(options.blueprint),
       }),
@@ -301,7 +443,7 @@ export class ChainSessionManager implements ChainSessionService {
     this.chainSessionMapping.get(chainId)!.add(sessionId);
 
     const baseChainId = this.registerRunHistory(chainId);
-    this.pruneExcessRuns(baseChainId);
+    await this.pruneExcessRuns(baseChainId);
 
     // Persist to file
     await this.saveSessions();
@@ -315,9 +457,16 @@ export class ChainSessionManager implements ChainSessionService {
   /**
    * Get session by ID
    */
-  getSession(sessionId: string): ChainSession | undefined {
+  getSession(sessionId: string, scope?: StateStoreOptions): ChainSession | undefined {
     const session = this.activeSessions.get(sessionId);
     if (session) {
+      // Scope filtering: if scope provided, only return if scope matches
+      if (scope) {
+        const resolvedScope = scope.continuityScopeId ?? resolveContinuityScopeId(scope);
+        if (session.continuityScopeId && session.continuityScopeId !== resolvedScope) {
+          return undefined;
+        }
+      }
       if (
         session.state.totalSteps > 0 &&
         (!session.state.currentStep || session.state.currentStep < 1)
@@ -480,7 +629,7 @@ export class ChainSessionManager implements ChainSessionService {
     session.state.lastUpdated = Date.now();
     session.lastActivity = Date.now();
 
-    this.persistStepResult(
+    await this.persistStepResult(
       session,
       stepNumber,
       stepResult,
@@ -512,7 +661,7 @@ export class ChainSessionManager implements ChainSessionService {
     }
 
     const existingMetadata =
-      this.textReferenceManager.getChainStepMetadata(session.chainId, stepNumber) || {};
+      this.textReferenceStore.getChainStepMetadata(session.chainId, stepNumber) || {};
 
     const mergedMetadata = {
       ...existingMetadata,
@@ -531,7 +680,7 @@ export class ChainSessionManager implements ChainSessionService {
       );
     }
 
-    this.persistStepResult(
+    await this.persistStepResult(
       session,
       stepNumber,
       stepResult,
@@ -595,7 +744,7 @@ export class ChainSessionManager implements ChainSessionService {
    * @param stepNumber - The step that was completed (will advance to stepNumber + 1)
    * @returns true if advanced successfully, false if session not found
    */
-  async advanceStep(sessionId: string, stepNumber: number): Promise<boolean> {
+  async advanceStep(sessionId: string, stepNumber: number): Promise<number | false> {
     const session = this.activeSessions.get(sessionId);
     if (!session) {
       this.logger?.warn(
@@ -609,7 +758,7 @@ export class ChainSessionManager implements ChainSessionService {
       this.logger?.debug(
         `[StepLifecycle] Step ${stepNumber} already passed, currentStep is ${session.state.currentStep}`
       );
-      return true;
+      return session.state.currentStep;
     }
 
     session.state.currentStep = stepNumber + 1;
@@ -625,25 +774,25 @@ export class ChainSessionManager implements ChainSessionService {
     );
 
     await this.saveSessions();
-    return true;
+    return session.state.currentStep;
   }
 
   /**
    * Persist a step result to storage and optional tracking systems.
    */
-  private persistStepResult(
+  private async persistStepResult(
     session: ChainSession,
     stepNumber: number,
     stepResult: string,
     metadata: Record<string, any>,
     isPlaceholder: boolean
-  ): void {
+  ): Promise<void> {
     const metadataPayload = {
       ...metadata,
       isPlaceholder,
     };
 
-    this.textReferenceManager.storeChainStepResult(
+    this.textReferenceStore.storeChainStepResult(
       session.chainId,
       stepNumber,
       stepResult,
@@ -652,7 +801,7 @@ export class ChainSessionManager implements ChainSessionService {
 
     if (this.argumentHistoryTracker && !isPlaceholder) {
       try {
-        this.argumentHistoryTracker.trackExecution({
+        await this.argumentHistoryTracker.trackExecution({
           promptId: session.chainId,
           sessionId: session.sessionId,
           originalArgs: session.originalArgs || {},
@@ -677,7 +826,7 @@ export class ChainSessionManager implements ChainSessionService {
   /**
    * Get chain context for session - this is the critical method for fixing contextData
    */
-  getChainContext(sessionId: string): Record<string, any> {
+  getChainContext(sessionId: string, _scope?: StateStoreOptions): Record<string, any> {
     const session = this.activeSessions.get(sessionId);
     if (!session) {
       this.logger.debug(`No session found for ${sessionId}, returning empty context`);
@@ -685,7 +834,7 @@ export class ChainSessionManager implements ChainSessionService {
     }
 
     // Get chain variables from text reference manager (single source of truth)
-    const chainVariables = this.textReferenceManager.buildChainVariables(session.chainId);
+    const chainVariables = this.textReferenceStore.buildChainVariables(session.chainId);
 
     // Get original arguments + previous results from ArgumentHistoryTracker (with graceful fallback)
     let argumentContext = {};
@@ -727,11 +876,12 @@ export class ChainSessionManager implements ChainSessionService {
       total_steps: session.state.totalSteps,
       execution_order: session.executionOrder,
 
-      // Chain variables (step results, etc.) from TextReferenceManager
+      // Chain variables (step results, etc.) from TextReferenceStore
       ...chainVariables,
 
-      // Original arguments - NOW INCLUDED!
+      // Original arguments - spread for template access AND nested for intent rendering
       ...argumentContext,
+      original_args: argumentContext,
     };
 
     if (reviewContext && Object.keys(reviewContext.previousResults).length > 0) {
@@ -766,7 +916,7 @@ export class ChainSessionManager implements ChainSessionService {
     return session?.originalArgs || {};
   }
 
-  getSessionBlueprint(sessionId: string): SessionBlueprint | undefined {
+  getSessionBlueprint(sessionId: string, _scope?: StateStoreOptions): SessionBlueprint | undefined {
     const session = this.activeSessions.get(sessionId);
     if (!session?.blueprint) {
       return undefined;
@@ -774,7 +924,7 @@ export class ChainSessionManager implements ChainSessionService {
     return this.cloneBlueprint(session.blueprint);
   }
 
-  updateSessionBlueprint(sessionId: string, blueprint: SessionBlueprint): void {
+  async updateSessionBlueprint(sessionId: string, blueprint: SessionBlueprint): Promise<void> {
     const session = this.activeSessions.get(sessionId);
     if (!session) {
       if (this.logger) {
@@ -786,17 +936,10 @@ export class ChainSessionManager implements ChainSessionService {
     }
 
     session.blueprint = this.cloneBlueprint(blueprint);
-    this.saveSessions().catch((error) => {
-      if (this.logger) {
-        this.logger.error(
-          `[ChainSessionManager] Failed to persist blueprint for ${sessionId}`,
-          error
-        );
-      }
-    });
+    await this.saveSessions();
   }
 
-  getInlineGateIds(sessionId: string): string[] | undefined {
+  getInlineGateIds(sessionId: string, _scope?: StateStoreOptions): string[] | undefined {
     const session = this.activeSessions.get(sessionId);
     if (!session?.blueprint?.parsedCommand) {
       return undefined;
@@ -925,6 +1068,37 @@ export class ChainSessionManager implements ChainSessionService {
     await this.saveSessions();
   }
 
+  async setPendingShellVerification(
+    sessionId: string,
+    state: PendingShellVerificationSnapshot
+  ): Promise<void> {
+    const session = this.activeSessions.get(sessionId);
+    if (!session) {
+      this.logger?.warn?.(
+        `Attempted to set pending shell verification for non-existent session: ${sessionId}`
+      );
+      return;
+    }
+
+    session.pendingShellVerification = { ...state };
+    await this.saveSessions();
+  }
+
+  getPendingShellVerification(sessionId: string): PendingShellVerificationSnapshot | undefined {
+    const session = this.activeSessions.get(sessionId);
+    return session?.pendingShellVerification ? { ...session.pendingShellVerification } : undefined;
+  }
+
+  async clearPendingShellVerification(sessionId: string): Promise<void> {
+    const session = this.activeSessions.get(sessionId);
+    if (!session?.pendingShellVerification) {
+      return;
+    }
+
+    delete session.pendingShellVerification;
+    await this.saveSessions();
+  }
+
   async recordGateReviewOutcome(
     sessionId: string,
     outcome: GateReviewOutcomeUpdate
@@ -951,22 +1125,24 @@ export class ChainSessionManager implements ChainSessionService {
     review.previousResponse = outcome.rawVerdict;
     review.attemptCount = (review.attemptCount ?? 0) + 1;
 
+    let result: 'cleared' | 'pending';
     if (outcome.verdict === 'PASS') {
       delete session.pendingGateReview;
-      await this.saveSessions();
       this.logger?.info('[GateReview] Cleared pending review', {
         sessionId,
         gateIds: review.gateIds,
       });
-      return 'cleared';
+      result = 'cleared';
+    } else {
+      this.logger?.info('[GateReview] Review failed, awaiting remediation', {
+        sessionId,
+        gateIds: review.gateIds,
+      });
+      result = 'pending';
     }
 
     await this.saveSessions();
-    this.logger?.info('[GateReview] Review failed, awaiting remediation', {
-      sessionId,
-      gateIds: review.gateIds,
-    });
-    return 'pending';
+    return result;
   }
 
   /**
@@ -1047,40 +1223,73 @@ export class ChainSessionManager implements ChainSessionService {
     options?: ChainSessionLookupOptions
   ): ChainSession | undefined {
     const includeDormant = options?.includeDormant ?? false;
-    const runSession = this.getActiveSessionForChain(chainId);
-    if (runSession) {
-      return runSession;
-    }
+    const scopeFilter = this.resolveScopeFilter(options);
 
-    if (includeDormant) {
-      const dormantRun = this.getDormantSessionForChain(chainId);
-      if (dormantRun) {
-        this.promoteSessionLifecycle(dormantRun, 'explicit chain resume');
-        return dormantRun;
+    // Scope-aware lookup: find best matching session across active/dormant states
+    const found = this.findScopedSessionForChain(chainId, scopeFilter, includeDormant);
+    if (found) {
+      if (found.lifecycle === 'dormant') {
+        this.promoteSessionLifecycle(found, 'explicit chain resume');
       }
+      return found;
     }
 
+    // Try base chain fallback
     const normalized = this.extractBaseChainId(chainId);
-    const latestActive = this.getLatestSessionForBaseChain(normalized);
-    if (latestActive) {
-      return latestActive;
-    }
-
-    if (includeDormant) {
-      const dormant = this.getDormantSessionForBaseChain(normalized);
-      if (dormant) {
-        this.promoteSessionLifecycle(dormant, 'explicit base chain resume');
-        return dormant;
+    const baseFallback = this.findScopedSessionForChain(normalized, scopeFilter, includeDormant);
+    if (baseFallback) {
+      if (baseFallback.lifecycle === 'dormant') {
+        this.promoteSessionLifecycle(baseFallback, 'explicit base chain resume');
       }
+      return baseFallback;
     }
 
     return undefined;
   }
 
-  listActiveSessions(limit: number = 50): ChainSessionSummary[] {
+  /**
+   * Find the best session for a chainId that matches the scope filter.
+   * Prefers active over dormant, most recent by lastActivity.
+   */
+  private findScopedSessionForChain(
+    chainId: string,
+    scopeFilter: string | undefined,
+    includeDormant: boolean
+  ): ChainSession | undefined {
+    const sessionIds = this.chainSessionMapping.get(chainId);
+    if (!sessionIds || sessionIds.size === 0) return undefined;
+
+    let bestActive: ChainSession | undefined;
+    let bestDormant: ChainSession | undefined;
+    let bestActiveTime = 0;
+    let bestDormantTime = 0;
+
+    for (const sessionId of sessionIds) {
+      const session = this.activeSessions.get(sessionId);
+      if (!session || !this.matchesScope(session, scopeFilter)) continue;
+
+      if (this.isDormantSession(session)) {
+        if (includeDormant && session.lastActivity > bestDormantTime) {
+          bestDormant = session;
+          bestDormantTime = session.lastActivity;
+        }
+      } else if (session.lastActivity > bestActiveTime) {
+        bestActive = session;
+        bestActiveTime = session.lastActivity;
+      }
+    }
+
+    return bestActive ?? bestDormant;
+  }
+
+  listActiveSessions(limit: number = 50, scope?: StateStoreOptions): ChainSessionSummary[] {
+    const scopeFilter = this.resolveScopeFilter(scope);
     const summaries: ChainSessionSummary[] = [];
     for (const session of this.activeSessions.values()) {
       if (this.isDormantSession(session)) {
+        continue;
+      }
+      if (!this.matchesScope(session, scopeFilter)) {
         continue;
       }
       const promptName = session.blueprint?.parsedCommand?.convertedPrompt?.name;
@@ -1138,7 +1347,10 @@ export class ChainSessionManager implements ChainSessionService {
       return false;
     }
 
-    this.removeSessionArtifacts(sessionId);
+    // Notify listeners before removing session (so they can inspect session state)
+    await this.notifySessionCleared(sessionId, session);
+
+    await this.removeSessionArtifacts(sessionId);
 
     // Remove from chain mapping
     const chainSessions = this.chainSessionMapping.get(session.chainId);
@@ -1147,7 +1359,7 @@ export class ChainSessionManager implements ChainSessionService {
       if (chainSessions.size === 0) {
         this.chainSessionMapping.delete(session.chainId);
         this.removeRunFromBaseTracking(session.chainId);
-        this.textReferenceManager.clearChainStepResults(session.chainId);
+        this.textReferenceStore.clearChainStepResults(session.chainId);
       }
     }
 
@@ -1163,7 +1375,8 @@ export class ChainSessionManager implements ChainSessionService {
   /**
    * Clear all sessions for a chain
    */
-  async clearSessionsForChain(chainId: string): Promise<void> {
+  async clearSessionsForChain(chainId: string, scope?: StateStoreOptions): Promise<void> {
+    const scopeFilter = this.resolveScopeFilter(scope);
     const baseChainId = this.extractBaseChainId(chainId);
     const runChainIds = chainId === baseChainId ? [...this.getRunHistory(baseChainId)] : [chainId];
 
@@ -1172,8 +1385,8 @@ export class ChainSessionManager implements ChainSessionService {
     }
 
     for (const runChainId of runChainIds) {
-      this.removeRunChainSessions(runChainId);
-      this.textReferenceManager.clearChainStepResults(runChainId);
+      await this.removeRunChainSessionsForScope(runChainId, scopeFilter);
+      this.textReferenceStore.clearChainStepResults(runChainId);
       this.removeRunFromBaseTracking(runChainId);
     }
 
@@ -1240,7 +1453,7 @@ export class ChainSessionManager implements ChainSessionService {
     return baseChainId;
   }
 
-  private pruneExcessRuns(baseChainId: string): void {
+  private async pruneExcessRuns(baseChainId: string): Promise<void> {
     const history = this.baseChainMapping.get(baseChainId);
     if (!history) {
       return;
@@ -1252,8 +1465,8 @@ export class ChainSessionManager implements ChainSessionService {
         break;
       }
 
-      const removedSessions = this.removeRunChainSessions(removedChainId);
-      this.textReferenceManager.clearChainStepResults(removedChainId);
+      const removedSessions = await this.removeRunChainSessions(removedChainId);
+      this.textReferenceStore.clearChainStepResults(removedChainId);
       this.removeRunFromBaseTracking(removedChainId);
 
       this.logger?.info(
@@ -1267,13 +1480,13 @@ export class ChainSessionManager implements ChainSessionService {
     }
   }
 
-  private removeRunChainSessions(chainId: string): string[] {
+  private async removeRunChainSessions(chainId: string): Promise<string[]> {
     const sessionIds = this.chainSessionMapping.get(chainId);
     const removedSessions: string[] = [];
 
     if (sessionIds) {
       for (const sessionId of sessionIds) {
-        this.removeSessionArtifacts(sessionId);
+        await this.removeSessionArtifacts(sessionId);
         removedSessions.push(sessionId);
       }
       this.chainSessionMapping.delete(chainId);
@@ -1282,10 +1495,24 @@ export class ChainSessionManager implements ChainSessionService {
     return removedSessions;
   }
 
-  private removeSessionArtifacts(sessionId: string): void {
+  private async notifySessionCleared(sessionId: string, session: ChainSession): Promise<void> {
+    for (const callback of this.sessionClearedCallbacks) {
+      try {
+        await callback(sessionId, session);
+      } catch (error) {
+        this.logger.warn(
+          `Session-cleared callback failed for ${sessionId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+  }
+
+  private async removeSessionArtifacts(sessionId: string): Promise<void> {
     if (this.argumentHistoryTracker) {
       try {
-        this.argumentHistoryTracker.clearSession(sessionId);
+        await this.argumentHistoryTracker.clearSession(sessionId);
         this.logger.debug(`Cleared argument history for session ${sessionId}`);
       } catch (error) {
         this.logger.warn(
@@ -1577,7 +1804,72 @@ export class ChainSessionManager implements ChainSessionService {
   private cloneBlueprint(blueprint: SessionBlueprint): SessionBlueprint {
     return JSON.parse(JSON.stringify(blueprint)) as SessionBlueprint;
   }
+
+  // --- Scope filtering helpers ---
+
+  /**
+   * Resolve scope filter string from optional scope options.
+   * Returns undefined when no scope filtering should be applied.
+   * Checks explicit continuityScopeId first, then resolves from workspaceId/organizationId.
+   */
+  private resolveScopeFilter(scope?: StateStoreOptions): string | undefined {
+    if (!scope) return undefined;
+    // Direct continuityScopeId takes precedence over workspace/org resolution
+    if (scope.continuityScopeId && scope.continuityScopeId !== 'default') {
+      return scope.continuityScopeId;
+    }
+    const resolved = resolveContinuityScopeId(scope);
+    return resolved === 'default' ? undefined : resolved;
+  }
+
+  /**
+   * Check if a session matches the resolved scope filter.
+   * If no filter is set (undefined), all sessions match.
+   */
+  private matchesScope(session: ChainSession, scopeFilter: string | undefined): boolean {
+    if (!scopeFilter) return true;
+    return session.continuityScopeId === scopeFilter;
+  }
+
+  /**
+   * Remove sessions for a chain that match the scope filter.
+   * If no scope filter, removes all sessions for the chain (backward compatible).
+   */
+  private async removeRunChainSessionsForScope(
+    chainId: string,
+    scopeFilter: string | undefined
+  ): Promise<string[]> {
+    if (!scopeFilter) {
+      return this.removeRunChainSessions(chainId);
+    }
+
+    const sessionIds = this.chainSessionMapping.get(chainId);
+    const removedSessions: string[] = [];
+
+    if (sessionIds) {
+      for (const sessionId of [...sessionIds]) {
+        const session = this.activeSessions.get(sessionId);
+        if (session && this.matchesScope(session, scopeFilter)) {
+          await this.removeSessionArtifacts(sessionId);
+          sessionIds.delete(sessionId);
+          removedSessions.push(sessionId);
+        }
+      }
+      // Clean up mapping if all sessions removed
+      if (sessionIds.size === 0) {
+        this.chainSessionMapping.delete(chainId);
+      }
+    }
+
+    return removedSessions;
+  }
 }
+
+/** @deprecated Use ChainSessionStore */
+export const ChainSessionManager = ChainSessionStore;
+/** @deprecated Use ChainSessionStore */
+// eslint-disable-next-line no-redeclare
+export type ChainSessionManager = ChainSessionStore;
 
 export type {
   ChainSession,
@@ -1587,23 +1879,25 @@ export type {
 } from './types.js';
 
 /**
- * Create and configure a chain session manager
+ * Create and configure a chain session store
  */
-export function createChainSessionManager(
+export function createChainSessionStore(
   logger: Logger,
-  textReferenceManager: TextReferenceManager,
+  textReferenceStore: TextReferenceStore,
   serverRoot: string,
-  options?: Omit<ChainSessionManagerOptions, 'serverRoot'>,
+  options?: Omit<ChainSessionStoreOptions, 'serverRoot'>,
   argumentHistoryTracker?: ArgumentHistoryTracker
-): ChainSessionManager {
-  const manager = new ChainSessionManager(
+): ChainSessionStore {
+  return new ChainSessionStore(
     logger,
-    textReferenceManager,
+    textReferenceStore,
     {
       serverRoot,
       ...options,
     },
     argumentHistoryTracker
   );
-  return manager;
 }
+
+/** @deprecated Use createChainSessionStore */
+export const createChainSessionManager = createChainSessionStore;

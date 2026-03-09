@@ -78,8 +78,45 @@ export interface PendingGateReview {
   maxAttempts: number;
   retryHints?: string[];
   previousResponse?: string;
+  /**
+   * Extensible metadata. Known keys:
+   * - `source`: Origin subsystem (e.g., 'phase-guard-verification', 'gate-enforcement')
+   * - `phaseGuardContext`: When phase guards evaluated — `{ allPassed: boolean, phaseCount: number, evaluatedAt: number }`
+   * - `failedPhases`: Phase names that failed phase guard checks (phase-guard-sourced reviews only)
+   * - `mode`: Phase guard config mode ('enforce' | 'warn')
+   */
   metadata?: Record<string, unknown>;
   history?: GateReviewHistoryEntry[];
+}
+
+/**
+ * Serializable snapshot of pending shell verification state persisted to chain sessions.
+ * Enables bounce-back resume across MCP requests (ephemeral ExecutionContext loses this state).
+ * Mirrors engine-layer PendingShellVerification without importing engine types.
+ */
+export interface PendingShellVerificationSnapshot {
+  gateId: string;
+  shellVerify: {
+    command: string;
+    timeout?: number;
+    workingDir?: string;
+    preset?: 'fast' | 'full' | 'extended';
+    loop?: boolean;
+    maxIterations?: number;
+  };
+  attemptCount: number;
+  maxAttempts: number;
+  previousResults: Array<{
+    passed: boolean;
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    durationMs: number;
+    command: string;
+    timedOut?: boolean;
+  }>;
+  originalGoal?: string;
+  sourceGateIds?: string[];
 }
 
 /**

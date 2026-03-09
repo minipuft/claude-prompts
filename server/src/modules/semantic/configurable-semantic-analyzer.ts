@@ -18,7 +18,11 @@ import { BUILTIN_FRAMEWORK_TYPES } from '../../engine/frameworks/types/methodolo
 import { SemanticAnalysisConfig } from '../../types.js';
 
 import type { LLMClient } from './types.js';
-import type { ContentAnalysisResult, IContentAnalyzer, Logger } from '../../shared/types/index.js';
+import type {
+  ContentAnalysisResult,
+  ContentAnalyzerPort,
+  Logger,
+} from '../../shared/types/index.js';
 
 // Configuration constants
 const CACHE_ANALYSIS = true;
@@ -28,7 +32,7 @@ const CACHE_EXPIRY_MS = 300000; // 5 minutes
  * Content Analyzer Implementation
  * Returns minimal results when LLM not configured, semantic analysis when LLM available
  */
-export class ContentAnalyzer implements IContentAnalyzer {
+export class ContentAnalyzer implements ContentAnalyzerPort {
   private logger: Logger;
   private config: SemanticAnalysisConfig;
   private analysisCache = new Map<string, { analysis: ContentAnalysisResult; timestamp: number }>();

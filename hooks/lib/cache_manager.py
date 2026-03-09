@@ -1,15 +1,19 @@
 """
 Cache manager for Claude Code hooks.
-Loads and queries MCP prompt/gate caches.
+Loads and queries MCP prompt/gate metadata from SQLite resource_index.
 
-Uses workspace resolution (MCP_WORKSPACE > CLAUDE_PLUGIN_ROOT > development fallback).
+Uses db_reader for SQLite access to runtime-state/state.db (read-only).
 """
 
-import json
-from pathlib import Path
 from typing import TypedDict
 
-from workspace import get_cache_dir
+from db_reader import (
+    load_prompts,
+    load_gates,
+    get_prompt_by_id_from_db,
+    get_valid_styles_from_db,
+    get_valid_frameworks_from_db,
+)
 
 
 class ArgumentInfo(TypedDict):
@@ -43,72 +47,30 @@ class GateInfo(TypedDict):
     triggers: list[str]
 
 
-def _get_cache_dir() -> Path:
-    """
-    Get cache directory using workspace resolution.
-
-    Priority:
-      1. MCP_WORKSPACE/server/cache
-      2. CLAUDE_PLUGIN_ROOT/server/cache
-      3. Development fallback (relative to this script)
-    """
-    dev_fallback = Path(__file__).parent.parent.parent / "server" / "cache"
-    return get_cache_dir(dev_fallback)
-
-
-CACHE_DIR = _get_cache_dir()
-
-
 def load_prompts_cache() -> dict | None:
-    """Load cached prompt metadata."""
-    cache_path = CACHE_DIR / "prompts.cache.json"
-    if not cache_path.exists():
-        return None
-    try:
-        with open(cache_path) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
+    """Load prompt metadata from SQLite resource_index."""
+    return load_prompts()
 
 
 def load_gates_cache() -> dict | None:
-    """Load cached gate metadata."""
-    cache_path = CACHE_DIR / "gates.cache.json"
-    if not cache_path.exists():
-        return None
-    try:
-        with open(cache_path) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
+    """Load gate metadata from SQLite resource_index."""
+    return load_gates()
 
 
-def get_prompt_by_id(prompt_id: str, cache: dict | None = None) -> PromptInfo | None:
-    """Get a specific prompt by ID (case-insensitive lookup)."""
-    if cache is None:
-        cache = load_prompts_cache()
-    if not cache:
-        return None
-    prompts = cache.get("prompts", {})
-    # Case-insensitive lookup to align with MCP server behavior
-    prompt_id_lower = prompt_id.lower()
-    for key, value in prompts.items():
-        if key.lower() == prompt_id_lower:
-            return value
-    return None
+def get_prompt_by_id(prompt_id: str) -> PromptInfo | None:
+    """Get a specific prompt by ID (case-insensitive lookup via SQLite)."""
+    return get_prompt_by_id_from_db(prompt_id)
 
 
 def match_prompts_to_intent(
     user_prompt: str,
-    cache: dict | None = None,
     max_results: int = 5
 ) -> list[tuple[str, PromptInfo, int]]:
     """
     Match prompts based on keywords in user's prompt.
     Returns list of (prompt_id, prompt_info, score) tuples sorted by score descending.
     """
-    if cache is None:
-        cache = load_prompts_cache()
+    cache = load_prompts_cache()
     if not cache:
         return []
 
@@ -148,15 +110,13 @@ def match_prompts_to_intent(
 
 def suggest_gates_for_work(
     work_types: list[str],
-    cache: dict | None = None
 ) -> list[tuple[str, GateInfo]]:
     """
     Suggest relevant gates based on detected work types.
 
     work_types can include: "code", "research", "security", "documentation"
     """
-    if cache is None:
-        cache = load_gates_cache()
+    cache = load_gates_cache()
     if not cache:
         return []
 
@@ -191,35 +151,34 @@ def suggest_gates_for_work(
     return suggested[:3]  # Limit to 3 suggestions
 
 
-def get_all_prompts(cache: dict | None = None) -> dict[str, PromptInfo]:
-    """Get all prompts from cache."""
-    if cache is None:
-        cache = load_prompts_cache()
+def get_all_prompts() -> dict[str, PromptInfo]:
+    """Get all prompts."""
+    cache = load_prompts_cache()
     if not cache:
         return {}
     return cache.get("prompts", {})
 
 
-def get_chains_only(cache: dict | None = None) -> dict[str, PromptInfo]:
-    """Get only chain prompts from cache."""
-    prompts = get_all_prompts(cache)
+def get_chains_only() -> dict[str, PromptInfo]:
+    """Get only chain prompts."""
+    prompts = get_all_prompts()
     return {k: v for k, v in prompts.items() if v.get("is_chain")}
 
 
-def get_single_prompts_only(cache: dict | None = None) -> dict[str, PromptInfo]:
-    """Get only single (non-chain) prompts from cache."""
-    prompts = get_all_prompts(cache)
+def get_single_prompts_only() -> dict[str, PromptInfo]:
+    """Get only single (non-chain) prompts."""
+    prompts = get_all_prompts()
     return {k: v for k, v in prompts.items() if not v.get("is_chain")}
 
 
-def get_chain_step_names(prompt_id: str, cache: dict | None = None) -> list[str]:
+def get_chain_step_names(prompt_id: str) -> list[str]:
     """
     Get step names for a chain prompt.
 
     Returns:
         List of step names if prompt is a chain, empty list otherwise.
     """
-    info = get_prompt_by_id(prompt_id, cache)
+    info = get_prompt_by_id(prompt_id)
     if not info or not info.get("is_chain"):
         return []
     return info.get("chain_step_names") or []
@@ -252,7 +211,6 @@ def levenshtein_distance(a: str, b: str) -> int:
 
 def fuzzy_match_prompt_id(
     query: str,
-    cache: dict | None = None,
     max_results: int = 3
 ) -> list[str]:
     """
@@ -266,14 +224,12 @@ def fuzzy_match_prompt_id(
 
     Args:
         query: The prompt ID to match against
-        cache: Prompts cache dict (loads if None)
         max_results: Maximum number of suggestions to return
 
     Returns:
         List of prompt IDs sorted by score descending.
     """
-    if cache is None:
-        cache = load_prompts_cache()
+    cache = load_prompts_cache()
     if not cache:
         return []
 
@@ -318,57 +274,47 @@ def fuzzy_match_prompt_id(
 # =============================================================================
 
 
-def get_valid_styles(cache: dict | None = None) -> list[str]:
+def get_valid_styles() -> list[str]:
     """
-    Get list of valid style names from cache metadata.
+    Get list of valid style names.
 
     Returns lowercase style names that can be used with the # operator.
     """
-    if cache is None:
-        cache = load_prompts_cache()
-    if not cache:
-        return []
-    return cache.get("_meta", {}).get("valid_styles", [])
+    return get_valid_styles_from_db()
 
 
-def get_valid_frameworks(cache: dict | None = None) -> list[str]:
+def get_valid_frameworks() -> list[str]:
     """
-    Get list of valid framework names from cache metadata.
+    Get list of valid framework names.
 
     Returns lowercase framework names that can be used with the @ operator.
     """
-    if cache is None:
-        cache = load_prompts_cache()
-    if not cache:
-        return []
-    return cache.get("_meta", {}).get("valid_frameworks", [])
+    return get_valid_frameworks_from_db()
 
 
-def is_valid_style(style: str, cache: dict | None = None) -> bool:
+def is_valid_style(style: str) -> bool:
     """
     Check if style name is valid (case-insensitive).
 
     Args:
         style: Style name to validate (e.g., "analytical", "creative")
-        cache: Prompts cache dict (loads if None)
 
     Returns:
         True if style exists in server's registered styles
     """
-    valid = get_valid_styles(cache)
+    valid = get_valid_styles()
     return style.lower() in valid
 
 
-def is_valid_framework(framework: str, cache: dict | None = None) -> bool:
+def is_valid_framework(framework: str) -> bool:
     """
     Check if framework name is valid (case-insensitive).
 
     Args:
         framework: Framework name to validate (e.g., "CAGEERF", "ReACT")
-        cache: Prompts cache dict (loads if None)
 
     Returns:
         True if framework exists in server's registered methodologies
     """
-    valid = get_valid_frameworks(cache)
+    valid = get_valid_frameworks()
     return framework.lower() in valid

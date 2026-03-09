@@ -6,37 +6,37 @@
 
 import { createServer, Server } from 'http';
 
-import { EventEmittingConfigManager } from '../config/index.js';
+import { ConfigLoader } from '../config/index.js';
 import { Logger } from '../logging/index.js';
-import { TransportManager, createTransportManager, TransportType } from './transport/index.js';
+import { TransportRouter, createTransportRouter, TransportType } from './transport/index.js';
 
-import type { IApiManager } from '../../shared/types/index.js';
+import type { ApiRouterPort } from '../../shared/types/index.js';
 import type { Application } from 'express';
 
 // Re-export transport types and utilities for external consumers
-export { TransportManager, createTransportManager, TransportType };
+export { TransportRouter, createTransportRouter, TransportType };
 
 /**
  * Server Manager class
  */
-export class ServerManager {
+export class ServerLifecycle {
   private logger: Logger;
-  private configManager: EventEmittingConfigManager;
-  private transportManager: TransportManager;
-  private apiManager: IApiManager | undefined;
+  private configManager: ConfigLoader;
+  private transportRouter: TransportRouter;
+  private apiRouter: ApiRouterPort | undefined;
   private httpServer?: Server;
   private port: number;
 
   constructor(
     logger: Logger,
-    configManager: EventEmittingConfigManager,
-    transportManager: TransportManager,
-    apiManager?: IApiManager
+    configManager: ConfigLoader,
+    transportRouter: TransportRouter,
+    apiRouter?: ApiRouterPort
   ) {
     this.logger = logger;
     this.configManager = configManager;
-    this.transportManager = transportManager;
-    this.apiManager = apiManager;
+    this.transportRouter = transportRouter;
+    this.apiRouter = apiRouter;
     this.port = configManager.getPort();
   }
 
@@ -46,12 +46,12 @@ export class ServerManager {
    */
   async startServer(): Promise<void> {
     try {
-      const mode = this.transportManager.getTransportType();
+      const mode = this.transportRouter.getTransportType();
       this.logger.info(`Starting server with '${mode}' transport mode`);
 
       this.logSystemInfo();
 
-      if (this.transportManager.isBoth()) {
+      if (this.transportRouter.isBoth()) {
         // Dual transport mode: start both STDIO and SSE
         await this.startBothTransports();
       } else if (mode === 'stdio') {
@@ -81,13 +81,13 @@ export class ServerManager {
     this.logger.info('Starting dual transport mode (STDIO + SSE)');
 
     // Start STDIO transport first
-    await this.transportManager.setupStdioTransport();
+    await this.transportRouter.setupStdioTransport();
     this.logger.info('STDIO transport ready');
 
     // Then start SSE transport if API manager is available
-    if (this.apiManager !== undefined) {
-      const app = this.apiManager.createApp() as Application;
-      this.transportManager.setupSseTransport(app);
+    if (this.apiRouter !== undefined) {
+      const app = this.apiRouter.createApp() as Application;
+      this.transportRouter.setupSseTransport(app);
       this.httpServer = createServer(app);
       this.setupHttpServerEventHandlers();
 
@@ -124,22 +124,22 @@ export class ServerManager {
    */
   private async startStdioServer(): Promise<void> {
     // For STDIO, we don't need an HTTP server
-    await this.transportManager.setupStdioTransport();
+    await this.transportRouter.setupStdioTransport();
   }
 
   /**
    * Start server with SSE transport
    */
   private async startSseServer(): Promise<void> {
-    if (this.apiManager === undefined) {
+    if (this.apiRouter === undefined) {
       throw new Error('API Manager is required for SSE transport');
     }
 
     // Create Express app
-    const app = this.apiManager.createApp() as Application;
+    const app = this.apiRouter.createApp() as Application;
 
     // Setup SSE transport endpoints
-    this.transportManager.setupSseTransport(app);
+    this.transportRouter.setupSseTransport(app);
 
     // Create HTTP server
     this.httpServer = createServer(app);
@@ -179,15 +179,15 @@ export class ServerManager {
    * This is the preferred HTTP transport, replacing deprecated SSE
    */
   private async startStreamableHttpServer(): Promise<void> {
-    if (this.apiManager === undefined) {
+    if (this.apiRouter === undefined) {
       throw new Error('API Manager is required for Streamable HTTP transport');
     }
 
     // Create Express app
-    const app = this.apiManager.createApp() as Application;
+    const app = this.apiRouter.createApp() as Application;
 
     // Setup Streamable HTTP transport endpoints
-    this.transportManager.setupStreamableHttpTransport(app);
+    this.transportRouter.setupStreamableHttpTransport(app);
 
     // Create HTTP server
     this.httpServer = createServer(app);
@@ -207,7 +207,7 @@ export class ServerManager {
         this.logger.info(`MCP Prompts Server running on http://localhost:${this.port}`);
         this.logger.info(`Streamable HTTP transport ready at http://localhost:${this.port}/mcp`);
         this.logger.info(
-          `Sessions: ${this.transportManager.getActiveStreamableHttpSessionsCount()}`
+          `Sessions: ${this.transportRouter.getActiveStreamableHttpSessionsCount()}`
         );
         resolve();
       });
@@ -285,9 +285,9 @@ export class ServerManager {
    */
   private async finalizeShutdown(exitCode: number): Promise<void> {
     // Close transport connections (SSE and Streamable HTTP)
-    const mode = this.transportManager.getTransportType();
+    const mode = this.transportRouter.getTransportType();
     if (mode === 'sse' || mode === 'streamable-http' || mode === 'both') {
-      await this.transportManager.closeAllConnections();
+      await this.transportRouter.closeAllConnections();
     }
 
     this.logger.info('Server shutdown complete');
@@ -329,7 +329,7 @@ export class ServerManager {
    * Check if server is running
    */
   isRunning(): boolean {
-    const mode = this.transportManager.getTransportType();
+    const mode = this.transportRouter.getTransportType();
 
     switch (mode) {
       case 'stdio':
@@ -359,7 +359,7 @@ export class ServerManager {
     uptime: number;
     transports?: { stdio: boolean; sse: boolean; streamableHttp: boolean };
   } {
-    const mode = this.transportManager.getTransportType();
+    const mode = this.transportRouter.getTransportType();
     const isHttpActive =
       mode === 'sse' ||
       mode === 'streamable-http' ||
@@ -381,11 +381,11 @@ export class ServerManager {
 
     if (isHttpActive) {
       status.port = this.port;
-      status.connections = this.transportManager.getActiveConnectionsCount();
+      status.connections = this.transportRouter.getActiveConnectionsCount();
     }
 
     if (mode === 'streamable-http') {
-      status.sessions = this.transportManager.getActiveStreamableHttpSessionsCount();
+      status.sessions = this.transportRouter.getActiveStreamableHttpSessionsCount();
     }
 
     if (mode === 'both') {
@@ -417,13 +417,13 @@ export class ServerManager {
 /**
  * Create and configure a server manager
  */
-export function createServerManager(
+export function createServerLifecycle(
   logger: Logger,
-  configManager: EventEmittingConfigManager,
-  transportManager: TransportManager,
-  apiManager?: IApiManager
-): ServerManager {
-  return new ServerManager(logger, configManager, transportManager, apiManager);
+  configManager: ConfigLoader,
+  transportRouter: TransportRouter,
+  apiRouter?: ApiRouterPort
+): ServerLifecycle {
+  return new ServerLifecycle(logger, configManager, transportRouter, apiRouter);
 }
 
 /**
@@ -431,12 +431,12 @@ export function createServerManager(
  */
 export async function startMcpServer(
   logger: Logger,
-  configManager: EventEmittingConfigManager,
-  transportManager: TransportManager,
-  apiManager?: IApiManager
-): Promise<ServerManager> {
-  const serverManager = createServerManager(logger, configManager, transportManager, apiManager);
+  configManager: ConfigLoader,
+  transportRouter: TransportRouter,
+  apiRouter?: ApiRouterPort
+): Promise<ServerLifecycle> {
+  const serverLifecycle = createServerLifecycle(logger, configManager, transportRouter, apiRouter);
 
-  await serverManager.startServer();
-  return serverManager;
+  await serverLifecycle.startServer();
+  return serverLifecycle;
 }

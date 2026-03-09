@@ -10,6 +10,8 @@ export interface ChainOperator {
   type: 'chain';
   steps: ChainStep[];
   contextPropagation: 'automatic' | 'manual';
+  /** True if any step uses the ==> delegation operator */
+  hasDelegation?: boolean;
 }
 
 export interface ChainStep {
@@ -17,6 +19,8 @@ export interface ChainStep {
   args: string;
   position: number;
   variableName: string;
+  /** True if this step is preceded by the ==> delegation operator */
+  delegated?: boolean;
 }
 
 /**
@@ -164,4 +168,6 @@ export interface ExecutionStep {
   inlineGateIds?: string[];
   dependencies: number[];
   outputVariable: string;
+  /** True if this step should be delegated to a sub-agent */
+  delegated?: boolean;
 }

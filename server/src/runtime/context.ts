@@ -12,17 +12,17 @@ import * as path from 'node:path';
 import { resolveRuntimeLaunchOptions, RuntimeLaunchOptions } from './options.js';
 import { PathResolver } from './paths.js';
 import { ServerRootDetector } from './startup.js';
-import { EventEmittingConfigManager } from '../infra/config/index.js';
-import { TransportManager } from '../infra/http/index.js';
+import { ConfigLoader } from '../infra/config/index.js';
+import { TransportRouter } from '../infra/http/index.js';
 import { createLogger, EnhancedLoggingConfig, Logger } from '../infra/logging/index.js';
-import { ServiceManager } from '../shared/utils/service-manager.js';
+import { ServiceOrchestrator } from '../shared/utils/service-orchestrator.js';
 
-import type { ConfigManager, TransportMode } from '../shared/types/index.js';
+import type { Config, ConfigManager, TransportMode } from '../shared/types/index.js';
 
 export interface RuntimeFoundation {
   logger: Logger;
   configManager: ConfigManager;
-  serviceManager: ServiceManager;
+  serviceOrchestrator: ServiceOrchestrator;
   runtimeOptions: RuntimeLaunchOptions;
   serverRoot: string;
   transport: TransportMode;
@@ -32,9 +32,37 @@ export interface RuntimeFoundation {
 
 export interface RuntimeFoundationDependencies {
   logger?: Logger;
-  configManager?: EventEmittingConfigManager;
-  serviceManager?: ServiceManager;
+  configManager?: ConfigLoader;
+  serviceOrchestrator?: ServiceOrchestrator;
   pathResolver?: PathResolver;
+}
+
+export function applyRuntimeIdentityOverrides(
+  config: Config,
+  runtimeOptions: RuntimeLaunchOptions
+): void {
+  const hasIdentityModeOverride = runtimeOptions.identityMode != null;
+  const hasIdentityDefaultsOverride =
+    runtimeOptions.identityDefaults != null &&
+    Object.keys(runtimeOptions.identityDefaults).length > 0;
+
+  if (!hasIdentityModeOverride && !hasIdentityDefaultsOverride) {
+    return;
+  }
+
+  const identityConfig = config.identity ?? {};
+  const mergedLaunchDefaults = {
+    ...(identityConfig.launchDefaults ?? {}),
+    ...(runtimeOptions.identityDefaults ?? {}),
+  };
+
+  config.identity = {
+    ...identityConfig,
+    ...(hasIdentityModeOverride ? { mode: runtimeOptions.identityMode } : {}),
+    ...(Object.keys(mergedLaunchDefaults).length > 0
+      ? { launchDefaults: mergedLaunchDefaults }
+      : {}),
+  };
 }
 
 export async function createRuntimeFoundation(
@@ -54,21 +82,22 @@ export async function createRuntimeFoundation(
   // Use PathResolver for config path (supports workspace override)
   const configPath = pathResolver.getConfigPath();
 
-  const configManager = dependencies.configManager ?? new EventEmittingConfigManager(configPath);
+  const configManager = dependencies.configManager ?? new ConfigLoader(configPath);
   await configManager.loadConfig();
+  applyRuntimeIdentityOverrides(configManager.getConfig(), options);
 
-  const serviceManager = dependencies.serviceManager ?? new ServiceManager();
+  const serviceOrchestrator = dependencies.serviceOrchestrator ?? new ServiceOrchestrator();
 
-  if (!serviceManager.hasService('config-watcher')) {
-    serviceManager.register({
+  if (!serviceOrchestrator.hasService('config-watcher')) {
+    serviceOrchestrator.register({
       name: 'config-watcher',
       start: () => configManager.startWatching(),
       stop: () => configManager.stopWatching(),
     });
   }
-  await serviceManager.startService('config-watcher');
+  await serviceOrchestrator.startService('config-watcher');
 
-  const transport = TransportManager.determineTransport(options.args, configManager);
+  const transport = TransportRouter.determineTransport(options.args, configManager);
   const loggingConfig = configManager.getLoggingConfig();
 
   // Log level can be overridden via CLI flag
@@ -105,7 +134,7 @@ export async function createRuntimeFoundation(
   return {
     logger,
     configManager,
-    serviceManager,
+    serviceOrchestrator,
     runtimeOptions: options,
     serverRoot,
     transport,

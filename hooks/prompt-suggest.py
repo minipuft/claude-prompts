@@ -32,6 +32,7 @@ from cache_manager import (
     is_valid_style,
     is_valid_framework,
 )
+from db_reader import load_active_chain_state
 from session_state import load_session_state, format_chain_reminder
 from config_loader import is_expanded_output
 
@@ -43,15 +44,14 @@ except ImportError:
     HAS_GENERATED_OPERATORS = False
     OPERATORS = {}
 
-def format_arguments(prompt_id: str, cache: dict) -> dict[str, str]:
+def format_arguments(prompt_id: str) -> dict[str, str]:
     """
-    Extract argument info from cached prompt metadata.
+    Extract argument info from prompt metadata.
 
     Returns dict of arg_name -> "type (required|optional)"
     If options are available, shows: "opt1 | opt2 | opt3 (required)"
     """
-    # Use case-insensitive lookup (prompt_id may be lowercase after normalization)
-    prompt = get_prompt_by_id(prompt_id, cache)
+    prompt = get_prompt_by_id(prompt_id)
     if not prompt:
         return {}
     args = prompt.get("arguments", [])
@@ -247,20 +247,19 @@ def get_required_args(prompt_info: dict | None, parsed_args: dict[str, str]) -> 
 
 
 def get_chain_step_args(
-    prompt_ids: list[str], cache: dict
+    prompt_ids: list[str],
 ) -> list[tuple[str, list[dict]]]:
     """Fetch arguments for each prompt in a chain.
 
     Args:
         prompt_ids: List of prompt IDs in chain order
-        cache: Prompts cache dict
 
     Returns:
         List of (prompt_id, arguments) tuples
     """
     result = []
     for pid in prompt_ids:
-        info = get_prompt_by_id(pid, cache)
+        info = get_prompt_by_id(pid)
         args = info.get("arguments", []) if info else []
         result.append((pid, args))
     return result
@@ -578,9 +577,8 @@ def main():
         # No message to process
         sys.exit(0)
 
-    cache = load_prompts_cache()
-    if not cache:
-        # No cache available - silent exit
+    if not load_prompts_cache():
+        # No prompt data available - silent exit
         sys.exit(0)
 
     # Check for direct prompt invocation (>>prompt_id) or chain syntax
@@ -610,14 +608,14 @@ def main():
             # Framework - only include if registered in server methodologies
             fw_matches = detect_operator(user_message, 'framework')
             if fw_matches:
-                valid_fws = [fw for fw in fw_matches if is_valid_framework(fw, cache)]
+                valid_fws = [fw for fw in fw_matches if is_valid_framework(fw)]
                 if valid_fws:
                     operators["framework"] = valid_fws
 
             # Style - only include if registered in server styles
             style_matches = detect_operator(user_message, 'style')
             if style_matches:
-                valid_styles = [s for s in style_matches if is_valid_style(s, cache)]
+                valid_styles = [s for s in style_matches if is_valid_style(s)]
                 if valid_styles:
                     operators["style"] = valid_styles
 
@@ -628,7 +626,7 @@ def main():
         else:
             # Fallback: manual detection with validation
             framework = detect_framework(user_message)
-            if framework and is_valid_framework(framework, cache):
+            if framework and is_valid_framework(framework):
                 operators["framework"] = [framework]
             repetition = detect_repetition(user_message)
             if repetition:
@@ -638,12 +636,12 @@ def main():
         parsed_args = parse_inline_args(user_message)
 
         # Get prompt info from cache
-        prompt_info = get_prompt_by_id(invoked_prompt, cache) if invoked_prompt else None
+        prompt_info = get_prompt_by_id(invoked_prompt) if invoked_prompt else None
 
         # Early return for unknown prompts: provide fuzzy suggestions without tool call
         # This saves tokens by avoiding a failing server round-trip
         if invoked_prompt and prompt_info is None:
-            suggestions = fuzzy_match_prompt_id(invoked_prompt, cache)
+            suggestions = fuzzy_match_prompt_id(invoked_prompt)
 
             if suggestions:
                 message = f"Unknown prompt '{invoked_prompt}'. Did you mean: {', '.join(suggestions)}?"
@@ -655,7 +653,7 @@ def main():
                 "systemMessage": message,
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
-                    "additionalContext": f"Prompt '{invoked_prompt}' not found. Suggest user correct the name."
+                    "additionalContext": message
                 }
             }
             print(json.dumps(hook_response))
@@ -665,7 +663,7 @@ def main():
         required_args = get_required_args(prompt_info, parsed_args)
 
         # Get argument type info for LLM guidance
-        arguments = format_arguments(invoked_prompt, cache) if invoked_prompt else None
+        arguments = format_arguments(invoked_prompt) if invoked_prompt else None
 
         # Use full message as command (server parses it)
         # Preserve @framework, #style prefixes and all operators
@@ -691,28 +689,62 @@ def main():
         print(json.dumps(hook_response))
         sys.exit(0)
 
-    # === INFORMATIONAL MODE: No >>syntax ===
-    # Fall back to suggestions/chain state (no tool directive)
-    output_lines = []
-
-    # Check for active chain state from previous prompt_engine calls
-    if session_id:
+    # === CHAIN ENFORCEMENT: Active chain needs continuation ===
+    # SSOT: read from server's state.db (works without PostToolUse hook)
+    session_state = load_active_chain_state()
+    # Fallback: hooks-state.db (if PostToolUse populated it)
+    if not session_state and session_id:
         session_state = load_session_state(session_id)
-        if session_state:
-            chain_state_inline = format_chain_reminder(session_state, mode="inline")
-            if chain_state_inline:
-                output_lines.append(chain_state_inline)
+    if session_state:
+        chain_id = session_state.get("chain_id", "")
+        step = session_state.get("current_step", 0)
+        total = session_state.get("total_steps", 0)
+        pending_gate = session_state.get("pending_gate")
+
+        # Block if: steps remain OR pending gate/verify at final step
+        needs_continuation = chain_id and step > 0 and step < total
+        needs_review = chain_id and step > 0 and pending_gate
+        if needs_continuation or needs_review:
+            # Build imperative directive matching >>syntax pattern
+            if pending_gate:
+                directive = (
+                    f'<GATE-REVIEW>chain_id="{chain_id}" '
+                    f'gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
+                )
+            else:
+                directive = (
+                    f'<CALL-TOOL>\n'
+                    f'prompt_engine | chain_id:"{chain_id}"\n'
+                    f'REQUIRED: Continue active chain (step {step}/{total}). '
+                    f'Do not respond without advancing.\n'
+                    f'</CALL-TOOL>'
+                )
+
+            system_msg = format_chain_reminder(session_state, mode="inline")
+            hook_response = {
+                "systemMessage": system_msg,
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": directive
+                }
+            }
+            print(json.dumps(hook_response))
+            sys.exit(0)
+
+    # === INFORMATIONAL MODE: No >>syntax, no active chain ===
+    # Fall back to suggestions (no tool directive)
+    output_lines = []
 
     # Check for explicit suggestion request
     if detect_explicit_request(user_message):
-        matches = match_prompts_to_intent(user_message, cache, max_results=3)
+        matches = match_prompts_to_intent(user_message, max_results=3)
 
         if matches:
             output_lines.append("[MCP Suggestions]")
             for prompt_id, info, _score in matches:
                 output_lines.append(format_prompt_suggestion(prompt_id, info))
         else:
-            chains = get_chains_only(cache)
+            chains = get_chains_only()
             if chains:
                 output_lines.append("[MCP Chains]")
                 for prompt_id, info in list(chains.items())[:3]:

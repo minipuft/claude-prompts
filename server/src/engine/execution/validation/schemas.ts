@@ -144,13 +144,16 @@ export const mcpToolRequestSchema = z
       gate_verdict: z
         .string()
         .trim()
-        .refine(
-          (v) =>
-            /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
-              v
-            ),
-          'Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)'
-        )
+        .refine((v) => {
+          const firstLine =
+            v
+              .split('\n')
+              .find((l) => l.trim().length > 0)
+              ?.trim() ?? v;
+          return /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
+            firstLine
+          );
+        }, 'Gate verdict must start with: "GATE_REVIEW: PASS/FAIL - reason" (per-gate verdicts may follow)')
         .optional(),
       gate_action: gateActionSchema.optional(),
       user_response: z.string().trim().optional(),

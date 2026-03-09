@@ -10,6 +10,7 @@ import { DEFAULT_RETRY_LIMIT } from '../../../../gates/constants.js';
 import type {
   ActionResult,
   CreateReviewOptions,
+  GateVerdict,
   EnforcementMode,
   GateAction,
   GateEnforcementDecision,
@@ -21,7 +22,9 @@ import type {
   VerdictSource,
 } from './gate-enforcement-types.js';
 import type { Logger } from '../../../../../infra/logging/index.js';
-import type { ChainSessionService } from '../../../../../shared/types/index.js';
+import type { ChainSessionService, GateReviewPrompt } from '../../../../../shared/types/index.js';
+import type { GateDefinitionProvider } from '../../../../gates/core/gate-loader.js';
+import type { LightweightGateDefinition } from '../../../../gates/types.js';
 
 // VerdictPattern type is now imported from gates/config
 
@@ -50,15 +53,21 @@ import type { ChainSessionService } from '../../../../../shared/types/index.js';
 export class GateEnforcementAuthority {
   private readonly logger: Logger;
   private readonly chainSessionManager: ChainSessionService;
+  private readonly gateLoader: GateDefinitionProvider | undefined;
 
   private enforcementDecision: GateEnforcementDecision | null = null;
 
   // Verdict patterns loaded from YAML configuration
   private verdictPatterns: VerdictPattern[] | null = null;
 
-  constructor(chainSessionManager: ChainSessionService, logger: Logger) {
+  constructor(
+    chainSessionManager: ChainSessionService,
+    logger: Logger,
+    gateLoader?: GateDefinitionProvider
+  ) {
     this.chainSessionManager = chainSessionManager;
     this.logger = logger;
+    this.gateLoader = gateLoader;
   }
 
   /**
@@ -85,6 +94,14 @@ export class GateEnforcementAuthority {
       return null;
     }
 
+    // Validate only the first non-empty line (per-gate verdicts may follow)
+    const trimmed = raw.trim();
+    const firstLine =
+      trimmed
+        .split('\n')
+        .find((l) => l.trim().length > 0)
+        ?.trim() ?? trimmed;
+
     const patterns = this.getVerdictPatterns();
 
     for (const pattern of patterns) {
@@ -93,7 +110,7 @@ export class GateEnforcementAuthority {
         continue;
       }
 
-      const match = raw.match(pattern.regex);
+      const match = firstLine.match(pattern.regex);
       if (match) {
         const rationale = match[2]?.trim();
 
@@ -122,6 +139,43 @@ export class GateEnforcementAuthority {
 
     // No pattern matched
     return null;
+  }
+
+  /**
+   * Parse per-gate verdicts from a GATE_VERDICTS (or legacy CRITERION_VERDICTS) block.
+   * Called alongside parseVerdict() — overall verdict drives PASS/FAIL,
+   * gate verdicts provide granular delivery tracking.
+   *
+   * @param raw - Raw response containing GATE_VERDICTS block
+   * @returns Array of parsed gate verdicts (empty if no block found)
+   */
+  parseGateVerdicts(raw: string): GateVerdict[] {
+    if (!raw) {
+      return [];
+    }
+
+    const block = raw.match(
+      /(?:CRITERION_VERDICTS|GATE_VERDICTS):\s*\n((?:\[?\d+\]?\s*(?:PASS|FAIL).*\n?)*)/i
+    );
+    if (!block?.[1]) {
+      return [];
+    }
+
+    return block[1]
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const match = line.match(/\[?(\d+)\]?\s*(PASS|FAIL)\s*[-–—:]\s*(.*)/i);
+        if (!match) {
+          return null;
+        }
+        return {
+          index: parseInt(match[1]!, 10),
+          passed: match[2]!.toUpperCase() === 'PASS',
+          rationale: match[3]!.trim(),
+        };
+      })
+      .filter((v): v is GateVerdict => v !== null);
   }
 
   /**
@@ -176,17 +230,20 @@ export class GateEnforcementAuthority {
 
   /**
    * Create a new pending gate review.
+   * Loads gate definitions to populate review prompts with criteria summaries.
    *
    * @param options - Review creation options
-   * @returns Created pending review
+   * @returns Created pending review with enriched gate prompts
    */
-  createPendingReview(options: CreateReviewOptions): PendingGateReview {
+  async createPendingReview(options: CreateReviewOptions): Promise<PendingGateReview> {
     const { gateIds, instructions, maxAttempts = DEFAULT_RETRY_LIMIT, metadata } = options;
+
+    const prompts = await this.buildReviewPrompts(gateIds);
 
     const pendingReview: PendingGateReview = {
       combinedPrompt: instructions,
       gateIds,
-      prompts: [],
+      prompts,
       createdAt: Date.now(),
       attemptCount: 0,
       maxAttempts,
@@ -199,6 +256,46 @@ export class GateEnforcementAuthority {
     }
 
     return pendingReview;
+  }
+
+  /**
+   * Build GateReviewPrompt objects from gate definitions.
+   * Falls back to empty array if gate loader is unavailable or loading fails.
+   */
+  private async buildReviewPrompts(gateIds: string[]): Promise<GateReviewPrompt[]> {
+    if (!this.gateLoader || gateIds.length === 0) {
+      return [];
+    }
+
+    try {
+      const definitions = await this.gateLoader.loadGates(gateIds);
+      return definitions.map((def) => ({
+        gateId: def.id,
+        gateName: def.name,
+        criteriaSummary: this.buildCriteriaSummary(def),
+      }));
+    } catch (error) {
+      this.logger.warn('[GateEnforcementAuthority] Failed to load gate definitions for prompts', {
+        error,
+        gateIds,
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Extract a human-readable criteria summary from a gate definition.
+   * Prefers guidance text (human-readable) over description (brief).
+   */
+  private buildCriteriaSummary(def: LightweightGateDefinition): string {
+    if (def.guidance) {
+      const firstLine = def.guidance.trim().split('\n')[0]?.trim();
+      if (firstLine && firstLine.length > 0) {
+        return firstLine;
+      }
+    }
+
+    return def.description;
   }
 
   /**
@@ -229,7 +326,7 @@ export class GateEnforcementAuthority {
       }
 
       // Create a review on first FAIL
-      const created = this.createPendingReview({
+      const created = await this.createPendingReview({
         gateIds: [],
         instructions: 'Gate validation failed. Review and remediate.',
       });

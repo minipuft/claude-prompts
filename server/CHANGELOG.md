@@ -13,6 +13,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - All 12 prompt actions preserved: `create`, `update`, `delete`, `list`, `inspect`, `reload`, `analyze_type`, `analyze_gates`, `guide`, `history`, `rollback`, `compare`
   - Internal architecture improved with service decomposition: `PromptLifecycleService`, `PromptDiscoveryService`, `PromptVersioningService`
   - No API changes required—use `resource_manager(resource_type:"prompt", action:"...")` as before
+- **Client launch preset expansion**: Extended `--client` startup presets to include `gemini`, `opencode`, and `cursor` (in addition to `claude-code`, `codex`, `unknown`) and wired delegation strategy routing for each profile.
+- **Delegation strategy hardening**: Centralized delegation profile metadata for CTA/footer rendering, added Codex fallback guidance when `spawn_agent` is unavailable, and marked Cursor delegation messaging as experimental/testing.
 
 ### Removed
 

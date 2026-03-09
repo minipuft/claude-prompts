@@ -7,11 +7,11 @@
  */
 
 // Re-export the main execution service (excluding conflicting types)
-export {
-  PromptExecutionService,
-  createPromptExecutionService,
-  cleanupPromptExecutionService,
-} from './prompt-execution-service.js';
+export { PromptExecutor, createPromptExecutor, cleanupPromptExecutor } from './prompt-executor.js';
+
+// Re-export pipeline construction
+export { PipelineBuilder } from './pipeline-builder.js';
+export type { PipelineDependencies } from './pipeline-dependencies.js';
 
 // Re-export all core types and interfaces (primary source for PromptClassification)
 export * from './types.js';

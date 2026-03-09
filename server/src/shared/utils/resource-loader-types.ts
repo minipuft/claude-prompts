@@ -321,7 +321,7 @@ export interface RegistryEntry<T> {
  * @template T - The type of item being managed
  * @template TStats - The statistics type
  */
-export interface IBaseRegistry<T, TStats extends BaseRegistryStats = BaseRegistryStats> {
+export interface BaseRegistry<T, TStats extends BaseRegistryStats = BaseRegistryStats> {
   /**
    * Initialize the registry
    */
@@ -420,7 +420,7 @@ export interface IBaseRegistry<T, TStats extends BaseRegistryStats = BaseRegistr
 }
 
 /**
- * Simple in-memory implementation of IBaseRegistry
+ * Simple in-memory implementation of BaseRegistry
  *
  * Can be used as a base for specific registry implementations
  * or directly for simple use cases.
@@ -432,7 +432,7 @@ export interface IBaseRegistry<T, TStats extends BaseRegistryStats = BaseRegistr
  * const item = registry.get('item-1');
  * ```
  */
-export class SimpleRegistry<T> implements IBaseRegistry<T> {
+export class SimpleRegistry<T> implements BaseRegistry<T> {
   protected entries = new Map<string, RegistryEntry<T>>();
   protected initialized = false;
 

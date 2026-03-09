@@ -114,8 +114,8 @@ export interface ResourceDependencies {
       chainSteps?: Array<{ promptId: string; stepName: string }>;
     }>;
   };
-  // Gate-related dependencies - uses IGateGuide interface from gates/types
-  // Uses BaseResourceManager public methods: list() and get()
+  // Gate-related dependencies - uses GateGuide interface from gates/types
+  // Uses BaseResourceHandler public methods: list() and get()
   gateManager?: {
     list(enabledOnly?: boolean): Array<{
       gateId: string;

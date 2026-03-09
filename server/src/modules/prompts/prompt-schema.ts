@@ -84,6 +84,8 @@ export const ChainStepSchema = z.object({
   outputMapping: z.record(z.string()).optional(),
   /** Number of retry attempts on failure (default: 0) */
   retries: z.number().int().nonnegative().optional(),
+  /** Client-agnostic capability hint for delegation model selection */
+  subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
 });
 
 export type ChainStepYaml = z.infer<typeof ChainStepSchema>;
@@ -194,6 +196,8 @@ export const PromptDataSchema = z
     registerWithMcp: z.boolean().optional(),
     /** Script tool IDs declared by this prompt (references tools/{id}/ directories) */
     tools: z.array(z.string().min(1)).optional(),
+    /** Client-agnostic capability hint for delegation model selection */
+    subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
   })
   .passthrough(); // Allow additional fields for extensibility
 
@@ -313,6 +317,10 @@ export const PromptYamlSchema = z
     // Script tools
     /** Script tool IDs declared by this prompt (references tools/{id}/ directories) */
     tools: z.array(z.string().min(1)).optional(),
+
+    // Delegation
+    /** Client-agnostic capability hint for delegation model selection */
+    subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
   })
   .passthrough() // Allow additional fields for extensibility
   .refine(

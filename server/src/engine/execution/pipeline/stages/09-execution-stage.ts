@@ -5,7 +5,7 @@ import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
 import type { ChainSessionService } from '../../../../shared/types/index.js';
-import type { IScriptReferenceResolver } from '../../../../shared/utils/jsonUtils.js';
+import type { ScriptReferenceResolverPort } from '../../../../shared/utils/jsonUtils.js';
 import type { ExecutionContext } from '../../context/index.js';
 import type { ChainOperatorExecutor } from '../../operators/chain-operator-executor.js';
 import type { ChainStepRenderResult } from '../../operators/types.js';
@@ -29,7 +29,7 @@ export class StepExecutionStage extends BasePipelineStage {
     private readonly chainSessionManager: ChainSessionService,
     logger: Logger,
     private readonly referenceResolver?: PromptReferenceResolver,
-    private readonly scriptReferenceResolver?: IScriptReferenceResolver
+    private readonly scriptReferenceResolver?: ScriptReferenceResolverPort
   ) {
     super(logger);
   }
@@ -49,6 +49,23 @@ export class StepExecutionStage extends BasePipelineStage {
 
     if (!context.executionPlan) {
       this.handleError(new Error('Execution plan missing before step execution'));
+    }
+
+    // Session-completion check for ANY session-based execution (chains and gated single prompts).
+    // After gate verdict PASS, advanceStep() moves currentStep beyond totalSteps.
+    // Without this check, single prompts re-render instead of completing.
+    if (context.sessionContext) {
+      const { currentStep = 1 } = context.sessionContext;
+      const totalSteps = context.sessionContext.totalSteps ?? 0;
+      if (totalSteps > 0 && currentStep > totalSteps) {
+        context.state.session.chainComplete = true;
+        context.executionResults = {
+          content: 'Execution complete.',
+          generatedAt: Date.now(),
+        };
+        this.logExit({ skipped: 'Session complete', currentStep, totalSteps });
+        return;
+      }
     }
 
     // Execute the prompt/chain step regardless of pending review
@@ -114,7 +131,10 @@ export class StepExecutionStage extends BasePipelineStage {
       this.handleError(new Error('Current step not found during execution'));
       return;
     }
-    const chainContextSnapshot = this.chainSessionManager.getChainContext(session.sessionId);
+    const chainContextSnapshot = this.chainSessionManager.getChainContext(
+      session.sessionId,
+      context.getScopeOptions()
+    );
 
     const normalizedStepArgs = currentStep.args ?? {};
 
@@ -133,6 +153,8 @@ export class StepExecutionStage extends BasePipelineStage {
         chainRunId: session.sessionId,
         chainId: session.chainId,
         chain_id: session.chainId,
+        requestIdentityContext: context.state.identity.context,
+        clientProfile: context.state.identity.context?.clientProfile,
         promptArgs: normalizedStepArgs,
         currentStepArgs: normalizedStepArgs,
         suppressFrameworkInjection, // Pass injection decision to chain executor
@@ -252,6 +274,7 @@ export class StepExecutionStage extends BasePipelineStage {
         promptId: renderResult.promptId,
         promptName: renderResult.promptName,
         callToAction: renderResult.callToAction,
+        nextStepDelegated: renderResult.nextStepDelegated,
       },
       generatedAt: Date.now(),
     };

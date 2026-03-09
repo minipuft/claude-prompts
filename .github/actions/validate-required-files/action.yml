@@ -1,0 +1,39 @@
+name: Validate Required Files
+description: Fails if any required file path is missing.
+
+inputs:
+  files:
+    description: Newline-delimited list of required file paths.
+    required: true
+  context:
+    description: Human-readable context label for log output.
+    required: false
+    default: workflow
+
+runs:
+  using: composite
+  steps:
+    - name: Validate required files
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Validating required files for ${{ inputs.context }}..."
+        missing=0
+        while IFS= read -r file; do
+          if [[ -z "$file" ]]; then
+            continue
+          fi
+          if [[ ! -f "$file" ]]; then
+            echo "::error::Missing required file: $file"
+            missing=1
+          else
+            echo "  ✓ $file exists"
+          fi
+        done <<< "${{ inputs.files }}"
+
+        if [[ "$missing" -ne 0 ]]; then
+          exit 1
+        fi
+
+        echo "All required files present."

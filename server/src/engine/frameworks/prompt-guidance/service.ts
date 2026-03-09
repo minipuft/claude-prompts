@@ -4,21 +4,15 @@
  *
  * Unified service that orchestrates prompt guidance components.
  * Simplified: System prompt injection is now inlined (was SystemPromptInjector).
+ * Active framework state read from FrameworkManager (backed by SQLite via FrameworkStateStore).
  */
 
 import { Logger } from '../../../infra/logging/index.js';
 import { FrameworkManager } from '../framework-manager.js';
-import {
-  MethodologyTracker,
-  createMethodologyTracker,
-  type MethodologyTrackerConfig,
-} from './methodology-tracker.js';
 import { TemplateEnhancer, createTemplateEnhancer } from './template-enhancer.js';
 import {
   FrameworkDefinition,
-  IMethodologyGuide,
-  MethodologyState,
-  MethodologySwitchRequest,
+  MethodologyGuide,
   ProcessingGuidance,
   StepGuidance,
   SystemPromptInjectionResult,
@@ -26,13 +20,6 @@ import {
 
 import type { ContentAnalysisResult } from '../../../shared/types/index.js';
 import type { ConvertedPrompt } from '../../execution/types.js';
-
-/**
- * Prompt guidance service configuration (simplified)
- */
-type MethodologyTrackingServiceConfig = Partial<MethodologyTrackerConfig> & {
-  enabled: boolean;
-};
 
 export interface PromptGuidanceServiceConfig {
   systemPromptInjection: {
@@ -44,7 +31,6 @@ export interface PromptGuidanceServiceConfig {
     enableArgumentSuggestions: boolean;
     enableStructureOptimization: boolean;
   };
-  methodologyTracking: MethodologyTrackingServiceConfig;
 }
 
 /**
@@ -75,13 +61,12 @@ export type ServicePromptGuidanceResult = PromptGuidanceResult;
 /**
  * Prompt Guidance Service
  *
- * Orchestrates prompt guidance: methodology tracking, template enhancement,
- * and simple system prompt injection (inlined, no separate injector class).
+ * Orchestrates prompt guidance: template enhancement and system prompt injection.
+ * Active framework state is read from FrameworkManager (SQLite-backed).
  */
 export class PromptGuidanceService {
   private logger: Logger;
   private config: PromptGuidanceServiceConfig;
-  private methodologyTracker!: MethodologyTracker;
   private templateEnhancer: TemplateEnhancer;
   private frameworkManager?: FrameworkManager;
   private initialized: boolean = false;
@@ -97,14 +82,6 @@ export class PromptGuidanceService {
         enhancementLevel: 'moderate',
         enableArgumentSuggestions: true,
         enableStructureOptimization: true,
-      },
-      methodologyTracking: {
-        enabled: true,
-        persistStateToDisk: true,
-        enableHealthMonitoring: true,
-        healthCheckIntervalMs: 30000,
-        maxSwitchHistory: 100,
-        enableMetrics: true,
       },
       ...config,
     };
@@ -123,24 +100,12 @@ export class PromptGuidanceService {
 
     this.logger.info('Initializing PromptGuidanceService...');
 
-    try {
-      const { enabled: trackingEnabled, ...trackerConfig } = this.config.methodologyTracking;
-      this.methodologyTracker = await createMethodologyTracker(this.logger, trackerConfig);
-
-      if (!trackingEnabled) {
-        this.logger.info('Methodology tracking initialized but disabled in config');
-      }
-
-      if (frameworkManager) {
-        this.frameworkManager = frameworkManager;
-      }
-
-      this.initialized = true;
-      this.logger.info('PromptGuidanceService initialized successfully');
-    } catch (error) {
-      this.logger.error('Failed to initialize PromptGuidanceService:', error);
-      throw error;
+    if (frameworkManager) {
+      this.frameworkManager = frameworkManager;
     }
+
+    this.initialized = true;
+    this.logger.info('PromptGuidanceService initialized successfully');
   }
 
   /**
@@ -164,7 +129,6 @@ export class PromptGuidanceService {
     this.logger.debug(`Applying prompt guidance for prompt: ${prompt.name}`);
 
     try {
-      const methodologyState = this.methodologyTracker.getCurrentState();
       const activeFramework = await this.getActiveFramework(options.frameworkOverride);
       const methodologyGuide = await this.getMethodologyGuide(activeFramework.type);
 
@@ -180,7 +144,7 @@ export class PromptGuidanceService {
 
       const result: PromptGuidanceResult = {
         originalPrompt: prompt,
-        activeMethodology: methodologyState.activeMethodology,
+        activeMethodology: activeFramework.type,
         templateProcessingGuidance: processingGuidance,
         executionStepGuidance: stepGuidance,
         guidanceApplied: false,
@@ -277,8 +241,7 @@ export class PromptGuidanceService {
 
       return {
         originalPrompt: prompt,
-        activeMethodology:
-          this.methodologyTracker?.getCurrentState()?.activeMethodology || 'CAGEERF',
+        activeMethodology: 'CAGEERF',
         guidanceApplied: false,
         processingTimeMs: Date.now() - startTime,
         metadata: {
@@ -298,7 +261,7 @@ export class PromptGuidanceService {
   private injectMethodologyGuidance(
     prompt: ConvertedPrompt,
     framework: FrameworkDefinition,
-    guide: IMethodologyGuide
+    guide: MethodologyGuide
   ): SystemPromptInjectionResult {
     const startTime = Date.now();
 
@@ -311,16 +274,16 @@ export class PromptGuidanceService {
 
     // Simple injection: template placeholder or append with header
     const template = framework.systemPromptTemplate;
-    let enhancedPrompt: string;
+    let enhancedPromptText: string;
 
     if (template.includes('{METHODOLOGY_GUIDANCE}')) {
-      enhancedPrompt = template.replace('{METHODOLOGY_GUIDANCE}', guidance);
+      enhancedPromptText = template.replace('{METHODOLOGY_GUIDANCE}', guidance);
     } else {
-      enhancedPrompt = `${template}\n\n## ${framework.type} Methodology\n\n${guidance}`;
+      enhancedPromptText = `${template}\n\n## ${framework.type} Methodology\n\n${guidance}`;
     }
 
     // Apply simple variable substitution
-    enhancedPrompt = enhancedPrompt
+    enhancedPromptText = enhancedPromptText
       .replace(/\{PROMPT_NAME\}/g, prompt.name || 'Prompt')
       .replace(/\{PROMPT_CATEGORY\}/g, prompt.category || 'general')
       .replace(/\{FRAMEWORK_NAME\}/g, framework.name)
@@ -329,7 +292,7 @@ export class PromptGuidanceService {
 
     return {
       originalPrompt: prompt.userMessageTemplate || '',
-      enhancedPrompt,
+      enhancedPrompt: enhancedPromptText,
       injectedGuidance: guidance,
       sourceFramework: framework,
       metadata: {
@@ -350,46 +313,11 @@ export class PromptGuidanceService {
   }
 
   /**
-   * Switch methodology using the tracker
-   */
-  async switchMethodology(request: MethodologySwitchRequest): Promise<boolean> {
-    if (!this.initialized) {
-      throw new Error('PromptGuidanceService not initialized');
-    }
-
-    this.logger.info(`Switching methodology to: ${request.targetMethodology}`);
-    return await this.methodologyTracker.switchMethodology(request);
-  }
-
-  /**
-   * Get current methodology state
-   */
-  getCurrentMethodologyState(): MethodologyState {
-    if (!this.initialized) {
-      throw new Error('PromptGuidanceService not initialized');
-    }
-
-    return this.methodologyTracker.getCurrentState();
-  }
-
-  /**
-   * Get methodology system health
-   */
-  getSystemHealth() {
-    if (!this.initialized) {
-      throw new Error('PromptGuidanceService not initialized');
-    }
-
-    return this.methodologyTracker.getSystemHealth();
-  }
-
-  /**
    * Enable or disable the guidance system
    */
   setGuidanceEnabled(enabled: boolean): void {
     this.config.systemPromptInjection.enabled = enabled;
     this.config.templateEnhancement.enabled = enabled;
-    this.config.methodologyTracking.enabled = enabled;
 
     this.logger.info(`Prompt guidance system ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -401,16 +329,6 @@ export class PromptGuidanceService {
     this.config = { ...this.config, ...config };
 
     this.templateEnhancer.updateConfig(config.templateEnhancement || {});
-
-    if (config.methodologyTracking && this.methodologyTracker) {
-      const { enabled: trackingEnabled, ...trackerConfig } = config.methodologyTracking;
-
-      if (typeof trackingEnabled === 'boolean') {
-        this.config.methodologyTracking.enabled = trackingEnabled;
-      }
-
-      this.methodologyTracker.updateConfig(trackerConfig);
-    }
 
     this.logger.debug('PromptGuidanceService configuration updated');
   }
@@ -424,10 +342,6 @@ export class PromptGuidanceService {
     }
 
     this.logger.info('Shutting down PromptGuidanceService...');
-
-    if (this.methodologyTracker) {
-      await this.methodologyTracker.shutdown();
-    }
 
     this.initialized = false;
     this.logger.info('PromptGuidanceService shutdown complete');
@@ -463,8 +377,7 @@ export class PromptGuidanceService {
       throw new Error('FrameworkManager not set');
     }
 
-    const methodologyState = this.methodologyTracker.getCurrentState();
-    const targetMethodology = frameworkOverride || methodologyState.activeMethodology;
+    const targetMethodology = frameworkOverride || this.frameworkManager.selectFramework().type;
 
     const framework = this.frameworkManager.getFramework(targetMethodology);
     if (!framework) {
@@ -477,7 +390,7 @@ export class PromptGuidanceService {
   /**
    * Get methodology guide for framework
    */
-  private async getMethodologyGuide(methodology: string): Promise<IMethodologyGuide> {
+  private async getMethodologyGuide(methodology: string): Promise<MethodologyGuide> {
     if (!this.frameworkManager) {
       throw new Error('FrameworkManager not set');
     }

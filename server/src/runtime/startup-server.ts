@@ -6,25 +6,25 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createTransportManager, startMcpServer, TransportManager } from '../infra/http/index.js';
-import { createApiManager } from '../mcp/http/api.js';
+import { createTransportRouter, startMcpServer, TransportRouter } from '../infra/http/index.js';
+import { createApiRouter } from '../mcp/http/api.js';
 
 import type { RuntimeLaunchOptions } from './options.js';
 import type { ConvertedPrompt } from '../engine/execution/types.js';
-import type { EventEmittingConfigManager } from '../infra/config/index.js';
-import type { ServerManager } from '../infra/http/index.js';
+import type { ConfigLoader } from '../infra/config/index.js';
+import type { ServerLifecycle } from '../infra/http/index.js';
 import type { Logger } from '../infra/logging/index.js';
-import type { ApiManager } from '../mcp/http/api.js';
-import type { McpToolsManager } from '../mcp/tools/index.js';
+import type { ApiRouter } from '../mcp/http/api.js';
+import type { McpToolRouter } from '../mcp/tools/index.js';
 import type { PromptAssetManager } from '../modules/prompts/index.js';
 import type { Category, PromptData } from '../modules/prompts/types.js';
 import type { TransportMode } from '../shared/types/index.js';
 
 export interface ServerStartupParams {
   logger: Logger;
-  configManager: EventEmittingConfigManager;
+  configManager: ConfigLoader;
   promptManager: PromptAssetManager;
-  mcpToolsManager: McpToolsManager;
+  mcpToolsManager: McpToolRouter;
   mcpServer: McpServer;
   runtimeOptions: RuntimeLaunchOptions;
   transportType?: TransportMode;
@@ -34,9 +34,9 @@ export interface ServerStartupParams {
 }
 
 export interface ServerStartupResult {
-  transportManager: TransportManager;
-  apiManager?: ApiManager;
-  serverManager: ServerManager;
+  transportRouter: TransportRouter;
+  apiRouter?: ApiRouter;
+  serverLifecycle: ServerLifecycle;
 }
 
 export async function startServerWithManagers(
@@ -56,35 +56,35 @@ export async function startServerWithManagers(
   } = params;
 
   const transport =
-    transportType ?? TransportManager.determineTransport(runtimeOptions.args, configManager);
+    transportType ?? TransportRouter.determineTransport(runtimeOptions.args, configManager);
   logger.debug(`[startup-server] Transport selected: ${transport}`);
 
-  const transportManager = createTransportManager(logger, configManager, mcpServer, transport);
+  const transportRouter = createTransportRouter(logger, configManager, mcpServer, transport);
 
-  let apiManager: ApiManager | undefined;
-  // Create ApiManager for any HTTP-based transport (SSE or Streamable HTTP)
-  if (transportManager.isSse() || transportManager.isStreamableHttp()) {
-    apiManager = createApiManager(logger, configManager, promptManager, mcpToolsManager);
-    apiManager.updateData(promptsData, categories, convertedPrompts);
+  let apiRouter: ApiRouter | undefined;
+  // Create ApiRouter for any HTTP-based transport (SSE or Streamable HTTP)
+  if (transportRouter.isSse() || transportRouter.isStreamableHttp()) {
+    apiRouter = createApiRouter(logger, configManager, promptManager, mcpToolsManager);
+    apiRouter.updateData(promptsData, categories, convertedPrompts);
   }
 
-  const serverManager = runtimeOptions.startupTest
+  const serverLifecycle = runtimeOptions.startupTest
     ? ({
         shutdown: () => logger.debug('[startup-server] Mock server shutdown'),
         getStatus: () => ({ running: true, transport }),
         isRunning: () => true,
-      } as ServerManager)
-    : await startMcpServer(logger, configManager, transportManager, apiManager);
+      } as ServerLifecycle)
+    : await startMcpServer(logger, configManager, transportRouter, apiRouter);
 
   logger.info('Server started successfully');
 
   const startupResult: ServerStartupResult = {
-    transportManager,
-    serverManager,
+    transportRouter,
+    serverLifecycle,
   };
 
-  if (apiManager) {
-    startupResult.apiManager = apiManager;
+  if (apiRouter) {
+    startupResult.apiRouter = apiRouter;
   }
 
   return startupResult;

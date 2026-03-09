@@ -6,7 +6,7 @@ import { StepState } from '../../../src/shared/types/chain-execution.js';
 import type { Logger } from '../../../src/infra/logging/index.js';
 import type { ConvertedPrompt } from '../../../src/shared/types/index.js';
 
-class StubTextReferenceManager {
+class StubTextReferenceStore {
   storeChainStepResult = jest.fn();
   buildChainVariables = jest.fn().mockReturnValue({});
   clearChainStepResults = jest.fn();
@@ -49,7 +49,7 @@ describe('ChainSessionManager', () => {
   });
 
   test('cleans review sessions faster than chain sessions', async () => {
-    manager = new ChainSessionManager(createLogger(), new StubTextReferenceManager() as any, {
+    manager = new ChainSessionManager(createLogger(), new StubTextReferenceStore() as any, {
       serverRoot: '/tmp/test-chain-sessions',
       reviewSessionTimeoutMs: 5 * 60 * 1000,
       defaultSessionTimeoutMs: 60 * 60 * 1000,
@@ -71,7 +71,7 @@ describe('ChainSessionManager', () => {
   });
 
   test('does not advance currentStep when completing placeholders', async () => {
-    manager = new ChainSessionManager(createLogger(), new StubTextReferenceManager() as any, {
+    manager = new ChainSessionManager(createLogger(), new StubTextReferenceStore() as any, {
       serverRoot: '/tmp/test-chain-sessions-placeholder',
       cleanupIntervalMs: 1000,
     });
@@ -88,12 +88,12 @@ describe('ChainSessionManager', () => {
   });
 
   test('includes blueprint metadata and inline gates inside chain context', async () => {
-    const textReferenceManager = new StubTextReferenceManager();
-    textReferenceManager.buildChainVariables.mockReturnValue({
+    const textReferenceStore = new StubTextReferenceStore();
+    textReferenceStore.buildChainVariables.mockReturnValue({
       step_results: { '1': 'Stored result' },
     });
 
-    manager = new ChainSessionManager(createLogger(), textReferenceManager as any, {
+    manager = new ChainSessionManager(createLogger(), textReferenceStore as any, {
       serverRoot: '/tmp/test-chain-sessions-context',
       cleanupIntervalMs: 1000,
     });
@@ -169,7 +169,7 @@ describe('ChainSessionManager', () => {
   });
 
   test('updateSessionBlueprint stores snapshot independently', async () => {
-    manager = new ChainSessionManager(createLogger(), new StubTextReferenceManager() as any, {
+    manager = new ChainSessionManager(createLogger(), new StubTextReferenceStore() as any, {
       serverRoot: '/tmp/test-chain-sessions-blueprint',
       cleanupIntervalMs: 1000,
     });

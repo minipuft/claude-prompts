@@ -8,7 +8,7 @@
  * - Gate schema validation utilities
  */
 
-import { GateSystemManager } from '../gate-state-manager.js';
+import { GateStateStore } from '../gate-state-store.js';
 import { GateLoader, createGateLoader } from './gate-loader.js';
 import { GateValidator, createGateValidator } from './gate-validator.js';
 import {
@@ -74,7 +74,7 @@ export type { GateValidationStatistics } from './gate-validator.js';
  * Core gate system manager with temporary gate support
  */
 export class LightweightGateSystem {
-  private gateSystemManager: GateSystemManager | undefined;
+  private gateStateStore: GateStateStore | undefined;
   private temporaryGateRegistry: TemporaryGateRegistry | undefined;
 
   constructor(
@@ -88,8 +88,8 @@ export class LightweightGateSystem {
   /**
    * Set gate system manager for runtime state checking
    */
-  setGateSystemManager(gateSystemManager: GateSystemManager): void {
-    this.gateSystemManager = gateSystemManager;
+  setGateStateStore(gateStateStore: GateStateStore): void {
+    this.gateStateStore = gateStateStore;
   }
 
   /**
@@ -137,10 +137,10 @@ export class LightweightGateSystem {
    */
   private isGateSystemEnabled(): boolean {
     // If no gate system manager is set, default to enabled for backwards compatibility
-    if (!this.gateSystemManager) {
+    if (!this.gateStateStore) {
       return true;
     }
-    return this.gateSystemManager.isGateSystemEnabled();
+    return this.gateStateStore.isGateSystemEnabled();
   }
 
   /**
@@ -223,10 +223,10 @@ export class LightweightGateSystem {
     const results = await this.gateValidator.validateGates(gateIds, context);
 
     // Record validation metrics if gate system manager is available
-    if (this.gateSystemManager) {
+    if (this.gateStateStore) {
       const executionTime = performance.now() - startTime;
       const success = results.every((r) => r.passed);
-      this.gateSystemManager.recordValidation(success, executionTime);
+      this.gateStateStore.recordValidation(success, executionTime);
     }
 
     return results;
@@ -286,12 +286,12 @@ export class LightweightGateSystem {
   async cleanup(): Promise<void> {
     // Cleanup gate system manager if present
     if (
-      this.gateSystemManager &&
-      'cleanup' in this.gateSystemManager &&
-      typeof (this.gateSystemManager as any).cleanup === 'function'
+      this.gateStateStore &&
+      'cleanup' in this.gateStateStore &&
+      typeof (this.gateStateStore as any).cleanup === 'function'
     ) {
       try {
-        await (this.gateSystemManager as any).cleanup();
+        await (this.gateStateStore as any).cleanup();
       } catch (error) {
         // Errors are already logged by sub-components
       }
@@ -318,7 +318,7 @@ export class LightweightGateSystem {
 export function createLightweightGateSystem(
   logger: any,
   gatesDirectory?: string,
-  gateSystemManager?: GateSystemManager,
+  gateStateStore?: GateStateStore,
   options?: {
     provider?: GateDefinitionProvider;
     enableTemporaryGates?: boolean;
@@ -346,8 +346,8 @@ export function createLightweightGateSystem(
 
   const gateSystem = new LightweightGateSystem(gateLoader, gateValidator, temporaryGateRegistry);
 
-  if (gateSystemManager) {
-    gateSystem.setGateSystemManager(gateSystemManager);
+  if (gateStateStore) {
+    gateSystem.setGateStateStore(gateStateStore);
   }
 
   return gateSystem;

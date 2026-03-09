@@ -198,7 +198,7 @@ export class PerformanceMonitor {
       activeExecutions: 0,
     };
 
-    // REMOVED: ExecutionCoordinator metrics - execution handled by PromptExecutionService
+    // REMOVED: ExecutionCoordinator metrics - execution handled by PromptExecutor
     // Default execution metrics since ExecutionCoordinator removed
 
     const metrics: PerformanceMetrics = {
@@ -348,7 +348,7 @@ export class PerformanceMonitor {
    */
   private calculateChainMetrics(): PerformanceMetrics['chains'] {
     // REMOVED: ExecutionCoordinator chain metrics - using defaults
-    // Chain metrics now tracked by PromptExecutionService if needed
+    // Chain metrics now tracked by PromptExecutor if needed
     return {
       activeChains: 0,
       averageChainLength: 0,

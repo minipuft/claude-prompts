@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import {
-  cleanupPromptExecutionService,
-  createPromptExecutionService,
+  cleanupPromptExecutor,
+  createPromptExecutor,
 } from '../../../src/mcp/tools/prompt-engine/index.js';
-import { createPromptResourceService } from '../../../src/mcp/tools/resource-manager/prompt/index.js';
-import { createConsolidatedSystemControl } from '../../../src/mcp/tools/system-control.js';
+import { createPromptResourceHandler } from '../../../src/mcp/tools/resource-manager/prompt/index.js';
+import { createConsolidatedSystemControl } from '../../../src/mcp/tools/system-control/index.js';
 import { MockLogger, MockMcpServer, testPrompts } from '../../helpers/test-helpers.js';
 
 import type { GateManager } from '../../../src/engine/gates/gate-manager.js';
@@ -14,7 +14,7 @@ describe('Consolidated MCP tool factories', () => {
   let logger: MockLogger;
   let mockMcpServer: MockMcpServer;
   let promptEngine: any;
-  let promptResourceService: any;
+  let promptResourceHandler: any;
   let systemControl: any;
 
   beforeEach(() => {
@@ -72,7 +72,7 @@ describe('Consolidated MCP tool factories', () => {
       on: () => {},
     };
 
-    const mockConversationManager = {
+    const mockConversationStore = {
       addToConversationHistory: () => {},
       getConversationHistory: () => [],
       getPreviousMessage: () => '',
@@ -87,7 +87,7 @@ describe('Consolidated MCP tool factories', () => {
       }),
     };
 
-    const mockTextReferenceManager = {
+    const mockTextReferenceStore = {
       storeChainStepResult: () => {},
       getChainStepResults: () => ({}),
       getChainStepResult: () => null,
@@ -120,19 +120,19 @@ describe('Consolidated MCP tool factories', () => {
       }),
     } as unknown as GateManager;
 
-    promptEngine = createPromptExecutionService(
+    promptEngine = createPromptExecutor(
       logger as any,
       mockMcpServer as any,
       mockPromptAssetComponent as any,
       mockConfigManager as any,
       mockSemanticAnalyzer as any,
-      mockConversationManager as any,
-      mockTextReferenceManager as any,
+      mockConversationStore as any,
+      mockTextReferenceStore as any,
       stubGateManager,
       mockMcpToolsManager
     );
 
-    promptResourceService = createPromptResourceService(
+    promptResourceHandler = createPromptResourceHandler(
       logger as any,
       mockConfigManager as any,
       mockSemanticAnalyzer as any,
@@ -149,7 +149,7 @@ describe('Consolidated MCP tool factories', () => {
 
   afterEach(async () => {
     if (promptEngine) {
-      await cleanupPromptExecutionService(promptEngine);
+      await cleanupPromptExecutor(promptEngine);
     }
     logger.clear();
     mockMcpServer.clear();
@@ -161,8 +161,8 @@ describe('Consolidated MCP tool factories', () => {
   });
 
   test('creates prompt resource service with handleAction', () => {
-    expect(promptResourceService).toBeDefined();
-    expect(typeof promptResourceService.handleAction).toBe('function');
+    expect(promptResourceHandler).toBeDefined();
+    expect(typeof promptResourceHandler.handleAction).toBe('function');
   });
 
   test('creates consolidated system control tool', () => {

@@ -53,6 +53,7 @@ export interface LoadedPromptFile {
     inputMapping?: Record<string, string>;
     outputMapping?: Record<string, string>;
     retries?: number;
+    subagentModel?: 'heavy' | 'standard' | 'fast';
   }>;
 }
 
@@ -236,111 +237,101 @@ export function hasYamlPrompts(categoryDir: string): boolean {
 }
 
 /**
+ * Normalize YAML argument definitions to PromptArgument format.
+ * Handles required defaults and validation object filtering.
+ */
+function normalizeArguments(args: PromptYaml['arguments']): PromptArgument[] {
+  if (!args) return [];
+  return args.map((arg) => {
+    const normalized: PromptArgument = {
+      name: arg.name,
+      required: arg.required ?? false,
+    };
+    if (arg.description !== undefined) normalized.description = arg.description;
+    if (arg.type !== undefined) normalized.type = arg.type;
+    if (arg.defaultValue !== undefined) normalized.defaultValue = arg.defaultValue;
+    if (arg.validation) {
+      const validation: NonNullable<PromptArgument['validation']> = {};
+      if (arg.validation.pattern !== undefined) validation.pattern = arg.validation.pattern;
+      if (arg.validation.minLength !== undefined) validation.minLength = arg.validation.minLength;
+      if (arg.validation.maxLength !== undefined) validation.maxLength = arg.validation.maxLength;
+      if (arg.validation.allowedValues !== undefined) {
+        validation.allowedValues = arg.validation.allowedValues;
+      }
+      if (Object.keys(validation).length > 0) normalized.validation = validation;
+    }
+    return normalized;
+  });
+}
+
+/**
+ * Normalize YAML chain step definitions.
+ * Shared between yamlToPromptData (PromptData path) and loadYamlPrompt (LoadedPromptFile path).
+ */
+function normalizeChainSteps(
+  steps: PromptYaml['chainSteps']
+): NonNullable<PromptData['chainSteps']> | undefined {
+  if (!steps) return undefined;
+  return steps.map((step) => {
+    const normalized: NonNullable<PromptData['chainSteps']>[number] = {
+      promptId: step.promptId,
+      stepName: step.stepName,
+    };
+    if (step.inputMapping) normalized.inputMapping = step.inputMapping;
+    if (step.outputMapping) normalized.outputMapping = step.outputMapping;
+    if (typeof step.retries === 'number') normalized.retries = step.retries;
+    if (step.subagentModel != null) normalized.subagentModel = step.subagentModel;
+    return normalized;
+  });
+}
+
+/**
+ * Normalize gate configuration from YAML format.
+ * Shared between yamlToPromptData (PromptData path) and loadYamlPrompt (LoadedPromptFile path).
+ */
+function normalizeGateConfiguration(
+  config: PromptYaml['gateConfiguration']
+): PromptData['gateConfiguration'] | undefined {
+  if (!config) return undefined;
+  const normalized: NonNullable<PromptData['gateConfiguration']> = {};
+  if (Array.isArray(config.include)) normalized.include = config.include;
+  if (Array.isArray(config.exclude)) normalized.exclude = config.exclude;
+  if (typeof config.framework_gates === 'boolean')
+    normalized.framework_gates = config.framework_gates;
+  const inlineGateDefs = normalizeInlineGateDefinitions(config.inline_gate_definitions);
+  if (inlineGateDefs) normalized.inline_gate_definitions = inlineGateDefs;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+/**
  * Convert YAML prompt definition to PromptData structure.
  *
  * @param yaml - Parsed and validated YAML data
  * @param filePath - Optional file path override (for single-file format)
  */
 export function yamlToPromptData(yaml: PromptYaml, filePath?: string): PromptData {
-  const promptData: PromptData = {
-    id: yaml.id,
-    name: yaml.name,
-    category: yaml.category ?? 'general',
-    description: yaml.description,
-    // File path depends on format:
-    // - Directory format: {id}/prompt.yaml
-    // - File format: {id}.yaml
+  // Destructure YAML-only fields (not in PromptData) and fields needing transformation.
+  // Everything else spreads through automatically — new simple fields flow without loader changes.
+  const {
+    systemMessageFile: _smf,
+    userMessageTemplateFile: _umtf,
+    systemMessage: _sm,
+    userMessageTemplate: _umt,
+    arguments: rawArgs,
+    category,
+    chainSteps: rawChainSteps,
+    gateConfiguration: rawGateConfig,
+    ...passthroughFields
+  } = yaml;
+
+  return {
+    ...passthroughFields,
+    category: category ?? 'general',
     file: filePath ?? `${yaml.id}/prompt.yaml`,
-    arguments:
-      yaml.arguments?.map((arg) => {
-        const normalizedArg: PromptArgument = {
-          name: arg.name,
-          required: arg.required ?? false,
-        };
-
-        if (arg.description !== undefined) {
-          normalizedArg.description = arg.description;
-        }
-        if (arg.type !== undefined) {
-          normalizedArg.type = arg.type;
-        }
-        if (arg.defaultValue !== undefined) {
-          normalizedArg.defaultValue = arg.defaultValue;
-        }
-        if (arg.validation) {
-          const validation: NonNullable<PromptArgument['validation']> = {};
-          if (arg.validation.pattern !== undefined) {
-            validation.pattern = arg.validation.pattern;
-          }
-          if (arg.validation.minLength !== undefined) {
-            validation.minLength = arg.validation.minLength;
-          }
-          if (arg.validation.maxLength !== undefined) {
-            validation.maxLength = arg.validation.maxLength;
-          }
-          if (arg.validation.allowedValues !== undefined) {
-            validation.allowedValues = arg.validation.allowedValues;
-          }
-          if (Object.keys(validation).length > 0) {
-            normalizedArg.validation = validation;
-          }
-        }
-
-        return normalizedArg;
-      }) ?? [],
+    arguments: normalizeArguments(rawArgs),
+    chainSteps: normalizeChainSteps(rawChainSteps),
+    gateConfiguration: normalizeGateConfiguration(rawGateConfig),
   };
-
-  if (yaml.gateConfiguration) {
-    const normalizedGateConfiguration: PromptData['gateConfiguration'] = {};
-    if (Array.isArray(yaml.gateConfiguration.include)) {
-      normalizedGateConfiguration.include = yaml.gateConfiguration.include;
-    }
-    if (Array.isArray(yaml.gateConfiguration.exclude)) {
-      normalizedGateConfiguration.exclude = yaml.gateConfiguration.exclude;
-    }
-    if (typeof yaml.gateConfiguration.framework_gates === 'boolean') {
-      normalizedGateConfiguration.framework_gates = yaml.gateConfiguration.framework_gates;
-    }
-    const inlineGateDefinitions = normalizeInlineGateDefinitions(
-      yaml.gateConfiguration.inline_gate_definitions
-    );
-    if (inlineGateDefinitions) {
-      normalizedGateConfiguration.inline_gate_definitions = inlineGateDefinitions;
-    }
-    if (Object.keys(normalizedGateConfiguration).length > 0) {
-      promptData.gateConfiguration = normalizedGateConfiguration;
-    }
-  }
-
-  if (yaml.chainSteps) {
-    promptData.chainSteps = yaml.chainSteps.map((step) => {
-      const normalizedStep: NonNullable<PromptData['chainSteps']>[number] = {
-        promptId: step.promptId,
-        stepName: step.stepName,
-      };
-      if (step.inputMapping) {
-        normalizedStep.inputMapping = step.inputMapping;
-      }
-      if (step.outputMapping) {
-        normalizedStep.outputMapping = step.outputMapping;
-      }
-      if (typeof step.retries === 'number') {
-        normalizedStep.retries = step.retries;
-      }
-      return normalizedStep;
-    });
-  }
-
-  if (yaml.registerWithMcp !== undefined) {
-    promptData.registerWithMcp = yaml.registerWithMcp;
-  }
-
-  // Script tools declaration (Phase 1: tools field maps to tools/{id}/ directories)
-  if (yaml.tools && yaml.tools.length > 0) {
-    promptData.tools = yaml.tools;
-  }
-
-  return promptData;
 }
 
 // ============================================
@@ -513,52 +504,16 @@ export function loadYamlPrompt(
     loadedContent.systemMessage = systemMessage;
   }
 
-  const normalizedGateConfiguration: LoadedPromptFile['gateConfiguration'] | undefined = (() => {
-    const configuration = yamlData.gateConfiguration;
-    if (!configuration) {
-      return undefined;
-    }
-    const normalized: LoadedPromptFile['gateConfiguration'] = {};
-    if (Array.isArray(configuration.include)) {
-      normalized.include = configuration.include;
-    }
-    if (Array.isArray(configuration.exclude)) {
-      normalized.exclude = configuration.exclude;
-    }
-    if (typeof configuration.framework_gates === 'boolean') {
-      normalized.framework_gates = configuration.framework_gates;
-    }
-    const inlineGateDefinitions = normalizeInlineGateDefinitions(
-      configuration.inline_gate_definitions
-    );
-    if (inlineGateDefinitions) {
-      normalized.inline_gate_definitions = inlineGateDefinitions;
-    }
-    return Object.keys(normalized).length > 0 ? normalized : undefined;
-  })();
-
-  if (normalizedGateConfiguration) {
-    loadedContent.gateConfiguration = normalizedGateConfiguration;
+  const normalizedGateConfig = normalizeGateConfiguration(yamlData.gateConfiguration);
+  if (normalizedGateConfig) {
+    // LoadedPromptFile.gateConfiguration has narrower inline_gate_definitions.type
+    // ('validation' | 'guidance' vs string). Safe because normalizeInlineGateDefinitions
+    // only emits these two values.
+    loadedContent.gateConfiguration = normalizedGateConfig as LoadedPromptFile['gateConfiguration'];
   }
 
-  if (yamlData.chainSteps) {
-    const normalizedChainSteps = yamlData.chainSteps.map((step) => {
-      const normalizedStep: NonNullable<LoadedPromptFile['chainSteps']>[number] = {
-        promptId: step.promptId,
-        stepName: step.stepName,
-      };
-      if (step.inputMapping) {
-        normalizedStep.inputMapping = step.inputMapping;
-      }
-      if (step.outputMapping) {
-        normalizedStep.outputMapping = step.outputMapping;
-      }
-      if (typeof step.retries === 'number') {
-        normalizedStep.retries = step.retries;
-      }
-      return normalizedStep;
-    });
-
+  const normalizedChainSteps = normalizeChainSteps(yamlData.chainSteps);
+  if (normalizedChainSteps) {
     loadedContent.chainSteps = normalizedChainSteps;
     loadedContent.isChain = normalizedChainSteps.length > 0;
   }

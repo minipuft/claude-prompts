@@ -11,7 +11,7 @@
 
 import { Logger } from '../../../infra/logging/index.js';
 import { FrameworkManager } from '../framework-manager.js';
-import { FrameworkStateManager } from '../framework-state-manager.js';
+import { FrameworkStateStore } from '../framework-state-store.js';
 import { PromptGuidanceService } from '../prompt-guidance/service.js';
 import {
   FrameworkDefinition,
@@ -25,7 +25,7 @@ import {
   IntegratedAnalysisResult,
 } from '../types/index.js';
 
-import type { IContentAnalyzer, ContentAnalysisResult } from '../../../shared/types/index.js';
+import type { ContentAnalyzerPort, ContentAnalysisResult } from '../../../shared/types/index.js';
 import type { ConvertedPrompt } from '../../execution/types.js';
 
 /**
@@ -38,8 +38,8 @@ import type { ConvertedPrompt } from '../../execution/types.js';
  */
 export class FrameworkSemanticIntegration {
   private frameworkManager: FrameworkManager;
-  private frameworkStateManager: FrameworkStateManager;
-  private semanticAnalyzer: IContentAnalyzer;
+  private frameworkStateStore: FrameworkStateStore;
+  private semanticAnalyzer: ContentAnalyzerPort;
   private logger: Logger;
   private config: FrameworkSwitchingConfig;
   // Prompt guidance coordination
@@ -51,13 +51,13 @@ export class FrameworkSemanticIntegration {
 
   constructor(
     frameworkManager: FrameworkManager,
-    frameworkStateManager: FrameworkStateManager,
-    semanticAnalyzer: IContentAnalyzer,
+    frameworkStateStore: FrameworkStateStore,
+    semanticAnalyzer: ContentAnalyzerPort,
     logger: Logger,
     config: Partial<FrameworkSwitchingConfig> = {}
   ) {
     this.frameworkManager = frameworkManager;
-    this.frameworkStateManager = frameworkStateManager;
+    this.frameworkStateStore = frameworkStateStore;
     this.semanticAnalyzer = semanticAnalyzer;
     this.logger = logger;
 
@@ -83,7 +83,7 @@ export class FrameworkSemanticIntegration {
     const startTime = performance.now();
 
     // NEW: Check if framework system is enabled before proceeding
-    if (!this.frameworkStateManager.isFrameworkSystemEnabled()) {
+    if (!this.frameworkStateStore.isFrameworkSystemEnabled()) {
       this.logger.debug(
         `Framework system disabled - returning semantic analysis only for prompt: ${prompt.id}`
       );
@@ -849,14 +849,14 @@ export class FrameworkSemanticIntegration {
  */
 export async function createFrameworkSemanticIntegration(
   frameworkManager: FrameworkManager,
-  frameworkStateManager: FrameworkStateManager,
+  frameworkStateStore: FrameworkStateStore,
   logger: Logger,
-  semanticAnalyzer: IContentAnalyzer,
+  semanticAnalyzer: ContentAnalyzerPort,
   config?: Partial<FrameworkSwitchingConfig>
 ): Promise<FrameworkSemanticIntegration> {
   return new FrameworkSemanticIntegration(
     frameworkManager,
-    frameworkStateManager,
+    frameworkStateStore,
     semanticAnalyzer,
     logger,
     config

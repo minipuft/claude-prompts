@@ -1,6 +1,6 @@
 {
   "version": "3.0.0",
-  "lastUpdated": "2026-01-22T11:53:08.838Z",
+  "lastUpdated": "2026-02-17T02:23:09.593Z",
   "generatedFrom": "contracts",
   "tools": {
     "prompt_engine": {
@@ -46,6 +46,29 @@
       "frameworkAware": {
         "enabled": "🗂️ RESOURCE MANAGER [FRAMEWORK]: Operations reflect active methodology context.",
         "disabled": "🗂️ RESOURCE MANAGER: Standard resource lifecycle operations."
+      }
+    },
+    "skills_sync": {
+      "description": "🧩 SKILLS SYNC: Keep client skills aligned with canonical resources.\n\nACTIONS: status | export | sync | diff | pull | clone\n\nUse for status checks, reconciliation, drift reporting, and round-trip edits.",
+      "shortDescription": "Sync client skills",
+      "category": "management",
+      "parameters": {
+        "action": "Operation: status (inspect config/manifests), export (write skills), sync (reconcile to registrations with optional prune), diff (show drift and optional .patch output), pull (merge exported prose edits back to canonical YAML), clone (create canonical resources from SKILL.md).",
+        "client": "Target client id. Use one of: claude-code, cursor, codex, opencode, or all.",
+        "scope": "Output scope for client directories. Default: user.",
+        "resource_type": "Optional resource type filter.",
+        "id": "Optional resource id filter.",
+        "prune": "For sync: when true (default), remove stale managed skills not present in current registrations.",
+        "dry_run": "For export/sync/pull/clone: show planned changes without writing files.",
+        "output": "For diff: write .patch files to this directory instead of stdout only.",
+        "file": "For clone: path to the source SKILL.md file. Required for clone action.",
+        "category": "For clone: target category for prompt resources. Default: general.",
+        "preview": "For pull: show unified diffs without writing changes.",
+        "force": "For clone: overwrite existing resource directory."
+      },
+      "frameworkAware": {
+        "enabled": "🧩 SKILLS SYNC [FRAMEWORK]: Skill sync actions with active methodology context available in surrounding workflow.",
+        "disabled": "🧩 SKILLS SYNC: Skill sync actions without methodology context."
       }
     },
     "system_control": {

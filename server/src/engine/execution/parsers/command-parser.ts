@@ -322,6 +322,12 @@ export class UnifiedCommandParser {
           /\s+(::|=)\s*(?:[a-z][a-z0-9_-]*:["'][^"']+["']|[a-z][a-z0-9_-]*\([^)]+\)|["'][^"']+["']|[^\s"']+)/gi,
           ''
         );
+        // Strip trailing verify options that follow gate operators:
+        // :fast, :full, :extended (presets), loop:true/false, max:N, timeout:N
+        cleanCommand = cleanCommand.replace(
+          /\s+(?::(fast|full|extended)\b|loop:(true|false)\b|max:\d+\b|timeout:\d+\b)/gi,
+          ''
+        );
         // Strip style selector to avoid polluting base args
         cleanCommand = stripStyleOperators(cleanCommand);
 

@@ -1,0 +1,96 @@
+name: Setup Node and Install Dependencies
+description: Sets up Node.js with caching and optionally runs npm ci.
+
+inputs:
+  node-version:
+    description: Node.js version (mutually exclusive with node-version-file).
+    required: false
+    default: ''
+  node-version-file:
+    description: Node version file path (mutually exclusive with node-version).
+    required: false
+    default: ''
+  registry-url:
+    description: Optional npm registry URL.
+    required: false
+    default: ''
+  cache:
+    description: Dependency cache mode for setup-node.
+    required: false
+    default: npm
+  cache-dependency-path:
+    description: Dependency lockfile path for cache key.
+    required: false
+    default: package-lock.json
+  run-install:
+    description: Whether to run npm ci.
+    required: false
+    default: 'true'
+  install-working-directory:
+    description: Working directory for npm ci.
+    required: false
+    default: .
+  npm-ci-args:
+    description: Extra arguments passed to npm ci.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Validate node input source
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.node-version }}" && -z "${{ inputs.node-version-file }}" ]]; then
+          echo "::error::Either node-version or node-version-file must be provided."
+          exit 1
+        fi
+        if [[ -n "${{ inputs.node-version }}" && -n "${{ inputs.node-version-file }}" ]]; then
+          echo "::error::node-version and node-version-file are mutually exclusive."
+          exit 1
+        fi
+
+    - name: Setup Node.js (version)
+      if: ${{ inputs.node-version != '' && inputs.registry-url == '' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Setup Node.js (version with registry)
+      if: ${{ inputs.node-version != '' && inputs.registry-url != '' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: ${{ inputs.registry-url }}
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Setup Node.js (version file)
+      if: ${{ inputs.node-version-file != '' && inputs.registry-url == '' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Setup Node.js (version file with registry)
+      if: ${{ inputs.node-version-file != '' && inputs.registry-url != '' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        registry-url: ${{ inputs.registry-url }}
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Install dependencies
+      if: ${{ inputs.run-install == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.install-working-directory }}
+      run: |
+        if [[ -n "${{ inputs.npm-ci-args }}" ]]; then
+          npm ci ${{ inputs.npm-ci-args }}
+        else
+          npm ci
+        fi

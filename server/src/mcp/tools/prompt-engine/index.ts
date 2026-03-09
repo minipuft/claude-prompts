@@ -11,10 +11,10 @@
 
 // Core tool exports
 export {
-  PromptExecutionService,
-  createPromptExecutionService,
-  cleanupPromptExecutionService,
-} from './core/prompt-execution-service.js';
+  PromptExecutor,
+  createPromptExecutor,
+  cleanupPromptExecutor,
+} from './core/prompt-executor.js';
 
 // Type definitions
 export type {

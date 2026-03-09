@@ -2,16 +2,16 @@
 import {
   InjectionDecisionService,
   type InjectionDecisionInput,
+  type InjectionConfig,
   type InjectionType,
   type InjectionRuntimeOverride,
-  getSessionOverrideManager,
-  isSessionOverrideManagerInitialized,
+  getSessionOverrideResolver,
+  isSessionOverrideResolverInitialized,
 } from '../decisions/injection/index.js';
 import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
 import type { ExecutionContext } from '../../context/index.js';
-import type { ExecutionContextType, InjectionConfig } from '../decisions/injection/index.js';
 
 type InjectionConfigProvider = () => InjectionConfig;
 
@@ -235,14 +235,14 @@ export class InjectionControlStage extends BasePipelineStage {
   }
 
   /**
-   * Retrieve active session overrides from the SessionOverrideManager if available.
+   * Retrieve active session overrides from the SessionOverrideResolver if available.
    */
   private getSessionOverrides(): Map<InjectionType, InjectionRuntimeOverride> | undefined {
-    if (!isSessionOverrideManagerInitialized()) {
+    if (!isSessionOverrideResolverInitialized()) {
       return undefined;
     }
 
-    const manager = getSessionOverrideManager();
+    const manager = getSessionOverrideResolver();
     return manager.getAllOverrides();
   }
 

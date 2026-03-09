@@ -1,9 +1,9 @@
 import { describe, expect, test } from '@jest/globals';
-import { TextDiffService } from '../../../../../../src/mcp/tools/resource-manager/prompt/analysis/text-diff-service.js';
+import { ObjectDiffGenerator } from '../../../../../../src/mcp/tools/resource-manager/prompt/analysis/object-diff-generator.js';
 import type { ConvertedPrompt } from '../../../../../../src/shared/types/index.js';
 
-describe('TextDiffService', () => {
-  const service = new TextDiffService();
+describe('ObjectDiffGenerator', () => {
+  const service = new ObjectDiffGenerator();
 
   // Helper to create minimal prompt for testing
   const createPrompt = (overrides: Partial<ConvertedPrompt> = {}): ConvertedPrompt => ({

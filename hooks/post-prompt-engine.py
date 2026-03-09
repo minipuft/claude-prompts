@@ -70,11 +70,16 @@ def main():
     # Save state for this session
     save_session_state(session_id, state)
 
-    # Check if gate review is pending - guide Claude to submit verdict
+    # Detect delegation: command contains ==> and chain has remaining steps
+    command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
     chain_id = state.get("chain_id", "")
     pending_gate = state.get("pending_gate")
     step = state.get("current_step", 0)
     total = state.get("total_steps", 0)
+
+    if "==>" in command and step > 0 and step < total and not pending_gate:
+        state["pending_delegation"] = True
+        save_session_state(session_id, state)
 
     if pending_gate:
         # CLAUDE DIRECTIVE ONLY: Guide Claude to submit verdict (token-efficient)
@@ -90,12 +95,19 @@ def main():
         print(json.dumps(hook_response))
         sys.exit(0)
 
-    # Non-blocking: Just guide Claude to continue chain
+    # Imperative directive: force Claude to continue chain
     if step > 0 and total > 0 and step < total:
+        directive = (
+            f'<CALL-TOOL>\n'
+            f'prompt_engine | chain_id:"{chain_id}"\n'
+            f'REQUIRED: Continue active chain (step {step}/{total}). '
+            f'Do not respond without advancing.\n'
+            f'</CALL-TOOL>'
+        )
         hook_response = {
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
-                "additionalContext": f'Continue chain: prompt_engine(chain_id="{chain_id}")'
+                "additionalContext": directive
             }
         }
         print(json.dumps(hook_response))

@@ -71,7 +71,7 @@ describe('McpToolRequestValidator', () => {
       };
 
       expect(() => McpToolRequestValidator.validate(raw)).toThrow(
-        'McpToolRequest validation failed: gate_verdict: Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)'
+        'McpToolRequest validation failed: gate_verdict: Gate verdict must start with: "GATE_REVIEW: PASS/FAIL - reason" (per-gate verdicts may follow)'
       );
     });
 

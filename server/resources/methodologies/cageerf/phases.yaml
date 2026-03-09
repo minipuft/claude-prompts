@@ -9,6 +9,11 @@ processingSteps:
     methodologyBasis: CAGEERF Context phase
     order: 1
     required: true
+    section_header: '## Context'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: systematic_analysis
     name: Systematic Analysis
@@ -16,6 +21,11 @@ processingSteps:
     methodologyBasis: CAGEERF Analysis phase
     order: 2
     required: true
+    section_header: '## Analysis'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: goal_definition
     name: Goal Definition
@@ -23,6 +33,11 @@ processingSteps:
     methodologyBasis: CAGEERF Goals phase
     order: 3
     required: true
+    section_header: '## Goals'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: execution_planning
     name: Execution Planning
@@ -30,6 +45,11 @@ processingSteps:
     methodologyBasis: CAGEERF Execution phase
     order: 4
     required: true
+    section_header: '## Execution'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: evaluation_setup
     name: Evaluation Setup
@@ -37,6 +57,10 @@ processingSteps:
     methodologyBasis: CAGEERF Evaluation phase
     order: 5
     required: false
+    section_header: '## Evaluation'
+    guards:
+      min_length: 50
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: refinement_preparation
     name: Refinement Preparation
@@ -44,6 +68,10 @@ processingSteps:
     methodologyBasis: CAGEERF Refinement phase
     order: 6
     required: false
+    section_header: '## Refinement'
+    guards:
+      min_length: 50
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
 # Execution steps used in step guidance
 executionSteps:

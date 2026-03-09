@@ -1,6 +1,5 @@
 # Case Study: Recursive Prompt Engineering
 
-> Status: narrative
 
 Built a prompt engineering tool. Used it to build itself.
 

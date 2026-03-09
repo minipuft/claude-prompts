@@ -30,7 +30,7 @@ describe('GateReviewStage', () => {
       getChainContext: jest.fn().mockReturnValue({ step_results: {} }),
     } as any;
 
-    const stage = new GateReviewStage(chainOperatorExecutor, chainSessionManager, {
+    const stage = new GateReviewStage(chainOperatorExecutor, chainSessionManager, null, {
       debug: jest.fn(),
       info: jest.fn(),
       warn: jest.fn(),
@@ -57,7 +57,6 @@ describe('GateReviewStage', () => {
     );
     expect(context.executionResults?.content).toContain('Gate review content');
     expect(context.executionResults?.metadata?.callToAction).toContain('GATE_REVIEW');
-    expect(context.state.gates.reviewCallToAction).toContain('GATE_REVIEW');
     expect(context.sessionContext?.pendingReview).toEqual(
       expect.objectContaining({
         gateIds: ['inline_gate_focus'],
@@ -74,6 +73,7 @@ describe('GateReviewStage', () => {
         getPendingGateReview: jest.fn().mockReturnValue(undefined),
         getChainContext: jest.fn(),
       } as any,
+      null,
       { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() } as any
     );
 

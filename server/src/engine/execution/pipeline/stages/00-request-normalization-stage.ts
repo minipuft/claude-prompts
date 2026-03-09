@@ -4,7 +4,7 @@ import { detectToolRoutingCommand } from '../routing/tool-routing.js';
 import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
-import type { IChainManagementService, ToolResponse } from '../../../../shared/types/index.js';
+import type { ChainSessionRouterPort, ToolResponse } from '../../../../shared/types/index.js';
 import type { ExecutionContext } from '../../context/index.js';
 
 type ToolRouter = (
@@ -27,7 +27,7 @@ export class RequestNormalizationStage extends BasePipelineStage {
   readonly name = 'RequestNormalization';
 
   constructor(
-    private readonly chainManagementService: IChainManagementService | null,
+    private readonly chainSessionRouter: ChainSessionRouterPort | null,
     private readonly toolRouter: ToolRouter | null,
     logger: Logger
   ) {
@@ -96,7 +96,11 @@ Note: When continuing a chain, the 'command' parameter is optional - the system 
     }
 
     if (command) {
-      context.state.normalization.normalizedCommand = command;
+      // Bake MCP options into the command string so the argument parser
+      // sees them as normal inline args (before validation runs)
+      context.state.normalization.normalizedCommand = context.mcpRequest.options
+        ? this.mergeOptionsIntoCommand(command, context.mcpRequest.options)
+        : command;
     } else {
       delete context.state.normalization.normalizedCommand;
     }
@@ -153,12 +157,15 @@ Note: When continuing a chain, the 'command' parameter is optional - the system 
     command: string,
     context: ExecutionContext
   ): Promise<boolean> {
-    if (!this.chainManagementService) {
+    if (!this.chainSessionRouter) {
       return false;
     }
 
     try {
-      const response = await this.chainManagementService.tryHandleCommand(command);
+      const response = await this.chainSessionRouter.tryHandleCommand(
+        command,
+        context.getScopeOptions()
+      );
       if (response) {
         context.setResponse(response);
         this.logExit({ handledBy: 'chain-management' });
@@ -198,6 +205,18 @@ Note: When continuing a chain, the 'command' parameter is optional - the system 
       context.setResponse(this.buildErrorResponse(`❌ Error: ${message}`));
       return true;
     }
+  }
+
+  private mergeOptionsIntoCommand(command: string, options: Record<string, unknown>): string {
+    const parts = [command];
+    for (const [key, value] of Object.entries(options)) {
+      // Skip keys already present as inline args (key= or key:)
+      if (new RegExp(`\\b${key}\\s*[=:]`).test(command)) continue;
+      if (value === undefined || value === null) continue;
+      const serialized = typeof value === 'string' ? `'${value}'` : String(value);
+      parts.push(`${key}:${serialized}`);
+    }
+    return parts.join(' ');
   }
 
   private buildErrorResponse(message: string): ToolResponse {

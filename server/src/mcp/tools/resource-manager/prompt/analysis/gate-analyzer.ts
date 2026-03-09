@@ -158,7 +158,7 @@ export class GateAnalyzer {
       complexity: 'high' | 'medium' | 'low';
     };
 
-    const activeFramework = this.dependencies.frameworkStateManager?.getActiveFramework()?.type;
+    const activeFramework = this.dependencies.frameworkStateStore?.getActiveFramework()?.type;
     if (activeFramework) {
       result.framework = activeFramework;
     }

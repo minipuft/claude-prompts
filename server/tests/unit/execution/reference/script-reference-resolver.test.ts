@@ -17,10 +17,10 @@ import {
   ScriptNotRegisteredError,
   InvalidFieldAccessError,
   InvalidScriptOutputError,
-  type IScriptLoader,
-  type IScriptExecutorService,
+  type ScriptLoader,
 } from '../../../../src/engine/execution/reference/index.js';
 import type { Logger } from '../../../../src/infra/logging/index.js';
+import type { ScriptExecutorPort } from '../../../../src/shared/types/index.js';
 import type { LoadedScriptTool } from '../../../../src/modules/automation/types.js';
 
 describe('ScriptReferenceResolver', () => {
@@ -50,20 +50,21 @@ describe('ScriptReferenceResolver', () => {
   // Helper to create mock script loader
   const createMockLoader = (
     scripts: Record<string, LoadedScriptTool | undefined>
-  ): IScriptLoader => ({
+  ): ScriptLoader => ({
     scriptExists: jest.fn((id: string) => scripts[id] !== undefined),
     loadScript: jest.fn((id: string) => scripts[id]),
     getSearchedPaths: jest.fn(() => ['/test/path']),
   });
 
   // Helper to create mock executor
-  const createMockExecutor = (outputs: Record<string, unknown>): IScriptExecutorService => ({
+  const createMockExecutor = (outputs: Record<string, unknown>): ScriptExecutorPort => ({
     execute: jest.fn(async (request: { toolId: string }) => ({
       success: true,
       output: outputs[request.toolId] ?? null,
       exitCode: 0,
       stdout: JSON.stringify(outputs[request.toolId] ?? {}),
       stderr: '',
+      durationMs: 1,
     })),
   });
 
@@ -196,7 +197,7 @@ describe('ScriptReferenceResolver', () => {
         stdout: '{"result":"ok"}',
         stderr: '',
       });
-      const executor: IScriptExecutorService = { execute: mockExecuteFn };
+      const executor: ScriptExecutorPort = { execute: mockExecuteFn };
       const resolver = new ScriptReferenceResolver(mockLogger, loader, executor);
 
       await resolver.preResolve("Value: {{script:analyzer key='test'}}", {
@@ -228,13 +229,14 @@ describe('ScriptReferenceResolver', () => {
     it('should throw InvalidFieldAccessError for non-existent field', async () => {
       const loader = createMockLoader({ analyzer: mockScriptTool });
       // Create executor with explicit object return to ensure correct output format
-      const executor: IScriptExecutorService = {
+      const executor: ScriptExecutorPort = {
         execute: jest.fn().mockResolvedValue({
           success: true,
           output: { count: 42 },
           exitCode: 0,
           stdout: '{"count":42}',
           stderr: '',
+          durationMs: 1,
         }),
       };
       const resolver = new ScriptReferenceResolver(mockLogger, loader, executor);
@@ -272,13 +274,14 @@ describe('ScriptReferenceResolver', () => {
         second: { ...mockScriptTool, id: 'second' },
       });
       // Create explicit mock to control output for both scripts
-      const executor: IScriptExecutorService = {
+      const executor: ScriptExecutorPort = {
         execute: jest.fn().mockImplementation(async (request: { toolId: string }) => ({
           success: true,
           output: request.toolId === 'first' ? { value: 1 } : { value: 2 },
           exitCode: 0,
           stdout: request.toolId === 'first' ? '{"value":1}' : '{"value":2}',
           stderr: '',
+          durationMs: 1,
         })),
       };
       const resolver = new ScriptReferenceResolver(mockLogger, loader, executor);

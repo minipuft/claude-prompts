@@ -1,0 +1,10 @@
+id: quick_review
+name: quick_review
+category: development
+description: >-
+  Fast review focusing on bugs and security issues.
+userMessageTemplateFile: user-message.md
+arguments:
+  - name: code
+    type: string
+    description: Code to review.

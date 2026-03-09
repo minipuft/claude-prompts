@@ -3,9 +3,9 @@
  *
  * Tests the complete resource_manager workflow with real modules:
  * - ResourceManagerRouter (real routing logic)
- * - PromptResourceService (real action handling)
- * - ConsolidatedGateManager (real action handling)
- * - ConsolidatedFrameworkManager (real action handling)
+ * - PromptResourceHandler (real action handling)
+ * - GateToolHandler (real action handling)
+ * - FrameworkToolHandler (real action handling)
  *
  * Mocks:
  * - Filesystem operations (controlled fixtures)
@@ -26,9 +26,9 @@ import type { Logger } from '../../../src/infra/logging/index.js';
 import type { ConfigManager } from '../../../src/infra/config/index.js';
 import type { FrameworkManager } from '../../../src/engine/frameworks/framework-manager.js';
 import type { ToolResponse } from '../../../src/shared/types/index.js';
-import type { PromptResourceService } from '../../../src/mcp/tools/resource-manager/prompt/index.js';
-import type { ConsolidatedGateManager } from '../../../src/mcp/tools/gate-manager/index.js';
-import type { ConsolidatedFrameworkManager } from '../../../src/mcp/tools/framework-manager/index.js';
+import type { PromptResourceHandler } from '../../../src/mcp/tools/resource-manager/prompt/index.js';
+import type { GateToolHandler } from '../../../src/mcp/tools/gate-manager/index.js';
+import type { FrameworkToolHandler } from '../../../src/mcp/tools/framework-manager/index.js';
 
 // Mock factories
 const createLogger = (): Logger => ({
@@ -39,7 +39,7 @@ const createLogger = (): Logger => ({
 });
 
 // Create mock prompt resource service that tracks actions
-const createMockPromptResourceService = (): Pick<PromptResourceService, 'handleAction'> => {
+const createMockPromptResourceHandler = (): Pick<PromptResourceHandler, 'handleAction'> => {
   const prompts = new Map<string, { id: string; name: string; category: string }>();
 
   return {
@@ -126,7 +126,7 @@ const createMockPromptResourceService = (): Pick<PromptResourceService, 'handleA
       }
     }),
     _prompts: prompts, // Expose for test assertions
-  } as unknown as PromptResourceService & { _prompts: typeof prompts };
+  } as unknown as PromptResourceHandler & { _prompts: typeof prompts };
 };
 
 // Create mock gate manager that tracks actions
@@ -206,7 +206,7 @@ const createMockGateManager = () => {
       }
     }),
     _gates: gates, // Expose for test assertions
-  } as unknown as ConsolidatedGateManager & { _gates: typeof gates };
+  } as unknown as GateToolHandler & { _gates: typeof gates };
 };
 
 // Create mock framework manager that tracks actions
@@ -310,31 +310,31 @@ const createMockFrameworkManager = () => {
     }),
     _frameworks: frameworks,
     _getActive: () => activeFramework,
-  } as unknown as ConsolidatedFrameworkManager & {
+  } as unknown as FrameworkToolHandler & {
     _frameworks: typeof frameworks;
     _getActive: () => string | null;
-  } as Pick<PromptResourceService, 'handleAction'>;
+  } as Pick<PromptResourceHandler, 'handleAction'>;
 };
 
 describe('Resource Manager Workflow Integration', () => {
   let router: ResourceManagerRouter;
   let logger: Logger;
-  let promptResourceService: ReturnType<typeof createMockPromptResourceService>;
+  let promptResourceHandler: ReturnType<typeof createMockPromptResourceHandler>;
   let gateManager: ReturnType<typeof createMockGateManager>;
   let frameworkManager: ReturnType<typeof createMockFrameworkManager>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     logger = createLogger();
-    promptResourceService = createMockPromptResourceService();
+    promptResourceHandler = createMockPromptResourceHandler();
     gateManager = createMockGateManager();
     frameworkManager = createMockFrameworkManager();
 
     router = createResourceManagerRouter({
       logger,
-      promptResourceService: promptResourceService as unknown as PromptResourceService,
-      gateManager: gateManager as unknown as ConsolidatedGateManager,
-      frameworkManager: frameworkManager as unknown as ConsolidatedFrameworkManager,
+      promptResourceHandler: promptResourceHandler as unknown as PromptResourceHandler,
+      gateManager: gateManager as unknown as GateToolHandler,
+      frameworkManager: frameworkManager as unknown as FrameworkToolHandler,
     });
   });
 
@@ -356,7 +356,7 @@ describe('Resource Manager Workflow Integration', () => {
       expect((createResult.content[0] as { text: string }).text).toContain('Created prompt');
 
       // Verify prompt exists
-      expect(promptResourceService._prompts.has('test-prompt')).toBe(true);
+      expect(promptResourceHandler._prompts.has('test-prompt')).toBe(true);
 
       // Inspect
       const inspectResult = await router.handleAction(
@@ -381,7 +381,7 @@ describe('Resource Manager Workflow Integration', () => {
         {}
       );
       expect(deleteResult.isError).toBe(false);
-      expect(promptResourceService._prompts.has('test-prompt')).toBe(false);
+      expect(promptResourceHandler._prompts.has('test-prompt')).toBe(false);
     });
 
     test('complete gate lifecycle: create → inspect → delete', async () => {
@@ -474,7 +474,7 @@ describe('Resource Manager Workflow Integration', () => {
       expect((promptSwitch.content[0] as { text: string }).text).toContain(
         'only valid for resource_type: "methodology"'
       );
-      expect(promptResourceService.handleAction).not.toHaveBeenCalled();
+      expect(promptResourceHandler.handleAction).not.toHaveBeenCalled();
 
       // Switch on gate should fail validation
       const gateSwitch = await router.handleAction(
@@ -592,7 +592,7 @@ describe('Resource Manager Workflow Integration', () => {
 
       // Prompt
       await router.handleAction({ resource_type: 'prompt', action: 'list' }, context);
-      expect(promptResourceService.handleAction).toHaveBeenCalledWith(expect.any(Object), context);
+      expect(promptResourceHandler.handleAction).toHaveBeenCalledWith(expect.any(Object), context);
 
       // Gate
       await router.handleAction({ resource_type: 'gate', action: 'list' }, context);
@@ -607,7 +607,7 @@ describe('Resource Manager Workflow Integration', () => {
   describe('Error Propagation', () => {
     test('handler errors are caught and formatted', async () => {
       // Make prompt manager throw an error
-      promptResourceService.handleAction.mockRejectedValueOnce(
+      promptResourceHandler.handleAction.mockRejectedValueOnce(
         new Error('Database connection failed')
       );
 
@@ -663,7 +663,7 @@ describe('Resource Manager Workflow Integration', () => {
       );
 
       // Verify all resources exist
-      expect(promptResourceService._prompts.has('analysis-prompt')).toBe(true);
+      expect(promptResourceHandler._prompts.has('analysis-prompt')).toBe(true);
       expect(gateManager._gates.has('quality-gate')).toBe(true);
       expect(frameworkManager._getActive()).toBe('react');
 

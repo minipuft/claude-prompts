@@ -291,7 +291,11 @@ export class SymbolicCommandParser {
     }
 
     const chainMatches = command.match(this.OPERATOR_PATTERNS.chain);
-    if (chainMatches && chainMatches.length > 0) {
+    const delegationMatches = command.match(/==>/g);
+    if (
+      (chainMatches != null && chainMatches.length > 0) ||
+      (delegationMatches != null && delegationMatches.length > 0)
+    ) {
       operatorTypes.push('chain');
       operators.push(this.parseChainOperator(command));
     }
@@ -429,32 +433,35 @@ export class SymbolicCommandParser {
     this.logger.debug(`[parseChainOperator] Original command: ${command}`);
     this.logger.debug(`[parseChainOperator] Clean command: ${cleanCommand}`);
 
-    // Use argument-aware splitting that respects quoted strings
-    const stepStrings = this.splitChainSteps(cleanCommand);
+    // Use argument-aware splitting that respects quoted strings and detects ==> delegation
+    const splitResults = this.splitChainSteps(cleanCommand);
 
-    this.logger.debug(`[parseChainOperator] Split into ${stepStrings.length} steps:`, stepStrings);
+    this.logger.debug(
+      `[parseChainOperator] Split into ${splitResults.length} steps:`,
+      splitResults.map((r) => `${r.delegated ? '==> ' : ''}${r.text}`)
+    );
 
-    const steps: ChainStep[] = stepStrings.map((stepStr, index) => {
+    const steps: ChainStep[] = splitResults.map((result, index) => {
       // Clean operators from individual steps before validation
       // This allows syntax like: @CAGEERF >>step1 --> %lean @ReACT >>step2
       // Note: Operators still apply at execution-level, not per-step
-      const cleanedStep = this.cleanStepOperators(stepStr);
+      const cleanedStep = this.cleanStepOperators(result.text);
 
       const stepMatch = cleanedStep.match(/^(?:>>)?([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/);
       if (!stepMatch) {
         this.logger.error(
-          `[parseChainOperator] Failed to match step: "${stepStr}" (cleaned: "${cleanedStep}")`
+          `[parseChainOperator] Failed to match step: "${result.text}" (cleaned: "${cleanedStep}")`
         );
-        throw new ValidationError(`Invalid chain step format: ${stepStr}`);
+        throw new ValidationError(`Invalid chain step format: ${result.text}`);
       }
 
       const promptId = stepMatch[1];
       if (!promptId) {
-        throw new ValidationError(`Invalid chain step format: missing prompt ID in ${stepStr}`);
+        throw new ValidationError(`Invalid chain step format: missing prompt ID in ${result.text}`);
       }
 
       this.logger.debug(
-        `[parseChainOperator] Step ${index + 1}: promptId="${promptId}", args="${stepMatch[2]?.trim() ?? ''}"`
+        `[parseChainOperator] Step ${index + 1}: promptId="${promptId}", args="${stepMatch[2]?.trim() ?? ''}"${result.delegated ? ' [DELEGATED]' : ''}`
       );
 
       return {
@@ -462,15 +469,21 @@ export class SymbolicCommandParser {
         args: stepMatch[2]?.trim() ?? '',
         position: index,
         variableName: `step${index + 1}_result`,
+        ...(result.delegated === true ? { delegated: true } : {}),
       };
     });
 
-    this.logger.debug(`[parseChainOperator] Final steps array length: ${steps.length}`);
+    const hasDelegation = steps.some((s) => s.delegated === true);
+
+    this.logger.debug(
+      `[parseChainOperator] Final steps array length: ${steps.length}${hasDelegation ? ' (has delegation)' : ''}`
+    );
 
     return {
       type: 'chain',
       steps,
       contextPropagation: 'automatic',
+      ...(hasDelegation ? { hasDelegation: true } : {}),
     };
   }
 
@@ -497,19 +510,23 @@ export class SymbolicCommandParser {
   }
 
   /**
-   * Split chain steps by --> delimiter while respecting quoted string boundaries
-   * Handles: >>prompt1 input="test --> quoted" --> prompt2
+   * Split chain steps by --> and ==> delimiters while respecting quoted string boundaries.
+   * Returns metadata about which delimiter preceded each step.
+   *
+   * - `-->` produces a normal step (delegated: false)
+   * - `==>` produces a delegated step (delegated: true) — executed via Task tool sub-agent
+   *
+   * Handles: >>prompt1 input="test --> quoted" --> prompt2 ==> prompt3
    */
-  private splitChainSteps(command: string): string[] {
-    const steps: string[] = [];
+  private splitChainSteps(command: string): { text: string; delegated: boolean }[] {
+    const steps: { text: string; delegated: boolean }[] = [];
     let current = '';
     let inQuotes = false;
+    let nextDelegated = false;
     let i = 0;
 
     while (i < command.length) {
       const char = command[i];
-      const next = command[i + 1];
-      const next2 = command[i + 2];
 
       // Toggle quote state (handle escaped quotes)
       if (char === '"' && (i === 0 || command[i - 1] !== '\\')) {
@@ -519,14 +536,18 @@ export class SymbolicCommandParser {
         continue;
       }
 
-      // Check for --> delimiter (only outside quotes)
-      if (!inQuotes && char === '-' && next === '-' && next2 === '>') {
-        if (current.trim()) {
-          steps.push(current.trim());
+      // Check for chain delimiters outside quotes
+      if (!inQuotes) {
+        const delimiter = this.detectChainDelimiter(command, i);
+        if (delimiter != null) {
+          if (current.trim().length > 0) {
+            steps.push({ text: current.trim(), delegated: nextDelegated });
+          }
+          nextDelegated = delimiter === 'delegation';
+          current = '';
+          i += 3;
+          continue;
         }
-        current = '';
-        i += 3; // Skip -->
-        continue;
       }
 
       current += char;
@@ -534,11 +555,25 @@ export class SymbolicCommandParser {
     }
 
     // Add final step
-    if (current.trim()) {
-      steps.push(current.trim());
+    if (current.trim().length > 0) {
+      steps.push({ text: current.trim(), delegated: nextDelegated });
     }
 
-    return steps.filter(Boolean);
+    return steps.filter((s) => s.text.length > 0);
+  }
+
+  /**
+   * Detect a chain delimiter at position i in the command string.
+   * Returns 'delegation' for ==>, 'chain' for -->, or null if no delimiter.
+   * Checks ==> before --> to prevent gate operator pattern conflict.
+   */
+  private detectChainDelimiter(command: string, i: number): 'delegation' | 'chain' | null {
+    const c0 = command[i];
+    const c1 = command[i + 1];
+    const c2 = command[i + 2];
+    if (c0 === '=' && c1 === '=' && c2 === '>') return 'delegation';
+    if (c0 === '-' && c1 === '-' && c2 === '>') return 'chain';
+    return null;
   }
 
   private parseParallelOperator(command: string): ParallelOperator {
@@ -709,6 +744,7 @@ export class SymbolicCommandParser {
           args: step.args,
           dependencies: index > 0 ? [index] : [],
           outputVariable: step.variableName,
+          ...(step.delegated === true ? { delegated: true } : {}),
         });
       });
     } else {

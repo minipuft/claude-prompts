@@ -28,7 +28,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { extname, join } from 'path';
 
-import type { IScriptExecutor } from '../../../shared/types/index.js';
+import type { ScriptExecutorPort } from '../../../shared/types/index.js';
 import type {
   LoadedScriptTool,
   ScriptExecutionRequest,
@@ -141,7 +141,7 @@ const EXTENSION_TO_RUNTIME: Record<string, string> = {
  * }
  * ```
  */
-export class ScriptExecutor implements IScriptExecutor {
+export class ScriptExecutor implements ScriptExecutorPort {
   private readonly defaultTimeout: number;
   private readonly maxTimeout: number;
   private readonly debug: boolean;

@@ -21,7 +21,7 @@ describe('Shell Verification Isolation', () => {
   beforeEach(async () => {
     // Create temp directory for test state files
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ralph-test-'));
-    verifyActiveFile = path.join(tempDir, 'verify-active.json');
+    verifyActiveFile = path.join(tempDir, 'verify-state.json');
   });
 
   afterEach(async () => {

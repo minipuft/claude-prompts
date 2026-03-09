@@ -1,0 +1,86 @@
+name: Extract Version
+description: Extracts a semantic version from event context with optional fallback and suffix behavior.
+
+inputs:
+  event-name:
+    description: GitHub event name.
+    required: true
+  workflow-run-head-branch:
+    description: Head branch for workflow_run events.
+    required: false
+    default: ''
+  dispatch-version:
+    description: User-provided version for workflow_dispatch events.
+    required: false
+    default: ''
+  release-tag:
+    description: Release tag name for release events.
+    required: false
+    default: ''
+  package-json-path:
+    description: Path to package.json used for fallback version reads.
+    required: false
+    default: ./server/package.json
+  append-pr-suffix:
+    description: Append -pr when event is pull_request.
+    required: false
+    default: 'false'
+  require-tag:
+    description: Fail if provided release tag does not match tag-pattern.
+    required: false
+    default: 'false'
+  tag-pattern:
+    description: Regex with capture group for extracting version from tag/branch.
+    required: false
+    default: '^v([0-9]+\.[0-9]+\.[0-9]+)$'
+
+outputs:
+  version:
+    description: Extracted version string.
+    value: ${{ steps.extract.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Extract version from event context
+      id: extract
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        event_name='${{ inputs.event-name }}'
+        branch='${{ inputs.workflow-run-head-branch }}'
+        dispatch_version='${{ inputs.dispatch-version }}'
+        release_tag='${{ inputs.release-tag }}'
+        package_json_path='${{ inputs.package-json-path }}'
+        tag_pattern='${{ inputs.tag-pattern }}'
+        append_pr_suffix='${{ inputs.append-pr-suffix }}'
+        require_tag='${{ inputs.require-tag }}'
+
+        version=''
+
+        if [[ "$event_name" == "workflow_dispatch" && -n "$dispatch_version" ]]; then
+          version="$dispatch_version"
+        elif [[ "$event_name" == "release" && -n "$release_tag" ]]; then
+          if [[ "$release_tag" =~ $tag_pattern ]]; then
+            version="${BASH_REMATCH[1]}"
+          elif [[ "$require_tag" == "true" ]]; then
+            echo "::error::Unexpected tag format: $release_tag"
+            exit 1
+          fi
+        elif [[ "$event_name" == "workflow_run" && -n "$branch" ]]; then
+          if [[ "$branch" =~ $tag_pattern ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
+        fi
+
+        if [[ -z "$version" ]]; then
+          version="$(node -p "require('${package_json_path}').version")"
+        fi
+
+        if [[ "$append_pr_suffix" == "true" && "$event_name" == "pull_request" ]]; then
+          version="${version}-pr"
+        fi
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "Resolved version: $version"

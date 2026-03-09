@@ -22,9 +22,12 @@ arguments:
     required: false
 gateConfiguration:
   include:
-    - research-quality
+    - intent-quality
   inline:
-    - Intent Declaration includes Work Type
+    - Intent Declaration includes Work Type and Secondary Type
     - Scope identifies at least one file or system
+    - Source Spec is declared (none or reference)
+    - Acceptance Criteria extracted when Source Spec exists
     - Problem Statement follows Current → Desired format
-    - Next Phase is specified and matches Work Type routing rules
+    - Next Phase matches Work Type routing rules
+    - Compound routing applied when secondary type is declared

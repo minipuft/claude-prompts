@@ -23,7 +23,7 @@ import {
 
 import type {
   GateDefinitionYaml,
-  IGateGuide,
+  GateGuide,
   GateSource,
   GateGuideEntry,
   GateRegistryStats,
@@ -36,7 +36,7 @@ export interface GateRegistryConfig {
   /** Whether to auto-load built-in gates on initialization */
   autoLoadBuiltIn: boolean;
   /** Custom gate guides to load */
-  customGuides?: IGateGuide[];
+  customGuides?: GateGuide[];
   /** Whether to validate guides on registration */
   validateOnRegistration: boolean;
   /** Configuration for the gate definition loader */
@@ -127,7 +127,7 @@ export class GateRegistry {
    * @returns true if registration succeeded
    */
   async registerGuide(
-    guide: IGateGuide,
+    guide: GateGuide,
     isBuiltIn: boolean = false,
     source: GateSource = 'custom'
   ): Promise<boolean> {
@@ -180,7 +180,7 @@ export class GateRegistry {
    * @param gateId - The gate ID (case-insensitive)
    * @returns The guide or undefined if not found/disabled
    */
-  getGuide(gateId: string): IGateGuide | undefined {
+  getGuide(gateId: string): GateGuide | undefined {
     const normalizedId = gateId.toLowerCase();
     const entry = this.guides.get(normalizedId);
 
@@ -205,8 +205,8 @@ export class GateRegistry {
    * @param enabledOnly - If true, only return enabled guides
    * @returns Array of gate guides
    */
-  getAllGuides(enabledOnly: boolean = true): IGateGuide[] {
-    const guides: IGateGuide[] = [];
+  getAllGuides(enabledOnly: boolean = true): GateGuide[] {
+    const guides: GateGuide[] = [];
 
     for (const entry of this.guides.values()) {
       if (!enabledOnly || entry.enabled) {
@@ -413,7 +413,7 @@ export class GateRegistry {
   /**
    * Load custom guides provided in config
    */
-  private async loadCustomGuides(guides: IGateGuide[]): Promise<void> {
+  private async loadCustomGuides(guides: GateGuide[]): Promise<void> {
     for (const guide of guides) {
       await this.registerGuide(guide, false, 'custom');
     }
@@ -422,7 +422,7 @@ export class GateRegistry {
   /**
    * Validate a gate guide
    */
-  private validateGuide(guide: IGateGuide): { valid: boolean; errors: string[] } {
+  private validateGuide(guide: GateGuide): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     // Check required properties
@@ -443,7 +443,7 @@ export class GateRegistry {
     if (typeof guide.isActive !== 'function') {
       errors.push('isActive() method is required');
     }
-    // Note: validate() method was removed from IGateGuide - use GateValidator instead
+    // Note: validate() method was removed from GateGuide - use GateValidator instead
 
     return { valid: errors.length === 0, errors };
   }

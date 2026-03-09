@@ -3,12 +3,12 @@
  * Framework Manager
  *
  * Orchestration layer for the framework system.
- * Extends BaseResourceManager to provide unified resource management patterns.
+ * Extends BaseResourceHandler to provide unified resource management patterns.
  *
  * Coordinates between:
  * - MethodologyRegistry: Manages methodology guides (source of truth)
  * - FrameworkDefinitions: Generated from methodology guides
- * - FrameworkStateManager: Runtime enable/disable state
+ * - FrameworkStateStore: Runtime enable/disable state
  */
 
 import { MethodologyRegistry, createMethodologyRegistry } from './methodology/index.js';
@@ -17,15 +17,15 @@ import {
   FrameworkExecutionContext,
   FrameworkMethodology,
   FrameworkSelectionCriteria,
-  IMethodologyGuide,
+  MethodologyGuide,
 } from './types/index.js';
 import { Logger } from '../../infra/logging/index.js';
-import { BaseResourceManager } from '../../shared/core/resource-manager/index.js';
+import { BaseResourceHandler } from '../../shared/core/resource-manager/index.js';
 
 import type { ConvertedPrompt } from '../execution/types.js';
 
 /**
- * Framework switch request (matches FrameworkStateManager interface)
+ * Framework switch request (matches FrameworkStateStore interface)
  */
 interface FrameworkSwitchRequest {
   targetFramework: string;
@@ -92,7 +92,7 @@ export interface FrameworkEntry {
  * const context = manager.generateExecutionContext(prompt);
  * ```
  */
-export class FrameworkManager extends BaseResourceManager<
+export class FrameworkManager extends BaseResourceHandler<
   FrameworkDefinition,
   FrameworkEntry,
   FrameworkManagerConfig,
@@ -101,7 +101,7 @@ export class FrameworkManager extends BaseResourceManager<
   private frameworks: Map<string, FrameworkDefinition> = new Map();
   private methodologyRegistry: MethodologyRegistry | null = null;
   private defaultFramework: string = 'CAGEERF';
-  private frameworkStateManager?: FrameworkStateAccessor;
+  private frameworkStateStore?: FrameworkStateAccessor;
 
   constructor(logger: Logger, config: FrameworkManagerConfig = {}) {
     super(logger, config);
@@ -111,7 +111,7 @@ export class FrameworkManager extends BaseResourceManager<
   }
 
   // ============================================================================
-  // BaseResourceManager Abstract Method Implementations
+  // BaseResourceHandler Abstract Method Implementations
   // ============================================================================
 
   protected get managerName(): string {
@@ -224,8 +224,8 @@ export class FrameworkManager extends BaseResourceManager<
     const enabled = frameworks.filter((f) => f.enabled);
 
     let activeFramework: string | null = null;
-    if (this.frameworkStateManager?.isFrameworkSystemEnabled()) {
-      const active = this.frameworkStateManager.getActiveFramework();
+    if (this.frameworkStateStore?.isFrameworkSystemEnabled()) {
+      const active = this.frameworkStateStore.getActiveFramework();
       if (active) activeFramework = active.type;
     }
 
@@ -238,8 +238,8 @@ export class FrameworkManager extends BaseResourceManager<
   }
 
   protected override isSystemEnabled(): boolean {
-    if (!this.frameworkStateManager) return true;
-    return this.frameworkStateManager.isFrameworkSystemEnabled();
+    if (!this.frameworkStateStore) return true;
+    return this.frameworkStateStore.isFrameworkSystemEnabled();
   }
 
   // ============================================================================
@@ -249,14 +249,14 @@ export class FrameworkManager extends BaseResourceManager<
   /**
    * Set the framework state manager for synchronization
    */
-  setFrameworkStateManager(frameworkStateManager: FrameworkStateAccessor): void {
-    this.frameworkStateManager = frameworkStateManager;
+  setFrameworkStateStore(frameworkStateStore: FrameworkStateAccessor): void {
+    this.frameworkStateStore = frameworkStateStore;
     this.logger.debug('Framework State Manager synchronized with Framework Manager');
   }
 
   /**
    * Switch to a new framework. Single authority for framework switching.
-   * Handles normalization, validation, and delegates persistence to FrameworkStateManager.
+   * Handles normalization, validation, and delegates persistence to FrameworkStateStore.
    *
    * @param frameworkId - Framework identifier (case-insensitive)
    * @param reason - Optional reason for the switch
@@ -288,12 +288,12 @@ export class FrameworkManager extends BaseResourceManager<
     }
 
     // 3. Delegate persistence to state manager
-    if (!this.frameworkStateManager) {
+    if (!this.frameworkStateStore) {
       return { success: false, error: 'Framework state manager not initialized' };
     }
 
     try {
-      const success = await this.frameworkStateManager.switchFramework({
+      const success = await this.frameworkStateStore.switchFramework({
         targetFramework: normalizedId,
         reason: reason || `Switched to ${framework.name}`,
       });
@@ -331,8 +331,8 @@ export class FrameworkManager extends BaseResourceManager<
     }
 
     // Check state manager for active framework
-    if (this.frameworkStateManager?.isFrameworkSystemEnabled()) {
-      const activeFramework = this.frameworkStateManager.getActiveFramework();
+    if (this.frameworkStateStore?.isFrameworkSystemEnabled()) {
+      const activeFramework = this.frameworkStateStore.getActiveFramework();
       if (activeFramework) {
         const framework = this.getFramework(activeFramework.type);
         if (framework?.enabled) {
@@ -458,7 +458,7 @@ export class FrameworkManager extends BaseResourceManager<
   /**
    * Get methodology guide by framework ID
    */
-  getMethodologyGuide(frameworkId: string): IMethodologyGuide | undefined {
+  getMethodologyGuide(frameworkId: string): MethodologyGuide | undefined {
     this.ensureInitialized();
     return this.methodologyRegistry!.getGuide(frameworkId.toLowerCase());
   }
@@ -466,7 +466,7 @@ export class FrameworkManager extends BaseResourceManager<
   /**
    * List available methodology guides
    */
-  listMethodologyGuides(): IMethodologyGuide[] {
+  listMethodologyGuides(): MethodologyGuide[] {
     this.ensureInitialized();
     return this.methodologyRegistry!.getAllGuides(true);
   }
@@ -574,7 +574,7 @@ export class FrameworkManager extends BaseResourceManager<
   /**
    * Generate a single framework definition from a methodology guide
    */
-  private generateSingleFrameworkDefinition(guide: IMethodologyGuide): FrameworkDefinition | null {
+  private generateSingleFrameworkDefinition(guide: MethodologyGuide): FrameworkDefinition | null {
     try {
       const systemPromptTemplate = this.generateSystemPromptTemplate(guide);
 
@@ -599,7 +599,7 @@ export class FrameworkManager extends BaseResourceManager<
   /**
    * Generate system prompt template wrapper
    */
-  private generateSystemPromptTemplate(guide: IMethodologyGuide): string {
+  private generateSystemPromptTemplate(guide: MethodologyGuide): string {
     return `You are operating under the ${guide.frameworkName} methodology for {PROMPT_NAME}.
 
 {METHODOLOGY_GUIDANCE}
@@ -610,7 +610,7 @@ Apply this methodology systematically to ensure comprehensive and structured res
   /**
    * Get framework description
    */
-  private getFrameworkDescription(guide: IMethodologyGuide): string {
+  private getFrameworkDescription(guide: MethodologyGuide): string {
     switch (guide.type) {
       case 'CAGEERF':
         return 'Comprehensive structured approach: Context, Analysis, Goals, Execution, Evaluation, Refinement, Framework';
@@ -628,7 +628,7 @@ Apply this methodology systematically to ensure comprehensive and structured res
   /**
    * Get execution guidelines from methodology guide
    */
-  private getExecutionGuidelines(guide: IMethodologyGuide): string[] {
+  private getExecutionGuidelines(guide: MethodologyGuide): string[] {
     const processingGuidance = guide.guideTemplateProcessing('', 'single');
     return processingGuidance.templateEnhancements.systemPromptAdditions;
   }
@@ -636,7 +636,7 @@ Apply this methodology systematically to ensure comprehensive and structured res
   /**
    * Get applicable types for framework
    */
-  private getApplicableTypes(guide: IMethodologyGuide): string[] {
+  private getApplicableTypes(guide: MethodologyGuide): string[] {
     switch (guide.type) {
       case 'CAGEERF':
         return ['chain', 'template'];
@@ -654,7 +654,7 @@ Apply this methodology systematically to ensure comprehensive and structured res
   /**
    * Get framework priority
    */
-  private getFrameworkPriority(guide: IMethodologyGuide): number {
+  private getFrameworkPriority(guide: MethodologyGuide): number {
     switch (guide.type) {
       case 'CAGEERF':
         return 10;

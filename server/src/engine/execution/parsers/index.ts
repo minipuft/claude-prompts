@@ -30,6 +30,15 @@ export {
   type PromptSchemaOverrides,
 } from './argument-schema.js';
 
+// Domain services extracted from pipeline stages
+export { ChainBlueprintResolver } from './chain-blueprint-resolver.js';
+export {
+  SymbolicCommandBuilder,
+  type PromptLookup,
+  type CollectedGateCriteria,
+  type CollectedNamedGate,
+} from './symbolic-command-builder.js';
+
 // Context resolution system
 export {
   ContextResolver,

@@ -1,6 +1,6 @@
-// @lifecycle canonical - Consolidated checkpoint manager for MCP.
+// @lifecycle canonical - Checkpoint tool handler for MCP.
 /**
- * Consolidated Checkpoint Manager
+ * Checkpoint Tool Handler
  *
  * Provides MCP tool interface for git-based checkpoint management.
  * Wraps GitCheckpoint from gates/shell for resource_manager integration.
@@ -41,9 +41,9 @@ function createDefaultState(): CheckpointState {
 }
 
 /**
- * Consolidated Checkpoint Manager
+ * Checkpoint Tool Handler
  */
-export class ConsolidatedCheckpointManager {
+export class CheckpointToolHandler {
   private readonly logger: Logger;
   private readonly configManager: ConfigManager;
   private readonly gitCheckpoint: GitCheckpoint;
@@ -55,7 +55,7 @@ export class ConsolidatedCheckpointManager {
     // Use server root as workspace directory for git operations
     this.gitCheckpoint = createGitCheckpoint(deps.logger, deps.configManager.getServerRoot());
 
-    this.logger.debug('ConsolidatedCheckpointManager initialized');
+    this.logger.debug('CheckpointToolHandler initialized');
   }
 
   /**
@@ -379,8 +379,8 @@ export class ConsolidatedCheckpointManager {
 /**
  * Create consolidated checkpoint manager
  */
-export function createConsolidatedCheckpointManager(
+export function createCheckpointToolHandler(
   deps: CheckpointManagerDependencies
-): ConsolidatedCheckpointManager {
-  return new ConsolidatedCheckpointManager(deps);
+): CheckpointToolHandler {
+  return new CheckpointToolHandler(deps);
 }

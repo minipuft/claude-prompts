@@ -41,7 +41,7 @@ describe('ResponseCaptureStage Hook Emission', () => {
       getPendingGateReview: jest.fn(),
       isRetryLimitExceeded: jest.fn(),
       recordGateReviewOutcome: jest.fn(),
-      advanceStep: jest.fn(),
+      advanceStep: jest.fn().mockResolvedValue(2),
       clearPendingGateReview: jest.fn(),
       resetRetryCount: jest.fn(),
       updateSessionState: jest.fn(),

@@ -147,6 +147,11 @@ jobs:
         run: npm run test:ci
         timeout-minutes: 15
 
+      - name: Coverage threshold check
+        if: matrix.node == '22.x'
+        run: npm run test:coverage
+        timeout-minutes: 15
+
       - name: E2E tests
         run: npm run test:e2e
 

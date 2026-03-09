@@ -197,6 +197,18 @@ export interface ProcessingStep {
   methodologyBasis: string;
   order: number;
   required: boolean;
+  /** Section header for detection (e.g., "## Context") */
+  section_header?: string;
+  /** Deterministic phase guards evaluated against the section under this header */
+  guards?: {
+    required?: boolean;
+    min_length?: number;
+    max_length?: number;
+    contains_any?: string[];
+    contains_all?: string[];
+    matches_pattern?: string;
+    forbidden_terms?: string[];
+  };
 }
 
 export interface ExecutionStep {
@@ -272,7 +284,7 @@ export interface MethodologyValidation {
  * Main interface for methodology guides
  * Framework adapters implement this to provide guidance rather than analysis
  */
-export interface IMethodologyGuide {
+export interface MethodologyGuide {
   // Framework identification
   readonly frameworkId: string;
   readonly frameworkName: string;
@@ -356,7 +368,7 @@ export interface IMethodologyGuide {
  * Base class for methodology guides
  * Provides common functionality for all methodology implementations
  */
-export abstract class BaseMethodologyGuide implements IMethodologyGuide {
+export abstract class BaseMethodologyGuide implements MethodologyGuide {
   abstract readonly frameworkId: string;
   abstract readonly frameworkName: string;
   /** The framework type discriminator */

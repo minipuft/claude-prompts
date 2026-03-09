@@ -25,6 +25,12 @@ export interface ChainStepPrompt {
   outputMapping?: Record<string, string>;
   /** Number of retry attempts on failure (default: 0) */
   retries?: number;
+  /** True if this step should be delegated to a sub-agent via Task tool */
+  delegated?: boolean;
+  /** Override agent type for delegation (default: 'chain-executor') */
+  agentType?: string;
+  /** Capability hint for delegation model selection (step-level override) */
+  subagentModel?: 'heavy' | 'standard' | 'fast';
 }
 
 /**
@@ -80,4 +86,6 @@ export interface ChainStepRenderResult {
   promptName: string;
   content: string;
   callToAction: string;
+  /** True when the next step in the chain is delegated to a sub-agent */
+  nextStepDelegated?: boolean;
 }

@@ -2,7 +2,7 @@
 import { CompositionalGateService } from './compositional-gate-service.js';
 
 import type {
-  IGateService,
+  GateService,
   GateEnhancementResult,
   GateServiceConfig,
   GateValidationResult,
@@ -26,7 +26,7 @@ const DEFAULT_SEMANTIC_CONFIG: GateServiceConfig = {
 /**
  * Semantic Gate Service - Template rendering + server-side validation (future work)
  */
-export class SemanticGateService implements IGateService {
+export class SemanticGateService implements GateService {
   readonly serviceType = 'semantic' as const;
   private readonly logger: Logger;
   private readonly gateValidator: GateValidator;

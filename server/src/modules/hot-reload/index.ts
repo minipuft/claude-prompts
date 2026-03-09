@@ -6,8 +6,8 @@
  * Serves all resource types: prompts, methodologies, gates, styles, scripts.
  *
  * Architecture:
- *   FileObserver (chokidar) ──events──▶ HotReloadManager ──callbacks──▶ Domain handlers
+ *   FileObserver (chokidar) ──events──▶ HotReloadObserver ──callbacks──▶ Domain handlers
  */
 
 export * from './file-observer.js';
-export * from './hot-reload-manager.js';
+export * from './hot-reload-observer.js';

@@ -8,6 +8,11 @@ processingSteps:
     methodologyBasis: ReACT Reasoning phase
     order: 1
     required: true
+    section_header: '## Reasoning'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: action_planning
     name: Action Planning
@@ -15,6 +20,11 @@ processingSteps:
     methodologyBasis: ReACT Action phase
     order: 2
     required: true
+    section_header: '## Action'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: action_execution
     name: Action Execution
@@ -29,6 +39,11 @@ processingSteps:
     methodologyBasis: ReACT Observe phase
     order: 4
     required: true
+    section_header: '## Observation'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: reasoning_adjustment
     name: Reasoning Adjustment

@@ -20,7 +20,7 @@ import {
 } from './core/index.js';
 import { isGateActiveForContext } from '../../engine/gates/utils/gate-activation.js';
 
-import type { IStyleManager, Logger } from '../../shared/types/index.js';
+import type { StyleManagerPort, Logger } from '../../shared/types/index.js';
 
 /**
  * Configuration for StyleManager
@@ -63,7 +63,7 @@ export interface StyleActivationContext {
  * const styles = manager.listStyles();
  * ```
  */
-export class StyleManager implements IStyleManager {
+export class StyleManager implements StyleManagerPort {
   private loader: StyleDefinitionLoader | null = null;
   private logger: Logger;
   private config: Required<StyleManagerConfig>;

@@ -1,6 +1,5 @@
 # Chain Schema Reference
 
-> Status: canonical
 
 Configuration reference for `chainSteps` in `prompt.yaml`.
 
@@ -25,6 +24,19 @@ A chain is a list of steps defined in `chainSteps`.
 | `inputMapping` | `object` | No | Maps previous outputs to this step's arguments. |
 | `outputMapping` | `object` | No | Renames this step's output for downstream use. |
 | `retries` | `number` | No | Retry attempts on failure (default 0). |
+| `subagentModel` | `enum` | No | Model tier for delegation: `heavy`, `standard`, `fast`. Overrides prompt-level hint. |
+
+### Subagent Model
+
+Controls which model tier a delegated step uses. The hint is client-agnostic — each delegation strategy maps it to the appropriate model:
+
+| Hint | Claude Code | Codex | Others |
+|------|-------------|-------|--------|
+| `heavy` | opus | codex-high | Client decides |
+| `standard` | sonnet | codex-standard | Client decides |
+| `fast` | haiku | codex-fast | Client decides |
+
+**Resolution priority**: step-level `subagentModel` > prompt-level `subagentModel` > strategy default.
 
 ### Example
 
@@ -33,11 +45,12 @@ chainSteps:
   - promptId: fetch_data
     stepName: "Fetch (1/2)"
     retries: 2
-  
+    subagentModel: fast          # lightweight model for data fetching
+
   - promptId: summarize_data
     stepName: "Summarize (2/2)"
+    subagentModel: heavy  # heavy model for synthesis
     inputMapping:
-      # prompt arg : source value
       content: steps.Fetch (1/2).result
 ```
 

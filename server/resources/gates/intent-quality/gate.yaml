@@ -2,18 +2,28 @@ id: intent-quality
 name: Intent Declaration Quality
 type: validation
 description: >-
-  Validates that Intent Declaration is complete and properly formatted for
-  workflow routing
+  Validates that Intent Declaration is complete, properly formatted for
+  workflow routing, and extracts acceptance criteria when a source spec exists
 guidanceFile: guidance.md
 pass_criteria:
   - required_patterns:
       - 'Work Type is one of: bug_fix, feature, refactor, explore, optimize'
+  - required_patterns:
+      - 'Secondary Type is declared: none or a valid work type'
   - required_patterns:
       - 'Confidence level is specified: high, medium, or low'
   - required_patterns:
       - Scope includes at least one specific file path or system name
   - required_patterns:
       - 'Risk level is assessed: low, medium, or high'
+  - required_patterns:
+      - 'External Dependencies declared: none or lib@version'
+  - required_patterns:
+      - 'Source Spec declared: none or reference to spec/ticket/plan'
+  - required_patterns:
+      - >-
+        Acceptance Criteria extracted when Source Spec exists, each with
+        observable behavior and verification method
   - required_patterns:
       - Problem Statement follows 'Current state → Desired state' format
   - required_patterns:

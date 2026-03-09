@@ -63,7 +63,7 @@ export interface ReviewContext {
 /**
  * Persisted Argument History Format
  *
- * File format for runtime-state/argument-history.json
+ * Stored in SQLite `argument_history` table via SqliteStateStore.
  */
 export interface PersistedArgumentHistory {
   /** Version for future compatibility */

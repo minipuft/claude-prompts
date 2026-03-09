@@ -26,6 +26,17 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
+  // Coverage ratchet: floor thresholds to prevent regression.
+  // Baseline measured 2026-02-24: stmts 37.8%, branches 31.5%, funcs 42.0%, lines 38.3%
+  // Target: 80% (see plans/techincal_debt/test-modernization-roadmap.md)
+  coverageThreshold: {
+    global: {
+      statements: 35,
+      branches: 29,
+      functions: 40,
+      lines: 36
+    }
+  },
   testTimeout: 30000,
   verbose: true,
   maxWorkers: 1,
@@ -39,7 +50,9 @@ module.exports = {
     '^@modules/(.*)$': '<rootDir>/src/modules/$1',
     '^@mcp/(.*)$': '<rootDir>/src/mcp/$1',
     '^(?:\\.{1,2}/)+dist/(.*)\\.js$': '<rootDir>/src/$1',
-    '^(\\.{1,2}/.*)\\.js$': '$1'
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    // node:sqlite is a native Node.js built-in (>=22); shim for Jest's module resolver
+    '^node:sqlite$': '<rootDir>/tests/helpers/node-sqlite-shim.cjs'
   },
   // Transform ES modules from node_modules if needed
   transformIgnorePatterns: [

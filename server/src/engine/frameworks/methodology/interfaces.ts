@@ -11,7 +11,7 @@
 export type {
   ArgumentGuidance,
   ExecutionStep,
-  IMethodologyGuide,
+  MethodologyGuide,
   JudgePromptDefinition,
   MethodologyEnhancement,
   MethodologyToolDescription,

@@ -31,5 +31,4 @@ activation:
     - education
     - documentation
     - content_processing
-    - development
   explicit_request: false

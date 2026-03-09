@@ -1,15 +1,18 @@
 """
 Session state manager for Claude Code hooks.
-Tracks chain/gate state per conversation session.
-
-Uses workspace resolution (MCP_WORKSPACE > CLAUDE_PLUGIN_ROOT > development fallback).
+Tracks chain/gate state per conversation session via SQLite (hooks-state.db).
 """
 
-import json
-from pathlib import Path
+import re
 from typing import TypedDict
 
-from workspace import get_cache_dir
+from hook_state_store import (
+    TABLE_CHAIN_SESSION_STATE,
+    load_state,
+    save_state,
+    delete_state,
+    cleanup_stale_rows,
+)
 
 
 class ChainState(TypedDict):
@@ -24,57 +27,39 @@ class ChainState(TypedDict):
     shell_verify_attempts: int        # Current attempt count
 
 
-def _get_session_state_dir() -> Path:
-    """
-    Get session state directory using workspace resolution.
-
-    Priority:
-      1. MCP_WORKSPACE/server/cache/sessions
-      2. CLAUDE_PLUGIN_ROOT/server/cache/sessions
-      3. Development fallback (relative to this script)
-    """
-    dev_fallback = Path(__file__).parent.parent.parent / "server" / "cache"
-    cache_dir = get_cache_dir(dev_fallback)
-    return cache_dir / "sessions"
-
-
-SESSION_STATE_DIR = _get_session_state_dir()
-
-
-def get_session_state_path(session_id: str) -> Path:
-    """Get path to session state file."""
-    SESSION_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    return SESSION_STATE_DIR / f"{session_id}.json"
-
-
 def load_session_state(session_id: str) -> ChainState | None:
-    """Load chain state for a session."""
-    state_path = get_session_state_path(session_id)
-    if not state_path.exists():
-        return None
-
-    try:
-        with open(state_path) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
+    """Load chain state for a session from SQLite."""
+    return load_state(TABLE_CHAIN_SESSION_STATE, session_id)
 
 
 def save_session_state(session_id: str, state: ChainState) -> None:
-    """Save chain state for a session."""
-    state_path = get_session_state_path(session_id)
-    try:
-        with open(state_path, "w") as f:
-            json.dump(state, f, indent=2)
-    except IOError:
-        pass
+    """Save chain state for a session to SQLite."""
+    save_state(TABLE_CHAIN_SESSION_STATE, session_id, state)
 
 
 def clear_session_state(session_id: str) -> None:
     """Clear chain state when chain completes."""
-    state_path = get_session_state_path(session_id)
-    if state_path.exists():
-        state_path.unlink()
+    delete_state(TABLE_CHAIN_SESSION_STATE, session_id)
+
+
+def cleanup_old_sessions(max_age_hours: int = 24) -> int:
+    """Delete session rows older than max_age. Returns count deleted."""
+    return cleanup_stale_rows(max_age_hours)
+
+
+def clear_delegation_state(session_id: str) -> None:
+    """Clear delegation-specific fields from session state.
+
+    Sets pending_delegation to False (not removed) so callers can check
+    state["pending_delegation"] without KeyError.
+    """
+    state = load_session_state(session_id)
+    if not state:
+        return
+    state["pending_delegation"] = False
+    state.pop("delegation_agent_type", None)
+    state.pop("delegation_model_hint", None)
+    save_session_state(session_id, state)
 
 
 def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
@@ -103,30 +88,44 @@ def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
         "shell_verify_attempts": 0
     }
 
-    import re
-
-    # Detect step indicators: "Step 1 of 3", "step 2/4", "Progress 1/2", etc.
-    step_match = re.search(r'(?:[Ss]tep|[Pp]rogress)\s+(\d+)\s*(?:of|/)\s*(\d+)', content)
+    # Detect step indicators: "Step 1 of 3", "step 2/4", "Progress 1/2",
+    # "Chain complete (2/2)", "complete (2/2)", etc.
+    step_match = re.search(r'(?:[Ss]tep|[Pp]rogress|[Cc]omplete)\s*\(?(\d+)\s*(?:of|/)\s*(\d+)', content)
     if step_match:
         state["current_step"] = int(step_match.group(1))
         state["total_steps"] = int(step_match.group(2))
 
-    # Detect chain_id from resume token pattern (capture full ID including prefix)
-    chain_match = re.search(r'(chain[-_][a-zA-Z0-9_#-]+)', content)
+    # Detect chain_id from resume token pattern: "chain-<name>#<run>"
+    # Must start with "chain-" (hyphen) to avoid matching literal "chain_id" parameter names
+    chain_match = re.search(r'(chain-[a-zA-Z0-9_#-]+)', content)
     if chain_match:
         state["chain_id"] = chain_match.group(1)
 
-    # Detect gate review required (new server format from 11-call-to-action-stage.ts)
-    # Format: ⚠️ **Gate Review Required** (attempt X/Y)
-    #         **Gates**: gate-id-1, gate-id-2
-    gate_review_match = re.search(r'\*\*Gate Review Required\*\*', content)
+    # Detect gate/structural review required (from response-assembler.ts)
+    # Variants:
+    #   **Review Required**                          (current server format)
+    #   **Gate Review Required** (attempt X/Y)       (legacy)
+    #   **Structural Review Required** (attempt X/Y) (legacy)
+    #   **Structural + Gate Review Required**        (legacy)
+    # Followed by: **Gates**: gate-id-1, gate-id-2
+    gate_review_match = re.search(
+        r'\*\*(?:Structural \+ Gate |Structural |Gate )?Review Required\*\*', content
+    )
     gates_list_match = re.search(r'\*\*Gates\*\*:\s*(.+?)(?:\n|$)', content)
 
     if gate_review_match or gates_list_match:
-        # Extract gate IDs from new format: **Gates**: id1, id2
+        # Extract gate IDs from **Gates**: id1, id2
         if gates_list_match:
             gates_str = gates_list_match.group(1).strip()
             state["pending_gate"] = gates_str  # Store comma-separated gate IDs
+
+        # Fallback: extract gate names from GATE_VERDICTS template in CTA
+        if not state["pending_gate"]:
+            verdicts_match = re.search(r'GATE_VERDICTS:\s*\n((?:\[\d+\].*\n?)+)', content)
+            if verdicts_match:
+                gate_labels = re.findall(r'\[\d+\]\s*(?:PASS|FAIL)\s*-\s*([^:]+)', verdicts_match.group(1))
+                if gate_labels:
+                    state["pending_gate"] = ", ".join(g.strip() for g in gate_labels)
 
         # Extract attempt info: (attempt X/Y)
         attempt_match = re.search(r'\(attempt\s+(\d+)/(\d+)\)', content)
@@ -167,7 +166,7 @@ def format_chain_reminder(state: ChainState, mode: str = "full") -> str:
 
     Args:
         state: Chain state to format
-        mode: "full" for PreCompact (multi-line), "inline" for prompt-suggest (two-line)
+        mode: "full" for compact-recovery (multi-line), "inline" for prompt-suggest (two-line)
     """
     chain_id = state.get("chain_id", "")
     step = state["current_step"]
@@ -200,7 +199,7 @@ def format_chain_reminder(state: ChainState, mode: str = "full") -> str:
 
         return f"{line1}\n{line2}".strip() if line1 else ""
 
-    # Full format for PreCompact (preserves context across compaction)
+    # Full format for compact-recovery SessionStart hook (preserves context across compaction)
     lines = []
     if step > 0:
         if chain_id:

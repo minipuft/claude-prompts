@@ -37,7 +37,7 @@
 
 // Core resolver
 export { PromptReferenceResolver } from './prompt-reference-resolver.js';
-export type { IToolDetectionService, IScriptExecutor } from './prompt-reference-resolver.js';
+export type { ToolDetectionServicePort, ScriptExecutorPort } from '../../../shared/types/index.js';
 
 // Creation-time validator
 export { PromptReferenceValidator } from './prompt-reference-validator.js';
@@ -74,7 +74,7 @@ export {
 
 // Core script resolver
 export { ScriptReferenceResolver } from './script-reference-resolver.js';
-export type { IScriptLoader, IScriptExecutorService } from './script-reference-resolver.js';
+export type { ScriptLoader } from './script-reference-resolver.js';
 
 // Script reference types
 export type {

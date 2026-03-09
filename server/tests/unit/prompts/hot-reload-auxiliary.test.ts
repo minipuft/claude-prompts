@@ -3,14 +3,14 @@ import { describe, expect, jest, test } from '@jest/globals';
 import { createSimpleLogger } from '../../../src/infra/logging/index.js';
 import { FileChangeEvent } from '../../../src/modules/hot-reload/file-observer.js';
 import {
-  HotReloadManager,
+  HotReloadObserver,
   type AuxiliaryReloadConfig,
-} from '../../../src/modules/hot-reload/hot-reload-manager.js';
+} from '../../../src/modules/hot-reload/hot-reload-observer.js';
 
-describe('HotReloadManager auxiliary reloads', () => {
+describe('HotReloadObserver auxiliary reloads', () => {
   test('invokes auxiliary handler when file path matches', async () => {
     const logger = createSimpleLogger('stdio');
-    const manager = new HotReloadManager(logger);
+    const manager = new HotReloadObserver(logger);
 
     const handler = jest.fn().mockResolvedValue(undefined);
     const auxiliary: AuxiliaryReloadConfig = {

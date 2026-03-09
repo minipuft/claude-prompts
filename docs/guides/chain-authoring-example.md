@@ -1,6 +1,5 @@
 # Chain Authoring: Documentation-to-Skill Pipeline
 
-> Status: example
 
 Build a 4-phase chain that researches library docs and outputs Claude Code skills.
 

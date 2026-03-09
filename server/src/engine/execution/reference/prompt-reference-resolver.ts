@@ -31,6 +31,8 @@ import type {
 } from './types.js';
 import type { Logger } from '../../../infra/logging/index.js';
 import type {
+  ScriptExecutorPort,
+  ToolDetectionServicePort,
   LoadedScriptTool,
   ScriptExecutionResult,
   ToolDetectionMatch,
@@ -44,32 +46,6 @@ import type { ConvertedPrompt } from '../types.js';
 const REFERENCE_PATTERN = /\{\{ref:([a-zA-Z0-9_-]+)\}\}/g;
 
 /**
- * Interface for script detection service (injected dependency).
- */
-export interface IToolDetectionService {
-  detectTools(
-    rawInput: string,
-    args: Record<string, unknown>,
-    availableTools: LoadedScriptTool[]
-  ): ToolDetectionMatch[];
-}
-
-/**
- * Interface for script executor (injected dependency).
- */
-export interface IScriptExecutor {
-  execute(
-    request: {
-      toolId: string;
-      promptId: string;
-      inputs: Record<string, unknown>;
-      timeout?: number;
-    },
-    tool: LoadedScriptTool
-  ): Promise<ScriptExecutionResult>;
-}
-
-/**
  * Resolves {{ref:prompt_id}} references in templates.
  */
 export class PromptReferenceResolver {
@@ -78,8 +54,8 @@ export class PromptReferenceResolver {
   constructor(
     private readonly logger: Logger,
     private readonly prompts: ConvertedPrompt[],
-    private readonly toolDetectionService?: IToolDetectionService,
-    private readonly scriptExecutor?: IScriptExecutor,
+    private readonly toolDetectionService?: ToolDetectionServicePort,
+    private readonly scriptExecutor?: ScriptExecutorPort,
     options?: ReferenceResolutionOptions
   ) {
     this.options = { ...DEFAULT_RESOLUTION_OPTIONS, ...options };

@@ -1,10 +1,7 @@
 # MCP Tooling Guide
 
-> Status: canonical
 
-Control prompts, chains, and frameworks entirely through MCP tool calls.
-
-Stop copy-pasting prompt templates. This guide shows you how to create, execute, and iterate on prompts without touching files—the server hot-reloads everything automatically.
+Execute prompts, build workflows, and manage your resource library — all through MCP tool calls. The server hot-reloads everything automatically, so you never touch files directly.
 
 ---
 
@@ -36,13 +33,11 @@ resource_manager(resource_type:"methodology", action:"switch", id:"cageerf")
 
 ## The Three Tools
 
-| Tool               | What It Does                                       | When to Use            |
-| ------------------ | -------------------------------------------------- | ---------------------- |
-| `resource_manager` | Unified CRUD for prompts, gates, and methodologies | Managing all resources |
-| `prompt_engine`    | Execute prompts with frameworks and gates          | Running prompts        |
-| `system_control`   | View status, analytics, check health               | Admin operations       |
-
-> **Migrating from v1.x?** Use `resource_manager` for all prompt, gate, and methodology CRUD operations.
+| I want to...                                     | Tool               | Example                                              |
+| ------------------------------------------------ | ------------------ | ---------------------------------------------------- |
+| **Run a prompt** or chain                        | `prompt_engine`    | `prompt_engine(command:">>review file:'api.ts'")`    |
+| **Create, edit, or delete** a resource           | `resource_manager` | `resource_manager(resource_type:"prompt", action:"create", ...)` |
+| **Check status**, switch frameworks, view metrics | `system_control`   | `system_control(action:"status")`                    |
 
 ---
 
@@ -57,7 +52,8 @@ MCP Resources provide a **read-only, token-efficient** alternative to tool-based
 
 ### Resource URIs
 
-#### Content Resources (Prompts, Gates, Methodologies)
+<details>
+<summary><strong>Content Resources (Prompts, Gates, Methodologies)</strong></summary>
 
 | URI Pattern                       | Returns                              | Use Case                           |
 | --------------------------------- | ------------------------------------ | ---------------------------------- |
@@ -70,7 +66,10 @@ MCP Resources provide a **read-only, token-efficient** alternative to tool-based
 | `resource://methodology/`         | All frameworks (name, enabled)       | Discovery - find methodologies     |
 | `resource://methodology/{id}`     | Framework config + system prompt     | Inspect methodology details        |
 
-#### Observability Resources (Sessions, Metrics)
+</details>
+
+<details>
+<summary><strong>Observability Resources (Sessions, Metrics)</strong></summary>
 
 | URI Pattern                    | Returns                    | Use Case                                    |
 | ------------------------------ | -------------------------- | ------------------------------------------- |
@@ -80,7 +79,10 @@ MCP Resources provide a **read-only, token-efficient** alternative to tool-based
 
 > **Note:** Session URIs use the user-facing `chainId` (e.g., `chain-quick_decision#1`) — the same identifier used to resume chains with `chain_id` parameter.
 
-### Token Efficiency
+</details>
+
+<details>
+<summary><strong>Token Efficiency</strong></summary>
 
 Resources are **4-30x more token efficient** than equivalent tool calls:
 
@@ -90,6 +92,8 @@ Resources are **4-30x more token efficient** than equivalent tool calls:
 | List 13 gates        | ~600 chars          | ~400 chars  | **33%** |
 | List 5 methodologies | ~350 chars          | ~200 chars  | **43%** |
 | Pipeline metrics     | ~15KB (raw samples) | ~500 bytes  | **97%** |
+
+</details>
 
 ### Session Resources — Context Recovery
 
@@ -109,7 +113,8 @@ ReadMcpResourceTool uri="resource://session/chain-quick_decision#1"
 prompt_engine(chain_id:"chain-quick_decision#1", user_response:"your output here")
 ```
 
-### Example Usage (MCP Protocol)
+<details>
+<summary><strong>Example Usage (MCP Protocol)</strong></summary>
 
 ```json
 // List all prompts
@@ -127,6 +132,8 @@ prompt_engine(chain_id:"chain-quick_decision#1", user_response:"your output here
 // Get pipeline metrics
 {"method": "resources/read", "params": {"uri": "resource://metrics/pipeline"}}
 ```
+
+</details>
 
 ### Resources vs Tools — When to Use What
 
@@ -192,6 +199,7 @@ prompt_engine(command:"@ReACT analysis --> synthesis --> report :: 'include data
 | ------------ | -------------- | -------------------------- | --------------------------------------- |
 | Framework    | `@NAME`        | `@CAGEERF prompt`          | Apply methodology                       |
 | Chain        | `-->`          | `step1 --> step2`          | Sequential execution                    |
+| Delegation   | `==>`          | `step1 ==> step2`          | Hand off step to sub-agent              |
 | Repetition   | `* N`          | `>>prompt * 3`             | Repeat with same args (chain shorthand) |
 | Gate (anon)  | `:: "text"`    | `:: 'cite sources'`        | Anonymous quality criteria              |
 | Gate (named) | `:: id:"text"` | `:: security:"no secrets"` | Named gate with trackable ID            |
@@ -262,7 +270,8 @@ prompt_engine(command:"%clean my_prompt input:'test'")
 prompt_engine(command:"%judge analysis_report")
 ```
 
-### Parameters
+<details>
+<summary><strong>Parameters</strong></summary>
 
 | Parameter       | Type    | Purpose                                                                                                                                                                                                                           |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -273,10 +282,13 @@ prompt_engine(command:"%judge analysis_report")
 | `gate_action`   | enum    | `retry`, `skip`, or `abort` after gate failure                                                                                                                                                                                    |
 | `gates`         | array   | Quality gates (IDs, quick checks, or full definitions)                                                                                                                                                                            |
 | `force_restart` | boolean | Restart chain from step 1                                                                                                                                                                                                         |
+| `options`       | object  | Optional execution hints. Supports `client_profile` (`clientFamily`, `clientId`, `clientVersion`, `delegationProfile`) to help delegation strategy selection when transport metadata is unavailable.                              |
+
+</details>
 
 ### Chain Execution
 
-For step schemas, conditional branching, and parallel execution patterns, see the [Chain Schema Reference](../reference/chain-schema.md).
+For step schemas, input mapping, and retries, see the [Chain Schema Reference](../reference/chain-schema.md).
 
 **Start a chain:**
 
@@ -439,6 +451,9 @@ prompt_engine(command:">>create_gate id:'code-quality' name:'Code Quality' type:
 
 See [Script Tools Guide](../guides/script-tools.md) for building your own.
 
+> [!TIP]
+> **New to prompts?** The [Build Your First Prompt](../tutorials/build-first-prompt.md) tutorial gets you from zero to a working prompt in under 5 minutes.
+
 ---
 
 ## `resource_manager` — Unified Resource Management
@@ -575,7 +590,8 @@ resource_manager(
 )
 ```
 
-### Key Parameters by Resource Type
+<details>
+<summary><strong>Key Parameters by Resource Type</strong></summary>
 
 **Prompt Parameters:**
 
@@ -605,6 +621,11 @@ resource_manager(
 | `phases`                 | Array of phase definitions                  |
 | `gates`                  | Gate include/exclude configuration          |
 | `persist`                | Save switch to config (for `switch` action) |
+
+</details>
+
+> [!TIP]
+> **Full schema reference:** [Prompt Schema](prompt-yaml-schema.md) · [Chain Schema](chain-schema.md) · [Gate Configuration](gate-configuration.md)
 
 ---
 
@@ -754,7 +775,7 @@ prompt_engine(
 | ----------------------- | ---------------------------------------------------------------------------------- |
 | Prompt not found        | Run `resource_manager(resource_type:"prompt", action:"list")` to see available IDs |
 | Edits not showing       | Run `resource_manager(resource_type:"prompt", action:"reload")`                    |
-| Chain stuck             | Use `force_restart:true` or check `runtime-state/chain-sessions.json`              |
+| Chain stuck             | Use `force_restart:true` or check `system_control(action:"status")`                |
 | Framework not switching | Use `resource_manager(resource_type:"methodology", action:"switch")`               |
 | Gate keeps failing      | Use `gate_action:"skip"` to bypass, or `gate_action:"retry"`                       |
 
@@ -809,7 +830,8 @@ prompt_engine(command:"investigation target:'incident'")
 
 ---
 
-## Version History
+<details>
+<summary><strong>Version History</strong></summary>
 
 All resources (prompts, gates, methodologies) automatically track version history. Each update saves a snapshot before changes, enabling rollback and comparison.
 
@@ -909,9 +931,12 @@ resources/gates/
 │   └── .history.json
 ```
 
+</details>
+
 ---
 
-## CLI Configuration
+<details>
+<summary><strong>CLI Configuration</strong></summary>
 
 Override resource paths via CLI flags or environment variables.
 
@@ -979,6 +1004,11 @@ Path resolution follows this priority (first match wins):
 }
 ```
 
+</details>
+
+> [!TIP]
+> **Something not working?** The [Troubleshooting Guide](../guides/troubleshooting.md) covers common issues with server startup, client connections, chains, and gates.
+
 ---
 
 ## Reference
@@ -989,7 +1019,7 @@ Path resolution follows this priority (first match wins):
 | Gate definitions   | `server/resources/gates/{id}/gate.yaml`                |
 | Style definitions  | `server/resources/styles/{id}/style.yaml`              |
 | Methodologies      | `server/resources/methodologies/{id}/methodology.yaml` |
-| Chain sessions     | `runtime-state/chain-sessions.json`                    |
+| Chain sessions     | SQLite (`runtime-state/state.db`, table `chain_sessions`) |
 | Resource changes   | `runtime-state/resource-changes.jsonl`                 |
 | Server config      | `server/config.json`                                   |
 

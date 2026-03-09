@@ -8,8 +8,8 @@ import * as fs from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 import { type Logger } from '../../shared/types/index.js';
+import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 
 import type { PromptsConfigFile } from './types.js';
 

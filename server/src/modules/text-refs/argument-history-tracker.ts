@@ -7,15 +7,14 @@
  *
  * Key Features:
  * - Stores original arguments and step results per chain
- * - -entry limit per chain (FIFO cleanup)
- * - File persistence to runtime-state/argument-history.json
+ * - Entry limit per chain (FIFO cleanup)
+ * - SQLite persistence via SqliteStateStore
  * - Lightweight tracking (<ms overhead)
  * - Independent of semantic layer and conversation history
  */
-import * as fs from 'node:fs';
-
 import { ArgumentHistoryEntry, ReviewContext, PersistedArgumentHistory } from './types.js';
-import { atomicWriteFileSync } from '../../shared/utils/atomic-file-write.js';
+import { SqliteEngine } from '../../infra/database/sqlite-engine.js';
+import { SqliteStateStore } from '../../infra/database/stores/sqlite-store.js';
 
 import type { Logger } from '../../shared/types/index.js';
 
@@ -35,36 +34,60 @@ export class ArgumentHistoryTracker {
   /** Maximum entries per chain (FIFO cleanup) */
   private readonly maxEntriesPerChain: number;
 
-  /** File path for persistence */
-  private readonly persistencePath: string;
+  /** SQLite state store */
+  private stateStore?: SqliteStateStore<PersistedArgumentHistory>;
 
-  /** Persistence enabled flag */
-  private readonly persistenceEnabled: boolean;
+  /** Whether initialization has completed */
+  private initialized: boolean = false;
 
   /**
    * Create an ArgumentHistoryTracker instance
    *
    * @param logger - Logger instance
    * @param maxEntriesPerChain - Maximum entries per chain (default: 50)
-   * @param persistencePath - Path to persistence file (required - no default)
+   * @param serverRoot - Server root directory for SqliteEngine
    */
   constructor(
     private logger: Logger,
     maxEntriesPerChain: number = 50,
-    persistencePath: string
+    private readonly serverRoot: string
   ) {
     this.maxEntriesPerChain = maxEntriesPerChain;
-    this.persistencePath = persistencePath;
-    this.persistenceEnabled = true;
-
-    // Load persisted history if available
-    if (this.persistenceEnabled) {
-      this.loadFromFile();
-    }
 
     this.logger.debug(
-      `ArgumentHistoryTracker initialized (maxEntriesPerChain: ${this.maxEntriesPerChain}, persistence: ${this.persistenceEnabled})`
+      `ArgumentHistoryTracker initialized (maxEntriesPerChain: ${this.maxEntriesPerChain})`
     );
+  }
+
+  /**
+   * Initialize SQLite state store and load persisted data.
+   * Must be called before first use.
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
+    const dbManager = await SqliteEngine.getInstance(this.serverRoot, this.logger);
+    await dbManager.initialize();
+
+    this.stateStore = new SqliteStateStore<PersistedArgumentHistory>(
+      dbManager,
+      {
+        tableName: 'argument_history',
+        stateColumn: 'state',
+        defaultState: () => ({
+          version: '1.0.0',
+          lastUpdated: 0,
+          chains: {},
+          sessionToChain: {},
+        }),
+      },
+      this.logger
+    );
+
+    await this.loadFromStore();
+    this.initialized = true;
   }
 
   /**
@@ -76,14 +99,19 @@ export class ArgumentHistoryTracker {
    * @param options - Tracking options
    * @returns Unique entry ID
    */
-  trackExecution(options: {
+  async trackExecution(options: {
     promptId: string;
     sessionId?: string;
     originalArgs: Record<string, any>;
     stepNumber?: number;
     stepResult?: string;
     metadata?: Record<string, any>;
-  }): string {
+  }): Promise<string> {
+    // Auto-initialize if not yet ready (guards against fire-and-forget init race)
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
     const { promptId, sessionId, originalArgs, stepNumber, stepResult, metadata } = options;
 
     // Generate unique entry ID
@@ -138,33 +166,22 @@ export class ArgumentHistoryTracker {
       `Tracked execution: chainId=${chainId}, promptId=${promptId}, step=${stepNumber}, entryId=${entryId}`
     );
 
-    // Persist to file
-    if (this.persistenceEnabled) {
-      this.saveToFile();
-    }
+    // Persist to SQLite
+    await this.saveToStore();
 
     return entryId;
   }
 
   /**
    * Get argument history for a specific chain
-   *
-   * @param chainId - Chain identifier (typically session ID)
-   * @returns Array of argument history entries
    */
   getChainHistory(chainId: string): ArgumentHistoryEntry[] {
     const entries = this.chainHistory.get(chainId) || [];
-    // Return defensive copy
     return entries.map((entry) => ({ ...entry }));
   }
 
   /**
    * Get argument history for a session
-   *
-   * Resolves session ID to chain ID and retrieves entries.
-   *
-   * @param sessionId - Session identifier
-   * @returns Array of argument history entries
    */
   getSessionHistory(sessionId: string): ArgumentHistoryEntry[] {
     const chainId = this.sessionToChain.get(sessionId) || sessionId;
@@ -173,12 +190,6 @@ export class ArgumentHistoryTracker {
 
   /**
    * Get latest arguments for a session
-   *
-   * Returns the most recent original arguments recorded for the session.
-   * Useful for retrieving user-provided context.
-   *
-   * @param sessionId - Session identifier
-   * @returns Latest original arguments or null if not found
    */
   getLatestArguments(sessionId: string): Record<string, any> | null {
     const history = this.getSessionHistory(sessionId);
@@ -186,23 +197,15 @@ export class ArgumentHistoryTracker {
       return null;
     }
 
-    // Return the most recent entry's arguments
     const latestEntry = history[history.length - 1];
     if (!latestEntry) {
       return null;
     }
-    return { ...latestEntry.originalArgs }; // Defensive copy
+    return { ...latestEntry.originalArgs };
   }
 
   /**
    * Build execution context for gate review
-   *
-   * Constructs a ReviewContext containing original arguments and previous step results.
-   * This provides complete execution context for gate reviews independent of conversation history.
-   *
-   * @param sessionId - Session identifier
-   * @param currentStepNumber - Current step number (optional)
-   * @returns ReviewContext with original args and previous results
    */
   buildReviewContext(sessionId: string, currentStepNumber?: number): ReviewContext {
     const history = this.getSessionHistory(sessionId);
@@ -218,7 +221,6 @@ export class ArgumentHistoryTracker {
       return reviewContext;
     }
 
-    // Extract original arguments from latest entry
     const latestEntry = history[history.length - 1];
     if (!latestEntry) {
       const reviewContext: ReviewContext = {
@@ -232,7 +234,6 @@ export class ArgumentHistoryTracker {
     }
     const originalArgs = { ...latestEntry.originalArgs };
 
-    // Build previous results map from step results
     const previousResults: Record<number, string> = {};
     let maxStepNumber = -1;
 
@@ -243,7 +244,6 @@ export class ArgumentHistoryTracker {
       }
     });
 
-    // Determine total steps (max step number + 1, assuming 1-indexed)
     const totalSteps = maxStepNumber >= 0 ? maxStepNumber + 1 : undefined;
 
     const reviewContext: ReviewContext = {
@@ -262,36 +262,24 @@ export class ArgumentHistoryTracker {
 
   /**
    * Clear history for a specific session
-   *
-   * Removes all entries associated with the session.
-   *
-   * @param sessionId - Session identifier
    */
-  clearSession(sessionId: string): void {
+  async clearSession(sessionId: string): Promise<void> {
     const chainId = this.sessionToChain.get(sessionId);
 
     if (chainId) {
       this.chainHistory.delete(chainId);
       this.sessionToChain.delete(sessionId);
       this.logger.debug(`Cleared argument history for session ${sessionId} (chain ${chainId})`);
-
-      if (this.persistenceEnabled) {
-        this.saveToFile();
-      }
+      await this.saveToStore();
     }
   }
 
   /**
    * Clear history for a specific chain
-   *
-   * Removes all entries associated with the chain.
-   *
-   * @param chainId - Chain identifier
    */
-  clearChain(chainId: string): void {
+  async clearChain(chainId: string): Promise<void> {
     this.chainHistory.delete(chainId);
 
-    // Remove session mappings pointing to this chain
     const sessionsToRemove: string[] = [];
     this.sessionToChain.forEach((cId, sId) => {
       if (cId === chainId) {
@@ -301,31 +289,21 @@ export class ArgumentHistoryTracker {
     sessionsToRemove.forEach((sId) => this.sessionToChain.delete(sId));
 
     this.logger.debug(`Cleared argument history for chain ${chainId}`);
-
-    if (this.persistenceEnabled) {
-      this.saveToFile();
-    }
+    await this.saveToStore();
   }
 
   /**
    * Clear all history
-   *
-   * Removes all tracked entries and mappings.
    */
-  clearAll(): void {
+  async clearAll(): Promise<void> {
     this.chainHistory.clear();
     this.sessionToChain.clear();
     this.logger.info('Cleared all argument history');
-
-    if (this.persistenceEnabled) {
-      this.saveToFile();
-    }
+    await this.saveToStore();
   }
 
   /**
    * Get statistics about tracked history
-   *
-   * @returns Statistics object
    */
   getStats(): {
     totalChains: number;
@@ -352,9 +330,6 @@ export class ArgumentHistoryTracker {
 
   /**
    * Check if a session has any tracked history
-   *
-   * @param sessionId - Session identifier
-   * @returns True if history exists
    */
   hasSessionHistory(sessionId: string): boolean {
     const history = this.getSessionHistory(sessionId);
@@ -362,13 +337,14 @@ export class ArgumentHistoryTracker {
   }
 
   /**
-   * Save argument history to file
-   *
-   * Persists current state to runtime-state/argument-history.json
+   * Save argument history to SQLite
    */
-  private saveToFile(): void {
+  private async saveToStore(): Promise<void> {
+    if (!this.stateStore) {
+      return;
+    }
+
     try {
-      // Convert Map to plain object for JSON serialization
       const chains: Record<string, ArgumentHistoryEntry[]> = {};
       this.chainHistory.forEach((entries, chainId) => {
         chains[chainId] = entries;
@@ -386,38 +362,29 @@ export class ArgumentHistoryTracker {
         sessionToChain,
       };
 
-      // Use atomic write to prevent data corruption from concurrent processes
-      // Note: atomicWriteFileSync ensures directory exists as part of the atomic operation
-      atomicWriteFileSync(this.persistencePath, JSON.stringify(persistedData, null, 2));
-
-      this.logger.debug(`Saved argument history to ${this.persistencePath}`);
+      await this.stateStore.save(persistedData);
+      this.logger.debug('Saved argument history to SQLite');
     } catch (error) {
-      this.logger.error('Failed to save argument history to file:', error);
+      this.logger.error('Failed to save argument history:', error);
     }
   }
 
   /**
-   * Load argument history from file
-   *
-   * Loads persisted state from runtime-state/argument-history.json
+   * Load argument history from SQLite
    */
-  private loadFromFile(): void {
+  private async loadFromStore(): Promise<void> {
+    if (!this.stateStore) {
+      return;
+    }
+
     try {
-      if (!fs.existsSync(this.persistencePath)) {
-        this.logger.debug(`No persisted argument history found at ${this.persistencePath}`);
-        return;
-      }
+      const persistedData = await this.stateStore.load();
 
-      const fileContent = fs.readFileSync(this.persistencePath, 'utf8');
-      const persistedData: PersistedArgumentHistory = JSON.parse(fileContent);
-
-      // Restore chain history
       this.chainHistory.clear();
       Object.entries(persistedData.chains).forEach(([chainId, entries]) => {
         this.chainHistory.set(chainId, entries);
       });
 
-      // Restore session-to-chain mapping
       this.sessionToChain.clear();
       Object.entries(persistedData.sessionToChain).forEach(([sessionId, chainId]) => {
         this.sessionToChain.set(sessionId, chainId);
@@ -425,22 +392,18 @@ export class ArgumentHistoryTracker {
 
       const stats = this.getStats();
       this.logger.info(
-        `Loaded argument history from file: ${stats.totalChains} chains, ${stats.totalEntries} entries`
+        `Loaded argument history: ${stats.totalChains} chains, ${stats.totalEntries} entries`
       );
     } catch (error) {
-      this.logger.error('Failed to load argument history from file:', error);
+      this.logger.error('Failed to load argument history:', error);
     }
   }
 
   /**
    * Stop tracker and cleanup resources
-   *
-   * Performs final persistence before shutdown.
    */
-  shutdown(): void {
-    if (this.persistenceEnabled) {
-      this.saveToFile();
-    }
+  async shutdown(): Promise<void> {
+    await this.saveToStore();
     this.logger.debug('ArgumentHistoryTracker shutdown complete');
   }
 }

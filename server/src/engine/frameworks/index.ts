@@ -13,7 +13,7 @@ export * from './methodology/index.js';
 
 // Framework managers (stateless orchestration and stateful management)
 export * from './framework-manager.js';
-export * from './framework-state-manager.js';
+export * from './framework-state-store.js';
 
 // Framework system components (stateful methodology switching)
 export * from './integration/index.js';

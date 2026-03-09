@@ -1,17 +1,17 @@
-// @lifecycle canonical - Unit tests for SessionOverrideManager
+// @lifecycle canonical - Unit tests for SessionOverrideResolver
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import {
-  SessionOverrideManager,
-  initSessionOverrideManager,
-  getSessionOverrideManager,
-  isSessionOverrideManagerInitialized,
-  resetSessionOverrideManager,
+  SessionOverrideResolver,
+  initSessionOverrideResolver,
+  getSessionOverrideResolver,
+  isSessionOverrideResolverInitialized,
+  resetSessionOverrideResolver,
 } from '../../../../src/engine/execution/pipeline/decisions/injection/session-overrides.js';
 
-describe('SessionOverrideManager', () => {
+describe('SessionOverrideResolver', () => {
   let mockLogger: any;
-  let manager: SessionOverrideManager;
+  let manager: SessionOverrideResolver;
 
   beforeEach(() => {
     mockLogger = {
@@ -20,7 +20,7 @@ describe('SessionOverrideManager', () => {
       warn: jest.fn(),
       error: jest.fn(),
     };
-    manager = new SessionOverrideManager(mockLogger);
+    manager = new SessionOverrideResolver(mockLogger);
   });
 
   describe('setOverride', () => {
@@ -260,7 +260,7 @@ describe('Singleton Functions', () => {
   let mockLogger: any;
 
   beforeEach(() => {
-    resetSessionOverrideManager();
+    resetSessionOverrideResolver();
     mockLogger = {
       debug: jest.fn(),
       info: jest.fn(),
@@ -270,59 +270,59 @@ describe('Singleton Functions', () => {
   });
 
   afterEach(() => {
-    resetSessionOverrideManager();
+    resetSessionOverrideResolver();
   });
 
-  describe('initSessionOverrideManager', () => {
+  describe('initSessionOverrideResolver', () => {
     it('should initialize and return manager', () => {
-      const manager = initSessionOverrideManager(mockLogger);
+      const manager = initSessionOverrideResolver(mockLogger);
 
       expect(manager).toBeDefined();
-      expect(isSessionOverrideManagerInitialized()).toBe(true);
+      expect(isSessionOverrideResolverInitialized()).toBe(true);
     });
 
     it('should return existing instance if already initialized', () => {
-      const manager1 = initSessionOverrideManager(mockLogger);
-      const manager2 = initSessionOverrideManager(mockLogger);
+      const manager1 = initSessionOverrideResolver(mockLogger);
+      const manager2 = initSessionOverrideResolver(mockLogger);
 
       expect(manager1).toBe(manager2);
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Already initialized'));
     });
   });
 
-  describe('getSessionOverrideManager', () => {
+  describe('getSessionOverrideResolver', () => {
     it('should throw if not initialized', () => {
-      expect(() => getSessionOverrideManager()).toThrow('SessionOverrideManager not initialized');
+      expect(() => getSessionOverrideResolver()).toThrow('SessionOverrideResolver not initialized');
     });
 
     it('should return manager if initialized', () => {
-      initSessionOverrideManager(mockLogger);
+      initSessionOverrideResolver(mockLogger);
 
-      const manager = getSessionOverrideManager();
+      const manager = getSessionOverrideResolver();
 
       expect(manager).toBeDefined();
     });
   });
 
-  describe('isSessionOverrideManagerInitialized', () => {
+  describe('isSessionOverrideResolverInitialized', () => {
     it('should return false before initialization', () => {
-      expect(isSessionOverrideManagerInitialized()).toBe(false);
+      expect(isSessionOverrideResolverInitialized()).toBe(false);
     });
 
     it('should return true after initialization', () => {
-      initSessionOverrideManager(mockLogger);
-      expect(isSessionOverrideManagerInitialized()).toBe(true);
+      initSessionOverrideResolver(mockLogger);
+      expect(isSessionOverrideResolverInitialized()).toBe(true);
     });
   });
 
-  describe('resetSessionOverrideManager', () => {
+  describe('resetSessionOverrideResolver', () => {
     it('should reset the singleton', () => {
-      initSessionOverrideManager(mockLogger);
-      expect(isSessionOverrideManagerInitialized()).toBe(true);
+      initSessionOverrideResolver(mockLogger);
+      expect(isSessionOverrideResolverInitialized()).toBe(true);
 
-      resetSessionOverrideManager();
+      resetSessionOverrideResolver();
 
-      expect(isSessionOverrideManagerInitialized()).toBe(false);
+      expect(isSessionOverrideResolverInitialized()).toBe(false);
     });
   });
 });

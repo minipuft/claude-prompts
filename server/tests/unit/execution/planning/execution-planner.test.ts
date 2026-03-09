@@ -358,4 +358,89 @@ describe('ExecutionPlanner', () => {
       expect(plan.modifiers?.clean).toBeFalsy();
     });
   });
+
+  describe('requiresSession', () => {
+    test('requires session when gateOverrides.gates are provided (MCP gates parameter)', async () => {
+      const analyzer = createAnalyzer();
+      const planner = new ExecutionPlanner(analyzer, logger);
+
+      const plan = await planner.createPlan({
+        convertedPrompt: basePrompt,
+        gateOverrides: {
+          gates: ['intent-quality'],
+        },
+      });
+
+      expect(plan.gates).toContain('intent-quality');
+      expect(plan.requiresSession).toBe(true);
+    });
+
+    test('requires session when symbolic gate operator is present', async () => {
+      const analyzer = createAnalyzer();
+      const planner = new ExecutionPlanner(analyzer, logger);
+
+      const parsedCommand: ParsedCommand = {
+        promptId: 'demo',
+        rawArgs: '',
+        format: 'symbolic',
+        confidence: 0.9,
+        metadata: {
+          originalCommand: ">>demo :: 'check'",
+          parseStrategy: 'symbolic',
+          detectedFormat: 'symbolic',
+          warnings: [],
+        },
+        operators: {
+          hasOperators: true,
+          operatorTypes: ['gate'],
+          parseComplexity: 'moderate',
+          operators: [
+            {
+              type: 'gate',
+              criteria: 'check accuracy',
+              parsedCriteria: ['check accuracy'],
+              scope: 'execution',
+            } as any,
+          ],
+        },
+      };
+
+      const plan = await planner.createPlan({
+        parsedCommand,
+        convertedPrompt: basePrompt,
+      });
+
+      expect(plan.requiresSession).toBe(true);
+    });
+
+    test('does not require session for plain single prompt without gates', async () => {
+      const analyzer = createAnalyzer();
+      const planner = new ExecutionPlanner(analyzer, logger);
+
+      const plan = await planner.createPlan({
+        convertedPrompt: basePrompt,
+      });
+
+      expect(plan.requiresSession).toBe(false);
+    });
+
+    test('requires session when prompt has built-in chain steps', async () => {
+      const analyzer = createAnalyzer();
+      const planner = new ExecutionPlanner(analyzer, logger);
+
+      const promptWithChain: ConvertedPrompt = {
+        ...basePrompt,
+        chainSteps: [
+          { step: 1, prompt: 'first', args: {} },
+          { step: 2, prompt: 'second', args: {} },
+        ] as any,
+      };
+
+      const plan = await planner.createPlan({
+        convertedPrompt: promptWithChain,
+      });
+
+      expect(plan.requiresSession).toBe(true);
+    });
+  });
 });

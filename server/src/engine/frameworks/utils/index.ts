@@ -31,7 +31,6 @@ export {
   convertMethodologyGates,
   convertProcessingSteps,
   getSystemPromptGuidance,
-  type ProcessingStepDefinition,
   type MethodologyDefinitionForEnhancement,
 } from './template-enhancer.js';
 
@@ -41,6 +40,7 @@ export {
   generateExecutionSteps,
   createProcessingGuidance,
   createStepGuidance,
+  type ProcessingStepDefinition,
   type ExecutionStepDefinition,
   type TemplateEnhancementsDefinition,
   type ExecutionFlowDefinition,

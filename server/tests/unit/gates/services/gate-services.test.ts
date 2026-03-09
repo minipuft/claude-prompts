@@ -5,7 +5,7 @@ import { GateServiceFactory } from '../../../../src/engine/gates/services/gate-s
 import { SemanticGateService } from '../../../../src/engine/gates/services/semantic-gate-service.js';
 
 import type { GateGuidanceRenderer } from '../../../../src/engine/gates/guidance/GateGuidanceRenderer.js';
-import type { IGateService } from '../../../../src/engine/gates/services/gate-service-interface.js';
+import type { GateService } from '../../../../src/engine/gates/services/gate-service-interface.js';
 import type { ConvertedPrompt } from '../../../../src/shared/types/index.js';
 
 const createLogger = () => ({
@@ -15,7 +15,7 @@ const createLogger = () => ({
   debug: jest.fn(),
 });
 
-const createConfigManager = (llmEnabled: boolean) =>
+const createConfigLoader = (llmEnabled: boolean) =>
   ({
     getConfig: () => ({
       analysis: {
@@ -49,7 +49,7 @@ describe('GateServiceFactory', () => {
   test('creates compositional service when llm disabled', () => {
     const factory = new GateServiceFactory(
       createLogger(),
-      createConfigManager(false),
+      createConfigLoader(false),
       fakeRenderer,
       fakeValidator
     );
@@ -60,7 +60,7 @@ describe('GateServiceFactory', () => {
   test('creates semantic service when llm enabled', () => {
     const factory = new GateServiceFactory(
       createLogger(),
-      createConfigManager(true),
+      createConfigLoader(true),
       fakeRenderer,
       fakeValidator
     );
@@ -71,7 +71,7 @@ describe('GateServiceFactory', () => {
 
 describe('CompositionalGateService', () => {
   test('injects gate instructions without validation', async () => {
-    const service: IGateService = new CompositionalGateService(createLogger(), fakeRenderer);
+    const service: GateService = new CompositionalGateService(createLogger(), fakeRenderer);
 
     const result = await service.enhancePrompt(samplePrompt, ['quality'], {
       promptId: 'prompt-',

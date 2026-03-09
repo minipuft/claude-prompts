@@ -3,24 +3,18 @@ import { PromptError } from '../../../../shared/utils/index.js';
 import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
-import type { ChainSessionService, SessionBlueprint } from '../../../../shared/types/index.js';
+// ChainSessionService no longer needed — blueprint resolution delegated to ChainBlueprintResolver
 import type { ExecutionContext, ParsedCommand } from '../../context/index.js';
 import type { ChainStepPrompt } from '../../operators/types.js';
 import type {
   ArgumentParser,
   ExecutionContext as ArgumentExecutionContext,
 } from '../../parsers/argument-parser.js';
+import type { ChainBlueprintResolver } from '../../parsers/chain-blueprint-resolver.js';
 import type { UnifiedCommandParser } from '../../parsers/command-parser.js';
-import type {
-  GateOperator,
-  SymbolicCommandParseResult,
-} from '../../parsers/types/operator-types.js';
-import type { ConvertedPrompt, ExecutionPlan } from '../../types.js';
-
-type ParsedArgumentsResult = {
-  processedArgs: Record<string, any>;
-  resolvedPlaceholders: Record<string, any>;
-};
+import type { SymbolicCommandBuilder } from '../../parsers/symbolic-command-builder.js';
+import type { SymbolicCommandParseResult } from '../../parsers/types/operator-types.js';
+import type { ConvertedPrompt } from '../../types.js';
 
 /**
  * Provider function to get all converted prompts.
@@ -34,6 +28,10 @@ type PromptsProvider = () => ConvertedPrompt[];
  * Parses incoming commands using UnifiedCommandParser, resolves arguments,
  * and builds symbolic chains for operator-based workflows.
  *
+ * Domain logic delegated to:
+ * - SymbolicCommandBuilder: symbolic operator → ParsedCommand
+ * - ChainBlueprintResolver: session blueprint restoration for response-only mode
+ *
  * Dependencies: None (always runs first)
  * Output: context.parsedCommand, context.symbolicChain (if operators detected)
  * Can Early Exit: Yes (if parsing fails)
@@ -46,70 +44,52 @@ export class CommandParsingStage extends BasePipelineStage {
     private readonly argumentParser: ArgumentParser,
     private readonly promptsProvider: PromptsProvider,
     logger: Logger,
-    private readonly chainSessionManager?: ChainSessionService
+    private readonly symbolicCommandBuilder: SymbolicCommandBuilder,
+    private readonly blueprintResolver?: ChainBlueprintResolver
   ) {
     super(logger);
-  }
-
-  /**
-   * Get current prompts from provider (supports hot-reload).
-   */
-  private getPrompts(): ConvertedPrompt[] {
-    return this.promptsProvider();
   }
 
   async execute(context: ExecutionContext): Promise<void> {
     this.logEntry(context);
 
     if (context.isResponseOnlyMode()) {
-      this.logger.debug(
-        '[ParsingStage] Response-only mode detected - resuming chain without command',
-        {
-          chainId: context.mcpRequest.chain_id,
-          hasUserResponse: Boolean(context.mcpRequest.user_response),
-          hasCommand: Boolean(context.mcpRequest.command),
-        }
-      );
-      this.restoreFromBlueprint(context);
+      this.logger.debug('[ParsingStage] Response-only mode detected - resuming chain', {
+        chainId: context.mcpRequest.chain_id,
+        hasUserResponse: Boolean(context.mcpRequest.user_response),
+      });
+      if (!this.blueprintResolver) {
+        this.handleError(
+          new Error('ChainBlueprintResolver unavailable for response-only execution')
+        );
+      }
+      this.blueprintResolver.restoreFromBlueprint(context);
       this.logExit({ skipped: 'Response-only session rehydrated' });
       return;
     }
 
-    const incomingCommand = context.mcpRequest.command;
+    const incomingCommand =
+      context.state.normalization.normalizedCommand ?? context.mcpRequest.command;
     if (!incomingCommand) {
       this.handleError(new Error('Command missing for parsing stage'));
     }
 
     try {
-      const parseResult = await this.commandParser.parseCommand(incomingCommand, this.getPrompts());
+      const parseResult = await this.commandParser.parseCommand(
+        incomingCommand,
+        this.promptsProvider()
+      );
 
       if (
         parseResult.format === 'symbolic' &&
         (parseResult as SymbolicCommandParseResult).executionPlan
       ) {
-        const symbolicCommand = await this.buildSymbolicCommand(
-          parseResult as SymbolicCommandParseResult
+        const symbolicCommand = await this.symbolicCommandBuilder.buildSymbolicCommand(
+          parseResult as SymbolicCommandParseResult,
+          (idOrName) => this.findConvertedPrompt(idOrName)
         );
 
-        // Merge requestOptions into promptArgs for symbolic commands
-        // Options values override empty/falsy placeholder values from prompt definitions
-        // but inline args (truthy values) still take precedence
-        const requestOptions = context.state.normalization.requestOptions;
-        if (requestOptions && typeof requestOptions === 'object' && symbolicCommand.promptArgs) {
-          const mergedArgs = symbolicCommand.promptArgs;
-          for (const [key, value] of Object.entries(requestOptions)) {
-            // Merge if key missing OR existing value is falsy (empty placeholder)
-            const existing = mergedArgs[key];
-            const isFalsyOrEmpty =
-              existing === undefined ||
-              existing === null ||
-              existing === '' ||
-              (Array.isArray(existing) && existing.length === 0);
-            if (!(key in mergedArgs) || isFalsyOrEmpty) {
-              mergedArgs[key] = value;
-            }
-          }
-        }
+        this.mergeRequestOptions(symbolicCommand.promptArgs, context);
 
         context.parsedCommand = symbolicCommand;
         this.logExit({
@@ -120,225 +100,107 @@ export class CommandParsingStage extends BasePipelineStage {
         return;
       }
 
-      const convertedPrompt = this.findConvertedPrompt(parseResult.promptId);
-      if (!convertedPrompt) {
-        throw new PromptError(`Converted prompt data not found for: ${parseResult.promptId}`);
-      }
-
-      const argResult = await this.argumentParser.parseArguments(
-        parseResult.rawArgs,
-        convertedPrompt,
-        this.createArgumentContext()
-      );
-
-      // Merge requestOptions into processedArgs (options parameter from prompt_engine call)
-      // Options values override empty/falsy placeholder values from prompt definitions
-      // but inline args (truthy values) still take precedence
-      const requestOptions = context.state.normalization.requestOptions;
-      if (requestOptions && typeof requestOptions === 'object') {
-        const mergedArgs = argResult.processedArgs as Record<string, unknown>;
-        for (const [key, value] of Object.entries(requestOptions)) {
-          // Merge if key missing OR existing value is falsy (empty placeholder)
-          const existing = mergedArgs[key];
-          const isFalsyOrEmpty =
-            existing === undefined ||
-            existing === null ||
-            existing === '' ||
-            (Array.isArray(existing) && existing.length === 0);
-          if (!(key in mergedArgs) || isFalsyOrEmpty) {
-            mergedArgs[key] = value;
-          }
-        }
-      }
-
-      const parsedCommand: ParsedCommand = {
-        ...parseResult,
-        convertedPrompt,
-        promptArgs: argResult.processedArgs,
-      };
-
-      // Update commandType to 'chain' if prompt definition has chainSteps
-      // (Parser defaults to 'single' because it can't see the prompt definition)
-      if (convertedPrompt.chainSteps?.length) {
-        parsedCommand.commandType = 'chain';
-        parsedCommand.steps = convertedPrompt.chainSteps.map((step, index) => {
-          const stepConverted = this.findConvertedPrompt(step.promptId);
-          if (!stepConverted) {
-            throw new PromptError(
-              `Converted prompt data not found for chain step: ${step.promptId}`
-            );
-          }
-
-          return {
-            stepNumber: index + 1,
-            promptId: step.promptId,
-            args: argResult.processedArgs, // Use parsed arguments from command
-            variableName: step.stepName ?? `step_${index + 1}`,
-            convertedPrompt: stepConverted,
-            inputMapping: step.inputMapping,
-            outputMapping: step.outputMapping,
-            retries: step.retries,
-          } as ChainStepPrompt;
-        });
-      }
-
-      context.parsedCommand = parsedCommand;
+      context.parsedCommand = await this.buildDirectCommand(parseResult);
 
       this.logExit({
-        promptId: parsedCommand.promptId,
-        format: parsedCommand.format,
-        operatorTypes: parsedCommand.operators?.operatorTypes,
+        promptId: context.parsedCommand.promptId,
+        format: context.parsedCommand.format,
+        operatorTypes: context.parsedCommand.operators?.operatorTypes,
       });
     } catch (error) {
       this.handleError(error, 'Command parsing failed');
     }
   }
 
-  private createPromptLookup(prompts: ConvertedPrompt[]): Map<string, ConvertedPrompt> {
-    const map = new Map<string, ConvertedPrompt>();
-    for (const prompt of prompts) {
-      map.set(prompt.id.toLowerCase(), prompt);
-      if (prompt.name) {
-        map.set(prompt.name.toLowerCase(), prompt);
-      }
-    }
-    return map;
-  }
-
-  private findConvertedPrompt(idOrName: string): ConvertedPrompt | undefined {
-    const lookup = this.createPromptLookup(this.getPrompts());
-    return lookup.get(idOrName.toLowerCase());
-  }
-
-  private async buildSymbolicCommand(
-    parseResult: SymbolicCommandParseResult
+  /**
+   * Build ParsedCommand for non-symbolic (direct) commands.
+   */
+  private async buildDirectCommand(
+    parseResult: import('../../parsers/command-parser.js').CommandParseResult
   ): Promise<ParsedCommand> {
-    const hasChainOperator = this.hasChainOperator(parseResult);
-    if (!hasChainOperator) {
-      return this.buildSingleSymbolicPrompt(parseResult);
-    }
-
-    return this.buildSymbolicChain(parseResult);
-  }
-
-  private async buildSingleSymbolicPrompt(
-    parseResult: SymbolicCommandParseResult
-  ): Promise<ParsedCommand> {
-    const baseStep = parseResult.executionPlan.steps[0];
-    if (!baseStep?.promptId) {
-      throw new PromptError('Symbolic command requires a valid prompt identifier.');
-    }
-
-    const convertedPrompt = this.findConvertedPrompt(baseStep.promptId);
+    const convertedPrompt = this.findConvertedPrompt(parseResult.promptId);
     if (!convertedPrompt) {
-      throw new PromptError(`Converted prompt data not found for: ${baseStep.promptId}`);
+      throw new PromptError(`Converted prompt data not found for: ${parseResult.promptId}`);
     }
 
-    const argumentInput = this.getStepArgumentInput(parseResult.executionPlan, 0);
-    const fallbackArgs =
-      baseStep.args && baseStep.args.trim().length > 0
-        ? await this.parseArgumentsSafely(baseStep.args, convertedPrompt)
-        : undefined;
-
-    const resolvedArgs = await this.resolveArgumentPayload(
+    const argResult = await this.argumentParser.parseArguments(
+      parseResult.rawArgs,
       convertedPrompt,
-      argumentInput,
-      baseStep.inlineGateCriteria,
-      fallbackArgs?.processedArgs
+      this.createArgumentContext()
     );
-
-    // Collect both anonymous and named gates
-    const { anonymousCriteria, namedGates } = this.collectGateCriteria(parseResult);
-
-    const inlineCriteria =
-      resolvedArgs.inlineCriteria.length > 0 ? resolvedArgs.inlineCriteria : anonymousCriteria;
 
     const parsedCommand: ParsedCommand = {
       ...parseResult,
       convertedPrompt,
-      promptArgs: resolvedArgs.processedArgs,
-      inlineGateCriteria: inlineCriteria,
+      promptArgs: (argResult as any).processedArgs,
     };
 
-    if (namedGates.length > 0) {
-      parsedCommand.namedInlineGates = namedGates;
-    }
-    if (parseResult.executionPlan.styleSelection !== undefined) {
-      parsedCommand.styleSelection = parseResult.executionPlan.styleSelection;
-    }
+    // Options already baked into command string by Stage 00 (normalizedCommand).
+    // mergeRequestOptions only needed for symbolic path (line 91).
 
-    return parsedCommand;
-  }
+    if (convertedPrompt.chainSteps?.length) {
+      parsedCommand.commandType = 'chain';
+      parsedCommand.steps = convertedPrompt.chainSteps.map((step, index) => {
+        const stepConverted = this.findConvertedPrompt(step.promptId);
+        if (!stepConverted) {
+          throw new PromptError(`Converted prompt data not found for chain step: ${step.promptId}`);
+        }
 
-  private async buildSymbolicChain(
-    parseResult: SymbolicCommandParseResult
-  ): Promise<ParsedCommand> {
-    const stepPrompts: ChainStepPrompt[] = [];
-    let commandArgs: Record<string, any> = {};
-
-    const argumentInputs = parseResult.executionPlan.argumentInputs ?? [];
-
-    // Collect both anonymous and named gate criteria from gate operator (::)
-    const { anonymousCriteria: globalGateCriteria, namedGates } =
-      this.collectGateCriteria(parseResult);
-
-    for (const [index, step] of parseResult.executionPlan.steps.entries()) {
-      if (!step.promptId) {
-        continue;
-      }
-
-      const convertedPrompt = this.findConvertedPrompt(step.promptId);
-      if (!convertedPrompt) {
-        throw new PromptError(`Converted prompt data not found for chain step: ${step.promptId}`);
-      }
-
-      const stepArgumentInput = argumentInputs[index];
-      const fallbackArgs =
-        step.args && step.args.trim().length > 0
-          ? await this.parseArgumentsSafely(step.args, convertedPrompt)
-          : undefined;
-
-      // Only use step-specific gate criteria here - global criteria is handled at command level
-      // Stage 02 creates command-level gates with execution scope that apply to all steps
-      const stepGateCriteria = step.inlineGateCriteria ?? [];
-
-      const resolvedArgs = await this.resolveArgumentPayload(
-        convertedPrompt,
-        stepArgumentInput,
-        stepGateCriteria,
-        fallbackArgs?.processedArgs
-      );
-
-      if (stepPrompts.length === 0) {
-        commandArgs = resolvedArgs.processedArgs;
-      }
-
-      stepPrompts.push({
-        stepNumber: step.stepNumber ?? stepPrompts.length + 1,
-        promptId: convertedPrompt.id,
-        convertedPrompt,
-        args: resolvedArgs.processedArgs,
-        inlineGateCriteria: resolvedArgs.inlineCriteria,
+        return {
+          stepNumber: index + 1,
+          promptId: step.promptId,
+          args: (argResult as any).processedArgs,
+          variableName: step.stepName ?? `step_${index + 1}`,
+          convertedPrompt: stepConverted,
+          inputMapping: step.inputMapping,
+          outputMapping: step.outputMapping,
+          retries: step.retries,
+          ...(step.subagentModel != null || stepConverted.subagentModel != null
+            ? { subagentModel: step.subagentModel ?? stepConverted.subagentModel }
+            : {}),
+        } as ChainStepPrompt;
       });
     }
 
-    const parsedCommand: ParsedCommand = {
-      ...parseResult,
-      steps: stepPrompts,
-      promptArgs: commandArgs,
-      // Set command-level gate criteria so Stage 02 creates execution-scoped gates
-      // that apply to all steps (not merged into individual step criteria)
-      inlineGateCriteria: globalGateCriteria.length > 0 ? globalGateCriteria : undefined,
-    };
-
-    if (namedGates.length > 0) {
-      parsedCommand.namedInlineGates = namedGates;
-    }
-    if (parseResult.executionPlan.styleSelection !== undefined) {
-      parsedCommand.styleSelection = parseResult.executionPlan.styleSelection;
-    }
-
     return parsedCommand;
+  }
+
+  /**
+   * Merge requestOptions into promptArgs (options parameter from prompt_engine call).
+   * Options values override empty/falsy placeholder values from prompt definitions
+   * but inline args (truthy values) still take precedence.
+   */
+  private mergeRequestOptions(
+    promptArgs: Record<string, any> | undefined,
+    context: ExecutionContext
+  ): void {
+    const requestOptions = context.state.normalization.requestOptions;
+    if (!requestOptions || typeof requestOptions !== 'object' || !promptArgs) {
+      return;
+    }
+
+    for (const [key, value] of Object.entries(requestOptions)) {
+      const existing = promptArgs[key];
+      const isFalsyOrEmpty =
+        existing === undefined ||
+        existing === null ||
+        existing === '' ||
+        (Array.isArray(existing) && existing.length === 0);
+      if (!(key in promptArgs) || isFalsyOrEmpty) {
+        promptArgs[key] = value;
+      }
+    }
+  }
+
+  private findConvertedPrompt(idOrName: string): ConvertedPrompt | undefined {
+    const prompts = this.promptsProvider();
+    const key = idOrName.toLowerCase();
+    for (const prompt of prompts) {
+      if (prompt.id.toLowerCase() === key || prompt.name?.toLowerCase() === key) {
+        return prompt;
+      }
+    }
+    return undefined;
   }
 
   private createArgumentContext(): ArgumentExecutionContext {
@@ -348,257 +210,5 @@ export class CommandParsingStage extends BasePipelineStage {
       promptDefaults: {},
       systemContext: {},
     };
-  }
-
-  private hasChainOperator(parseResult: SymbolicCommandParseResult): boolean {
-    const operators = parseResult.operators?.operators;
-    if (!Array.isArray(operators)) {
-      return false;
-    }
-    return operators.some((operator) => operator.type === 'chain');
-  }
-
-  private async resolveArgumentPayload(
-    prompt: ConvertedPrompt,
-    sanitizedArgs?: string,
-    inlineCriteriaSeed: string[] = [],
-    fallbackArgs?: Record<string, any>
-  ): Promise<ParsedArgumentsResult & { inlineCriteria: string[] }> {
-    const seed = Array.isArray(inlineCriteriaSeed)
-      ? inlineCriteriaSeed.filter((item): item is string => Boolean(item && item.trim()))
-      : [];
-
-    const normalizedSeed = Array.from(new Set(seed));
-
-    if (!sanitizedArgs?.trim()) {
-      if (Object.keys(fallbackArgs ?? {}).length > 0) {
-        return {
-          processedArgs: { ...fallbackArgs },
-          resolvedPlaceholders: {},
-          inlineCriteria: normalizedSeed,
-        };
-      }
-
-      return {
-        processedArgs: {},
-        resolvedPlaceholders: {},
-        inlineCriteria: normalizedSeed,
-      };
-    }
-
-    const parsed = await this.parseArgumentsSafely(sanitizedArgs, prompt);
-
-    const processedArgs =
-      parsed.processedArgs && Object.keys(parsed.processedArgs).length > 0
-        ? parsed.processedArgs
-        : fallbackArgs
-          ? { ...fallbackArgs }
-          : {};
-
-    return {
-      processedArgs,
-      resolvedPlaceholders: parsed.resolvedPlaceholders,
-      inlineCriteria: normalizedSeed,
-    };
-  }
-
-  private async parseArgumentsSafely(
-    argsString: string,
-    prompt: ConvertedPrompt
-  ): Promise<ParsedArgumentsResult> {
-    if (!argsString?.trim()) {
-      return {
-        processedArgs: {},
-        resolvedPlaceholders: {},
-      };
-    }
-
-    try {
-      const argResult = await this.argumentParser.parseArguments(
-        argsString,
-        prompt,
-        this.createArgumentContext()
-      );
-      return {
-        processedArgs: argResult.processedArgs ?? {},
-        resolvedPlaceholders: argResult.resolvedPlaceholders ?? {},
-      };
-    } catch (error) {
-      this.logger.warn('[ParsingStage] Failed to parse symbolic command arguments', {
-        error,
-        promptId: prompt.id,
-      });
-      return {
-        processedArgs: {},
-        resolvedPlaceholders: {},
-      };
-    }
-  }
-
-  /**
-   * Separates gate operators into named and anonymous criteria.
-   * Named gates (with gateId) are returned separately for explicit ID registration.
-   * Anonymous criteria are merged together for backward-compatible temp gate creation.
-   * Shell verification gates (with shellVerify) are included for Ralph Wiggum loops.
-   */
-  private collectGateCriteria(parseResult: SymbolicCommandParseResult): {
-    anonymousCriteria: string[];
-    namedGates: Array<{
-      gateId: string;
-      criteria: string[];
-      shellVerify?: { command: string; timeout?: number; workingDir?: string };
-    }>;
-  } {
-    const operators = parseResult.operators?.operators;
-    if (!Array.isArray(operators)) {
-      return { anonymousCriteria: [], namedGates: [] };
-    }
-
-    const anonymousCriteria: string[] = [];
-    const namedGates: Array<{
-      gateId: string;
-      criteria: string[];
-      shellVerify?: { command: string; timeout?: number; workingDir?: string };
-    }> = [];
-
-    for (const op of operators) {
-      if (op.type !== 'gate') continue;
-      const gate = op;
-
-      // DEBUG: Trace what the parser produces
-      this.logger.debug('[collectGateCriteria] Processing gate operator:', {
-        gateId: gate.gateId,
-        hasShellVerify: Boolean(gate.shellVerify),
-        shellVerify: gate.shellVerify,
-        criteria: gate.criteria,
-        parsedCriteria: gate.parsedCriteria,
-      });
-
-      const criteria =
-        Array.isArray(gate.parsedCriteria) && gate.parsedCriteria.length
-          ? gate.parsedCriteria
-          : [gate.criteria];
-
-      const cleanedCriteria = criteria
-        .map((item) => item?.trim())
-        .filter((item): item is string => Boolean(item));
-
-      if (gate.gateId) {
-        // Named gate - keep ID association (includes shell verification gates)
-        const namedGate: {
-          gateId: string;
-          criteria: string[];
-          shellVerify?: { command: string; timeout?: number; workingDir?: string };
-        } = { gateId: gate.gateId, criteria: cleanedCriteria };
-
-        // Preserve shellVerify config for Ralph Wiggum loops
-        if (gate.shellVerify) {
-          namedGate.shellVerify = gate.shellVerify;
-        }
-
-        // DEBUG: Trace final namedGate before push
-        this.logger.debug('[collectGateCriteria] Created namedGate:', {
-          gateId: namedGate.gateId,
-          hasShellVerify: Boolean(namedGate.shellVerify),
-          shellVerifyCommand: namedGate.shellVerify?.command,
-          shellVerifyTimeout: namedGate.shellVerify?.timeout,
-          criteria: namedGate.criteria,
-        });
-
-        namedGates.push(namedGate);
-      } else {
-        // Anonymous gate - merge with others
-        anonymousCriteria.push(...cleanedCriteria);
-      }
-    }
-
-    return {
-      anonymousCriteria: Array.from(new Set(anonymousCriteria)),
-      namedGates,
-    };
-  }
-
-  /** @deprecated Use collectGateCriteria for named gate support */
-  private collectGlobalInlineCriteria(parseResult: SymbolicCommandParseResult): string[] {
-    const { anonymousCriteria } = this.collectGateCriteria(parseResult);
-    return anonymousCriteria;
-  }
-
-  private restoreFromBlueprint(context: ExecutionContext): void {
-    if (!this.chainSessionManager) {
-      throw new Error('ChainSessionManager unavailable for response-only execution');
-    }
-
-    let sessionId = context.getSessionId();
-    let blueprint = sessionId ? this.chainSessionManager.getSessionBlueprint(sessionId) : undefined;
-
-    if (!blueprint) {
-      const requestedChainId = context.mcpRequest.chain_id;
-      if (requestedChainId) {
-        const session = this.chainSessionManager.getSessionByChainIdentifier(requestedChainId, {
-          includeDormant: true,
-        });
-        if (session) {
-          sessionId = session.sessionId;
-          context.state.session.resumeSessionId = session.sessionId;
-          context.state.session.resumeChainId = session.chainId;
-          blueprint = session.blueprint
-            ? this.cloneBlueprint(session.blueprint)
-            : this.chainSessionManager.getSessionBlueprint(session.sessionId);
-        }
-      }
-    }
-
-    if (!blueprint || !sessionId) {
-      throw new Error(
-        'No stored execution blueprint found for the requested session or chain. Re-run the original command to continue.'
-      );
-    }
-
-    // Cast: blueprint stores ParsedCommandSnapshot; engine stages use full ParsedCommand.
-    context.parsedCommand = this.cloneParsedCommand(blueprint.parsedCommand as ParsedCommand);
-    context.executionPlan = this.cloneExecutionPlan(blueprint.executionPlan);
-    if (blueprint.gateInstructions) {
-      context.gateInstructions = blueprint.gateInstructions;
-    }
-    context.state.session.resumeSessionId = sessionId;
-    const resolvedResumeChainId =
-      context.state.session.resumeChainId ?? blueprint.parsedCommand.chainId;
-    if (resolvedResumeChainId !== undefined) {
-      context.state.session.resumeChainId = resolvedResumeChainId;
-    }
-    context.state.session.isBlueprintRestored = true;
-  }
-
-  private cloneParsedCommand(parsedCommand: ParsedCommand): ParsedCommand {
-    return JSON.parse(JSON.stringify(parsedCommand)) as ParsedCommand;
-  }
-
-  private cloneExecutionPlan(plan: ExecutionPlan): ExecutionPlan {
-    return JSON.parse(JSON.stringify(plan)) as ExecutionPlan;
-  }
-
-  private cloneBlueprint(blueprint: SessionBlueprint): SessionBlueprint {
-    const cloned: SessionBlueprint = {
-      parsedCommand: this.cloneParsedCommand(blueprint.parsedCommand as ParsedCommand),
-      executionPlan: this.cloneExecutionPlan(blueprint.executionPlan),
-    };
-
-    if (blueprint.gateInstructions !== undefined) {
-      cloned.gateInstructions = blueprint.gateInstructions;
-    }
-
-    return cloned;
-  }
-
-  private getStepArgumentInput(
-    executionPlan: SymbolicCommandParseResult['executionPlan'],
-    index: number
-  ): string | undefined {
-    if (!executionPlan.argumentInputs || index < 0) {
-      return undefined;
-    }
-
-    return executionPlan.argumentInputs[index];
   }
 }

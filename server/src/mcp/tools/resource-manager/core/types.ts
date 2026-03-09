@@ -20,10 +20,10 @@ import type {
   ExecutionFlow,
   QualityIndicators,
 } from '../../framework-manager/core/types.js';
-import type { ConsolidatedFrameworkManager } from '../../framework-manager/index.js';
+import type { FrameworkToolHandler } from '../../framework-manager/index.js';
 import type { GateManagerInput } from '../../gate-manager/core/types.js';
-import type { ConsolidatedGateManager } from '../../gate-manager/index.js';
-import type { ConsolidatedCheckpointManager } from '../checkpoint/index.js';
+import type { GateToolHandler } from '../../gate-manager/index.js';
+import type { CheckpointToolHandler } from '../checkpoint/index.js';
 
 /**
  * Script tool definition for inline tool creation
@@ -201,9 +201,9 @@ export interface ResourceManagerInput {
 
 /**
  * Interface for prompt resource service (breaks concrete import cycle).
- * The concrete PromptResourceService in ../prompt/ implements this.
+ * The concrete PromptResourceHandler in ../prompt/ implements this.
  */
-export interface IPromptResourceService {
+export interface PromptResourceHandlerPort {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handleAction(args: { action: string; [key: string]: any }, extra: any): Promise<ToolResponse>;
 }
@@ -213,10 +213,10 @@ export interface IPromptResourceService {
  */
 export interface ResourceManagerDependencies {
   logger: Logger;
-  promptResourceService: IPromptResourceService;
-  gateManager: ConsolidatedGateManager;
-  frameworkManager: ConsolidatedFrameworkManager;
-  checkpointManager?: ConsolidatedCheckpointManager;
+  promptResourceHandler: PromptResourceHandlerPort;
+  gateManager: GateToolHandler;
+  frameworkManager: FrameworkToolHandler;
+  checkpointManager?: CheckpointToolHandler;
 }
 
 /**

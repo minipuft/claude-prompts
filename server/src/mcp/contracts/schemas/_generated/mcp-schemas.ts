@@ -188,6 +188,41 @@ export const resourceManagerSchema = z
 export type resourceManagerInput = z.infer<typeof resourceManagerSchema>;
 
 /**
+ * Zod schema for skills_sync MCP tool
+ * Generated from contract version 1
+ */
+export const skillsSyncSchema = z
+  .object({
+    /** Operation: status (inspect config/manifests), export (write skills), sync (reconcile to registrations with optional prune), diff (show drift and optional .patch output), pull (merge exported prose edits back to canonical YAML), clone (create canonical resources from SKILL.md). */
+    action: z.enum(['status', 'export', 'sync', 'diff', 'pull', 'clone']),
+    /** Target client id. Use one of: claude-code, cursor, codex, opencode, or all. */
+    client: z.string().optional(),
+    /** Output scope for client directories. Default: user. */
+    scope: z.enum(['user', 'project']).optional(),
+    /** Optional resource type filter. */
+    resource_type: z.enum(['prompt', 'gate', 'methodology', 'style']).optional(),
+    /** Optional resource id filter. */
+    id: z.string().optional(),
+    /** For sync: when true (default), remove stale managed skills not present in current registrations. */
+    prune: z.boolean().optional(),
+    /** For export/sync/pull/clone: show planned changes without writing files. */
+    dry_run: z.boolean().optional(),
+    /** For diff: write .patch files to this directory instead of stdout only. */
+    output: z.string().optional(),
+    /** For clone: path to the source SKILL.md file. Required for clone action. */
+    file: z.string().optional(),
+    /** For clone: target category for prompt resources. Default: general. */
+    category: z.string().optional(),
+    /** For pull: show unified diffs without writing changes. */
+    preview: z.boolean().optional(),
+    /** For clone: overwrite existing resource directory. */
+    force: z.boolean().optional(),
+  })
+  .passthrough();
+
+export type skillsSyncInput = z.infer<typeof skillsSyncSchema>;
+
+/**
  * Zod schema for system_control MCP tool
  * Generated from contract version 1
  */

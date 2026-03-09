@@ -4,7 +4,7 @@
  */
 
 import { FrameworkManager } from '../../../../../engine/frameworks/framework-manager.js';
-import { FrameworkStateManager } from '../../../../../engine/frameworks/framework-state-manager.js';
+import { FrameworkStateStore } from '../../../../../engine/frameworks/framework-state-store.js';
 import { ContentAnalyzer } from '../../../../../modules/semantic/configurable-semantic-analyzer.js';
 import { type Logger, ToolResponse, ConfigManager } from '../../../../../shared/types/index.js';
 
@@ -53,7 +53,7 @@ export interface PromptResourceDependencies {
   mcpServer?: any;
   configManager: ConfigManager;
   semanticAnalyzer: ContentAnalyzer;
-  frameworkStateManager?: FrameworkStateManager;
+  frameworkStateStore?: FrameworkStateStore;
   frameworkManager?: FrameworkManager;
   onRefresh: () => Promise<void>;
   onRestart: (reason: string) => Promise<void>;
@@ -98,6 +98,6 @@ export interface MigrationResult {
 
 export interface PromptResourceModule {
   updateData?(data: PromptResourceData): void;
-  setFrameworkStateManager?(frameworkStateManager: FrameworkStateManager): void;
+  setFrameworkStateStore?(frameworkStateStore: FrameworkStateStore): void;
   setFrameworkManager?(frameworkManager: FrameworkManager): void;
 }

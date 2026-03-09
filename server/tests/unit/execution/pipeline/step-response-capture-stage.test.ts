@@ -1,7 +1,9 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 import { ExecutionContext } from '../../../../src/engine/execution/context/execution-context.js';
+import { StepCaptureService } from '../../../../src/engine/execution/capture/step-capture-service.js';
 import { StepResponseCaptureStage } from '../../../../src/engine/execution/pipeline/stages/08-response-capture-stage.js';
+import { GateVerdictProcessor } from '../../../../src/engine/gates/services/gate-verdict-processor.js';
 import { StepState } from '../../../../src/shared/types/chain-execution.js';
 
 import type { ChainSessionService } from '../../../../src/modules/chains/types.js';
@@ -20,7 +22,7 @@ const createSessionManager = () => {
   const getStepState = jest.fn();
   const updateSessionState = jest.fn().mockResolvedValue(true);
   const completeStep = jest.fn().mockResolvedValue(true);
-  const advanceStep = jest.fn().mockResolvedValue(true);
+  const advanceStep = jest.fn().mockResolvedValue(2);
   const isRetryLimitExceeded = jest.fn().mockReturnValue(false);
   const resetRetryCount = jest.fn().mockResolvedValue(true);
   const clearPendingGateReview = jest.fn().mockResolvedValue(true);
@@ -55,10 +57,17 @@ const createSessionManager = () => {
   };
 };
 
+const createStage = (manager: ChainSessionService): StepResponseCaptureStage => {
+  const logger = createLogger();
+  const verdictProcessor = new GateVerdictProcessor(manager, logger);
+  const stepCaptureService = new StepCaptureService(manager, logger);
+  return new StepResponseCaptureStage(verdictProcessor, stepCaptureService, manager, logger);
+};
+
 describe('StepResponseCaptureStage', () => {
   test('skips when execution is not part of a chain session', async () => {
     const { manager } = createSessionManager();
-    const stage = new StepResponseCaptureStage(manager, createLogger());
+    const stage = createStage(manager);
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.sessionContext = {
@@ -73,7 +82,7 @@ describe('StepResponseCaptureStage', () => {
 
   test('processes gate_verdict without requiring user_response', async () => {
     const { manager, getSession, recordGateReviewOutcome } = createSessionManager();
-    const stage = new StepResponseCaptureStage(manager, createLogger());
+    const stage = createStage(manager);
 
     getSession.mockReturnValue({
       sessionId: 'sess-1',
@@ -128,7 +137,7 @@ describe('StepResponseCaptureStage', () => {
       createSessionManager();
     recordGateReviewOutcome.mockResolvedValue('pending');
     getStepState.mockReturnValue({ state: StepState.COMPLETED, isPlaceholder: true });
-    const stage = new StepResponseCaptureStage(manager, createLogger());
+    const stage = createStage(manager);
 
     getSession.mockReturnValue({
       sessionId: 'sess-1',
@@ -181,7 +190,7 @@ describe('StepResponseCaptureStage', () => {
     const { manager, getSession, getStepState, updateSessionState, completeStep, getChainContext } =
       createSessionManager();
 
-    const stage = new StepResponseCaptureStage(manager, createLogger());
+    const stage = createStage(manager);
 
     getSession.mockReturnValue({
       sessionId: 'sess-1',
@@ -221,7 +230,7 @@ describe('StepResponseCaptureStage', () => {
   test('captures real user response when placeholder state exists', async () => {
     const { manager, getSession, getStepState, updateSessionState, completeStep, getChainContext } =
       createSessionManager();
-    const stage = new StepResponseCaptureStage(manager, createLogger());
+    const stage = createStage(manager);
 
     getSession
       .mockReturnValueOnce({
@@ -229,7 +238,7 @@ describe('StepResponseCaptureStage', () => {
         chainId: 'chain-1',
         state: { currentStep: 2, totalSteps: 3 },
       })
-      .mockReturnValueOnce({
+      .mockReturnValue({
         sessionId: 'sess-1',
         chainId: 'chain-1',
         state: { currentStep: 3, totalSteps: 3 },

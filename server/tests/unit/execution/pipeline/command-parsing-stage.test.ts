@@ -8,6 +8,7 @@ import type {
   ArgumentParsingResult,
 } from '../../../../src/engine/execution/parsers/argument-parser.js';
 import type { UnifiedCommandParser } from '../../../../src/engine/execution/parsers/command-parser.js';
+import type { SymbolicCommandBuilder } from '../../../../src/engine/execution/parsers/symbolic-command-builder.js';
 import type { SymbolicCommandParseResult } from '../../../../src/engine/execution/parsers/types/operator-types.js';
 import type { Logger } from '../../../../src/infra/logging/index.js';
 import type { ConvertedPrompt } from '../../../../src/shared/types/index.js';
@@ -18,6 +19,15 @@ const createLogger = (): Logger => ({
   error: jest.fn(),
   debug: jest.fn(),
 });
+
+const createMockSymbolicCommandBuilder = (
+  overrides: Partial<SymbolicCommandBuilder> = {}
+): SymbolicCommandBuilder =>
+  ({
+    buildSymbolicCommand: jest.fn(),
+    collectGateCriteria: jest.fn().mockReturnValue({ anonymousCriteria: [], namedGates: [] }),
+    ...overrides,
+  }) as unknown as SymbolicCommandBuilder;
 
 const createArgumentResult = (processedArgs: Record<string, unknown>): ArgumentParsingResult => ({
   processedArgs,
@@ -68,7 +78,8 @@ describe('CommandParsingStage', () => {
       mockCommandParser as UnifiedCommandParser,
       mockArgumentParser as ArgumentParser,
       () => [convertedPrompt],
-      createLogger()
+      createLogger(),
+      createMockSymbolicCommandBuilder()
     );
 
     const context = new ExecutionContext({ command: '>>demo_prompt name="World"' });
@@ -145,11 +156,26 @@ describe('CommandParsingStage', () => {
       arguments: [],
     };
 
+    const mockBuilder = createMockSymbolicCommandBuilder({
+      buildSymbolicCommand: jest.fn<any>().mockResolvedValue({
+        promptId: 'demo_prompt',
+        rawArgs: 'input="World"',
+        format: 'symbolic',
+        commandType: 'single',
+        confidence: 0.82,
+        metadata: symbolicParseResult.metadata,
+        convertedPrompt,
+        promptArgs: { input: 'World' },
+        inlineGateCriteria: ['Use emojis'],
+      }),
+    });
+
     const stage = new CommandParsingStage(
       mockCommandParser as UnifiedCommandParser,
       mockArgumentParser as ArgumentParser,
       () => [convertedPrompt],
-      createLogger()
+      createLogger(),
+      mockBuilder
     );
 
     const context = new ExecutionContext({
@@ -248,11 +274,28 @@ describe('CommandParsingStage', () => {
       },
     ];
 
+    const mockBuilder = createMockSymbolicCommandBuilder({
+      buildSymbolicCommand: jest.fn<any>().mockResolvedValue({
+        promptId: 'step_one',
+        rawArgs: '',
+        format: 'symbolic',
+        commandType: 'chain',
+        confidence: 0.77,
+        metadata: symbolicParseResult.metadata,
+        promptArgs: {},
+        steps: [
+          { promptId: 'step_one', args: { name: 'Alpha' }, inlineGateCriteria: ['Gate A'] },
+          { promptId: 'step_two', args: { topic: 'Z' }, inlineGateCriteria: ['Gate B'] },
+        ],
+      }),
+    });
+
     const stage = new CommandParsingStage(
       mockCommandParser as UnifiedCommandParser,
       mockArgumentParser as ArgumentParser,
       () => convertedPrompts,
-      createLogger()
+      createLogger(),
+      mockBuilder
     );
 
     const context = new ExecutionContext({
@@ -325,7 +368,8 @@ describe('CommandParsingStage', () => {
       mockCommandParser as UnifiedCommandParser,
       mockArgumentParser as ArgumentParser,
       () => [convertedPrompt, stepPreparePrompt, stepReviewPrompt],
-      createLogger()
+      createLogger(),
+      createMockSymbolicCommandBuilder()
     );
 
     const context = new ExecutionContext({ command: '>>workflow feature="flow"' });

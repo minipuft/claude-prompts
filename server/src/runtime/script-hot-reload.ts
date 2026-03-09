@@ -6,10 +6,10 @@ import {
 
 import type { Logger } from '../infra/logging/index.js';
 import type { ScriptToolDefinitionLoader } from '../modules/automation/core/script-definition-loader.js';
-import type { AuxiliaryReloadConfig } from '../modules/hot-reload/hot-reload-manager.js';
+import type { AuxiliaryReloadConfig } from '../modules/hot-reload/hot-reload-observer.js';
 
 /**
- * Build script tool auxiliary reload configuration for HotReloadManager.
+ * Build script tool auxiliary reload configuration for HotReloadObserver.
  * Follows the same pattern as buildGateAuxiliaryReloadConfig.
  *
  * @param logger - Logger instance

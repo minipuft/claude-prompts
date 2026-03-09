@@ -11,7 +11,6 @@ export * from './chainUtils.js';
 export * from './constants.js';
 export * from './yaml/index.js';
 export * from './resource-loader-types.js';
-export * from './atomic-file-write.js';
 export * from './file-transactions.js';
 export * from './usage-tracker.js';
 

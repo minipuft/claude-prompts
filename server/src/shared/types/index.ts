@@ -11,6 +11,9 @@
 
 // ===== Import Domain-Specific Types =====
 
+import type { StateStoreOptions } from '../../infra/database/stores/interface.js';
+
+export type { StateStoreOptions } from '../../infra/database/stores/interface.js';
 export type { McpToolRequest } from './execution.js';
 
 // ConfigManager interface (cross-cutting: consumed by modules/, mcp/, engine/)
@@ -90,8 +93,24 @@ export type {
   ExecutionModifiers,
   ExecutionPlan,
   GateSystemSettings,
+  ClientFamily,
+  DelegationProfile,
+  IdentityLaunchDefaults,
+  IdentityPolicyMode,
 } from './core-config.js';
 export { DEFAULT_VERSIONING_CONFIG } from './core-config.js';
+
+// Request identity types (workspace/organization scoping)
+export type {
+  RequestClientProfile,
+  RequestClientProfileSource,
+  RequestIdentity,
+  RequestIdentityContext,
+  RequestIdentityLaunchProfile,
+  RequestIdentityProvenance,
+  RequestIdentitySource,
+  RequestIdentityTransport,
+} from './request-identity.js';
 
 // ===== Prompt Argument Contract Type =====
 // Moved from modules/prompts/types.ts — consumed by shared/utils/jsonUtils.ts and engine/.
@@ -487,13 +506,13 @@ export interface GateValidationInfo {
 }
 
 // ===== HTTP API Contract Type =====
-// Minimal interface for ApiManager consumed by infra/http/. Concrete class lives in mcp/http/.
+// Minimal interface for ApiRouter consumed by infra/http/. Concrete class lives in mcp/http/.
 
 /**
  * Minimal API manager interface for HTTP server bootstrapping.
  * infra/http imports this interface; mcp/http provides the concrete class.
  */
-export interface IApiManager {
+export interface ApiRouterPort {
   /** Create an Express-compatible application for HTTP transport */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express Application type not available in shared layer
   createApp(): any;
@@ -537,7 +556,7 @@ export interface GateDefinition {
  * Semantic content analyzer interface (engine/ contract).
  * Concrete: modules/semantic/configurable-semantic-analyzer.ts ContentAnalyzer
  */
-export interface IContentAnalyzer {
+export interface ContentAnalyzerPort {
   analyzePrompt(prompt: unknown): Promise<ContentAnalysisResult>;
   isLLMEnabled(): boolean;
 }
@@ -546,7 +565,7 @@ export interface IContentAnalyzer {
  * Style manager interface (engine/ contract).
  * Concrete: modules/formatting/style-manager.ts StyleManager
  */
-export interface IStyleManager {
+export interface StyleManagerPort {
   listStyles(): string[];
   getStyle(styleId: string): { name?: string; description?: string } | undefined;
   getStyleGuidance(styleId: string): string | null;
@@ -556,7 +575,7 @@ export interface IStyleManager {
  * Tool detection service interface (engine/ contract).
  * Concrete: modules/automation/detection/tool-detection-service.ts ToolDetectionService
  */
-export interface IToolDetectionService {
+export interface ToolDetectionServicePort {
   detectTools(
     input: string,
     args: Record<string, unknown>,
@@ -568,7 +587,7 @@ export interface IToolDetectionService {
  * Execution mode service interface (engine/ contract).
  * Concrete: modules/automation/execution/execution-mode-service.ts ExecutionModeService
  */
-export interface IExecutionModeService {
+export interface ExecutionModeServicePort {
   filterByExecutionMode(
     matches: ToolDetectionMatch[],
     tools: LoadedScriptTool[],
@@ -585,7 +604,7 @@ export interface IExecutionModeService {
  * Script executor interface (engine/ contract).
  * Concrete: modules/automation/execution/script-executor.ts ScriptExecutor
  */
-export interface IScriptExecutor {
+export interface ScriptExecutorPort {
   execute(request: ScriptExecutionRequest, tool: LoadedScriptTool): Promise<ScriptExecutionResult>;
 }
 
@@ -593,7 +612,7 @@ export interface IScriptExecutor {
  * Response formatter interface (engine/ contract).
  * Concrete: mcp/tools/prompt-engine/processors/response-formatter.ts ResponseFormatter
  */
-export interface IResponseFormatter {
+export interface ResponseFormatterPort {
   formatPromptEngineResponse(
     response: unknown,
     executionContext?: unknown,
@@ -604,10 +623,10 @@ export interface IResponseFormatter {
 
 /**
  * Chain management service interface (engine/ contract).
- * Concrete: mcp/tools/prompt-engine/core/chain-management.ts ChainManagementService
+ * Concrete: mcp/tools/prompt-engine/core/chain-management.ts ChainSessionRouter
  */
-export interface IChainManagementService {
-  tryHandleCommand(command: string): Promise<ToolResponse | null>;
+export interface ChainSessionRouterPort {
+  tryHandleCommand(command: string, scope?: StateStoreOptions): Promise<ToolResponse | null>;
 }
 
 /**
@@ -615,7 +634,7 @@ export interface IChainManagementService {
  * mcp/ stores and forwards to engine/ pipeline stages.
  * Concrete: infra/hooks/hook-registry.ts HookRegistry
  */
-export interface IHookRegistry {
+export interface HookRegistryPort {
   getCounts(): { pipeline: number; gate: number; chain: number };
   clearAll(): void;
 }
@@ -625,7 +644,7 @@ export interface IHookRegistry {
  * mcp/ stores and forwards to engine/ pipeline stages.
  * Concrete: infra/observability/notifications/mcp-notification-emitter.ts McpNotificationEmitter
  */
-export interface IMcpNotificationEmitter {
+export interface McpNotificationEmitterPort {
   canSend(): boolean;
   setServer(server: {
     notification(params: { method: string; params?: Record<string, unknown> }): void;
@@ -718,6 +737,8 @@ export interface ChainStep {
   outputMapping?: Record<string, string>;
   /** Number of retry attempts on failure (default: 0) */
   retries?: number;
+  /** Client-agnostic capability hint for delegation model selection (per-step override) */
+  subagentModel?: 'heavy' | 'standard' | 'fast';
 }
 
 /**
@@ -746,6 +767,8 @@ export interface PromptData {
   registerWithMcp?: boolean;
   /** Script tool IDs declared by this prompt (references tools/{id}/ directories) */
   tools?: string[];
+  /** Client-agnostic capability hint for delegation model selection */
+  subagentModel?: 'heavy' | 'standard' | 'fast';
 }
 
 // ===== End of Type Definitions =====

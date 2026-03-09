@@ -12,8 +12,10 @@ import type {
   ExecutionResults,
 } from './context-types.js';
 import type { InitializedScriptState, PipelineInternalState } from './internal-state.js';
+import type { StateStoreOptions } from '../../../infra/database/stores/interface.js';
 import type { Logger } from '../../../infra/logging/index.js';
 import type { ToolResponse, McpToolRequest } from '../../../shared/types/index.js';
+import type { RequestIdentitySource } from '../../../shared/types/request-identity.js';
 import type { FrameworkExecutionContext } from '../../frameworks/types/index.js';
 import type { ChainStepPrompt } from '../operators/types.js';
 import type { GateEnforcementAuthority } from '../pipeline/decisions/index.js';
@@ -128,6 +130,14 @@ export class ExecutionContext {
         isBlueprintRestored: false,
         isExplicitChainResume: false,
       },
+      identity: {
+        resolved: false,
+        continuityScopeId: 'default',
+      },
+      scope: {
+        continuityScopeId: 'default',
+        source: 'default',
+      },
       gates: {
         temporaryGateIds: [],
         methodologyGateIds: [],
@@ -217,6 +227,24 @@ export class ExecutionContext {
    */
   hasPendingReview(): boolean {
     return Boolean(this.sessionContext?.pendingReview);
+  }
+
+  getContinuityScopeId(): string {
+    return this.state.scope.continuityScopeId;
+  }
+
+  setContinuityScopeId(scopeId: string, source: RequestIdentitySource): void {
+    this.state.scope.continuityScopeId = scopeId;
+    this.state.scope.source = source;
+  }
+
+  /**
+   * Builds StateStoreOptions from the resolved identity scope.
+   * Returns undefined for default scope (no isolation needed).
+   */
+  getScopeOptions(): StateStoreOptions | undefined {
+    const scopeId = this.state.identity.continuityScopeId;
+    return scopeId && scopeId !== 'default' ? { continuityScopeId: scopeId } : undefined;
   }
 
   hasExplicitChainId(): boolean {

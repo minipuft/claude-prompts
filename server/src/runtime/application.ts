@@ -12,10 +12,6 @@ import * as path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 // Import all module managers
-import {
-  buildClaudeCodeCacheAuxiliaryReloadConfig,
-  generateCacheOnStartup,
-} from './claude-code-cache-hot-reload.js';
 import { createRuntimeFoundation } from './context.js';
 import { loadPromptData } from './data-loader.js';
 import { buildGateAuxiliaryReloadConfig } from './gate-hot-reload.js';
@@ -26,28 +22,25 @@ import { resolveRuntimeLaunchOptions, RuntimeLaunchOptions } from './options.js'
 import { buildResourceChangeTrackerAuxiliaryReloadConfig } from './resource-change-tracking.js';
 import { buildScriptAuxiliaryReloadConfig } from './script-hot-reload.js';
 import { startServerWithManagers } from './startup-server.js';
-import { FrameworkStateManager } from '../engine/frameworks/framework-state-manager.js';
+import { FrameworkStateStore } from '../engine/frameworks/framework-state-store.js';
 import { GateManager } from '../engine/gates/gate-manager.js';
-import { EventEmittingConfigManager } from '../infra/config/index.js';
+import { ConfigLoader } from '../infra/config/index.js';
 import { HookRegistry } from '../infra/hooks/index.js';
 import { EnhancedLogger, Logger } from '../infra/logging/index.js';
 import { McpNotificationEmitter } from '../infra/observability/notifications/index.js';
 import { PromptAssetManager } from '../modules/prompts/index.js';
 import { reloadPromptData } from '../modules/prompts/prompt-refresh-service.js';
 import { registerResources, notifyResourcesChanged } from '../modules/resources/index.js';
-import {
-  ConversationManager,
-  createConversationManager,
-} from '../modules/text-refs/conversation.js';
-import { TextReferenceManager } from '../modules/text-refs/index.js';
+import { ConversationStore, createConversationStore } from '../modules/text-refs/conversation.js';
+import { TextReferenceStore } from '../modules/text-refs/index.js';
 import { FrameworksConfig, TransportMode } from '../shared/types/index.js';
-import { ServiceManager } from '../shared/utils/service-manager.js';
+import { ServiceOrchestrator } from '../shared/utils/service-orchestrator.js';
 
 // Import execution modules
 // REMOVED: ExecutionCoordinator and GateEvaluator imports - modular chain and gate systems removed
 
 //  Framework capabilities now integrated into base components
-// No separate framework observers needed - functionality moved to enhanced FileObserver and HotReloadManager
+// No separate framework observers needed - functionality moved to enhanced FileObserver and HotReloadObserver
 
 // Import startup management
 
@@ -57,11 +50,11 @@ import { ServiceManager } from '../shared/utils/service-manager.js';
 
 import type { PathResolver } from './paths.js';
 import type { ConvertedPrompt } from '../engine/execution/types.js';
-import type { ServerManager, TransportManager } from '../infra/http/index.js';
-import type { ApiManager } from '../mcp/http/api.js';
-import type { McpToolsManager } from '../mcp/tools/index.js';
-import type { ToolDescriptionManager } from '../mcp/tools/tool-description-manager.js';
-import type { HotReloadEvent } from '../modules/hot-reload/hot-reload-manager.js';
+import type { ServerLifecycle, TransportRouter } from '../infra/http/index.js';
+import type { ApiRouter } from '../mcp/http/api.js';
+import type { McpToolRouter } from '../mcp/tools/index.js';
+import type { ToolDescriptionLoader } from '../mcp/tools/tool-description-loader.js';
+import type { HotReloadEvent } from '../modules/hot-reload/hot-reload-observer.js';
 import type { Category, PromptData } from '../modules/prompts/types.js';
 
 /**
@@ -70,22 +63,22 @@ import type { Category, PromptData } from '../modules/prompts/types.js';
  */
 export class Application {
   private logger!: Logger;
-  private configManager!: EventEmittingConfigManager;
-  private textReferenceManager!: TextReferenceManager;
-  private conversationManager!: ConversationManager;
+  private configManager!: ConfigLoader;
+  private textReferenceStore!: TextReferenceStore;
+  private conversationStore!: ConversationStore;
   private promptManager!: PromptAssetManager;
   // REMOVED: executionCoordinator - modular chain system removed
   // REMOVED: gateEvaluator - gate evaluation system removed
-  private mcpToolsManager!: McpToolsManager;
-  private toolDescriptionManager!: ToolDescriptionManager;
-  private frameworkStateManager!: FrameworkStateManager;
+  private mcpToolsManager!: McpToolRouter;
+  private toolDescriptionLoader!: ToolDescriptionLoader;
+  private frameworkStateStore!: FrameworkStateStore;
   private gateManager?: GateManager;
   private hookRegistry!: HookRegistry;
   private notificationEmitter!: McpNotificationEmitter;
   private pathResolver!: PathResolver;
-  private transportManager!: TransportManager;
-  private apiManager: ApiManager | undefined;
-  private serverManager: ServerManager | undefined;
+  private transportRouter!: TransportRouter;
+  private apiRouter: ApiRouter | undefined;
+  private serverLifecycle: ServerLifecycle | undefined;
   //  Framework capabilities integrated into base components
   // No separate framework observers needed
 
@@ -109,7 +102,7 @@ export class Application {
   // Debug output control
   private debugOutput: boolean;
   private runtimeOptions: RuntimeLaunchOptions;
-  private serviceManager: ServiceManager;
+  private serviceOrchestrator: ServiceOrchestrator;
   private serverRoot?: string;
   private transportType?: TransportMode;
 
@@ -133,7 +126,7 @@ export class Application {
       this.logger = logger;
     }
     this.runtimeOptions = runtimeOptions ?? resolveRuntimeLaunchOptions();
-    this.serviceManager = new ServiceManager();
+    this.serviceOrchestrator = new ServiceOrchestrator();
 
     // Initialize debug output control - suppress in test environments
     this.debugOutput = !this.runtimeOptions.testEnvironment;
@@ -216,14 +209,14 @@ export class Application {
     const foundation = await createRuntimeFoundation(this.runtimeOptions, {
       logger: this.logger,
       configManager: this.configManager,
-      serviceManager: this.serviceManager,
+      serviceOrchestrator: this.serviceOrchestrator,
     });
 
     this.runtimeOptions = foundation.runtimeOptions;
     this.logger = foundation.logger;
     // Cast safe: runtime/ composition root creates the concrete ConfigManager
-    this.configManager = foundation.configManager as EventEmittingConfigManager;
-    this.serviceManager = foundation.serviceManager;
+    this.configManager = foundation.configManager as ConfigLoader;
+    this.serviceOrchestrator = foundation.serviceOrchestrator;
     this.serverRoot = foundation.serverRoot;
     this.transportType = foundation.transport;
     this.pathResolver = foundation.pathResolver;
@@ -257,20 +250,20 @@ export class Application {
     }
 
     // Initialize text reference manager
-    this.debugLog('About to create TextReferenceManager');
-    this.textReferenceManager = new TextReferenceManager(this.logger);
-    this.debugLog('TextReferenceManager created');
+    this.debugLog('About to create TextReferenceStore');
+    this.textReferenceStore = new TextReferenceStore(this.logger);
+    this.debugLog('TextReferenceStore created');
 
     // Initialize conversation manager
-    this.debugLog('About to create ConversationManager');
+    this.debugLog('About to create ConversationStore');
     try {
-      this.conversationManager = createConversationManager(this.logger);
-      this.debugLog('ConversationManager created successfully');
+      this.conversationStore = createConversationStore(this.logger);
+      this.debugLog('ConversationStore created successfully');
     } catch (error) {
-      this.debugLog('ConversationManager creation failed:', error);
+      this.debugLog('ConversationStore creation failed:', error);
       throw error;
     }
-    this.debugLog('ConversationManager created');
+    this.debugLog('ConversationStore created');
 
     // Create MCP server
     this.debugLog('About to get config');
@@ -319,8 +312,8 @@ export class Application {
     if (!this.promptManager) {
       this.promptManager = new PromptAssetManager(
         this.logger,
-        this.textReferenceManager,
-        this.conversationManager,
+        this.textReferenceStore,
+        this.conversationStore,
         this.configManager,
         this.mcpServer
       );
@@ -342,8 +335,8 @@ export class Application {
     if (this.mcpToolsManager) {
       optionalParams.mcpToolsManager = this.mcpToolsManager;
     }
-    if (this.apiManager) {
-      optionalParams.apiManager = this.apiManager;
+    if (this.apiRouter) {
+      optionalParams.apiRouter = this.apiRouter;
     }
 
     const result = await loadPromptData({ ...loadParams, ...optionalParams });
@@ -366,10 +359,9 @@ export class Application {
       categories: this._categories,
       convertedPrompts: this._convertedPrompts,
       promptManager: this.promptManager,
-      conversationManager: this.conversationManager,
-      textReferenceManager: this.textReferenceManager,
+      conversationStore: this.conversationStore,
+      textReferenceStore: this.textReferenceStore,
       mcpServer: this.mcpServer,
-      serviceManager: this.serviceManager,
       serverRoot: this.serverRoot,
       pathResolver: this.pathResolver,
       hookRegistry: this.hookRegistry,
@@ -382,10 +374,10 @@ export class Application {
       },
     });
 
-    this.frameworkStateManager = result.frameworkStateManager;
+    this.frameworkStateStore = result.frameworkStateStore;
     this.gateManager = result.gateManager;
     this.mcpToolsManager = result.mcpToolsManager;
-    this.toolDescriptionManager = result.toolDescriptionManager;
+    this.toolDescriptionLoader = result.toolDescriptionLoader;
 
     const currentFrameworkConfig = this.configManager.getFrameworksConfig();
     this.syncFrameworkSystemStateFromConfig(
@@ -394,11 +386,6 @@ export class Application {
     );
 
     await this.ensurePromptHotReload();
-
-    // Generate hooks cache on startup
-    if (this.serverRoot) {
-      await generateCacheOnStartup(this.logger, this.serverRoot);
-    }
 
     // Register MCP resources for token-efficient read-only access
     this.registerMcpResources();
@@ -419,7 +406,7 @@ export class Application {
     }
 
     // Get optional dependencies from managers (members are definite-assigned at this point)
-    const fm = this.frameworkStateManager.getFrameworkManager();
+    const fm = this.frameworkStateStore.getFrameworkManager();
     const csm = this.mcpToolsManager.getChainSessionManager();
     const mc = this.mcpToolsManager.getMetricsCollector();
 
@@ -429,7 +416,7 @@ export class Application {
       promptManager: {
         getConvertedPrompts: () => this._convertedPrompts,
       },
-      // Gate manager uses BaseResourceManager public methods: list() and get()
+      // Gate manager uses BaseResourceHandler public methods: list() and get()
       gateManager: this.gateManager
         ? {
             list: (enabledOnly?: boolean) => this.gateManager!.list(enabledOnly),
@@ -500,12 +487,12 @@ export class Application {
       startupParams.transportType = this.transportType;
     }
 
-    const { transportManager, apiManager, serverManager } =
+    const { transportRouter, apiRouter, serverLifecycle } =
       await startServerWithManagers(startupParams);
 
-    this.transportManager = transportManager;
-    this.apiManager = apiManager;
-    this.serverManager = serverManager;
+    this.transportRouter = transportRouter;
+    this.apiRouter = apiRouter;
+    this.serverLifecycle = serverLifecycle;
   }
 
   /**
@@ -583,24 +570,24 @@ export class Application {
       }
 
       //  Stop server and transport layers
-      if (this.serverManager) {
+      if (this.serverLifecycle) {
         if (this.logger) {
           this.logger.debug('Shutting down server manager...');
         }
-        this.serverManager.shutdown();
+        this.serverLifecycle.shutdown();
       }
 
       // Stop transport layer (if it has shutdown method)
       if (
-        this.transportManager &&
-        'shutdown' in this.transportManager &&
-        typeof (this.transportManager as any).shutdown === 'function'
+        this.transportRouter &&
+        'shutdown' in this.transportRouter &&
+        typeof (this.transportRouter as any).shutdown === 'function'
       ) {
         if (this.logger) {
           this.logger.debug('Shutting down transport manager...');
         }
         try {
-          await (this.transportManager as any).shutdown();
+          await (this.transportRouter as any).shutdown();
         } catch (error) {
           this.logger?.warn('Error shutting down transport manager:', error);
         }
@@ -608,15 +595,15 @@ export class Application {
 
       // Stop monitoring and resource-intensive components (if they have shutdown method)
       if (
-        this.frameworkStateManager &&
-        'shutdown' in this.frameworkStateManager &&
-        typeof (this.frameworkStateManager as any).shutdown === 'function'
+        this.frameworkStateStore &&
+        'shutdown' in this.frameworkStateStore &&
+        typeof (this.frameworkStateStore as any).shutdown === 'function'
       ) {
         if (this.logger) {
           this.logger.debug('Shutting down framework state manager...');
         }
         try {
-          await (this.frameworkStateManager as any).shutdown();
+          await (this.frameworkStateStore as any).shutdown();
         } catch (error) {
           this.logger?.warn('Error shutting down framework state manager:', error);
         }
@@ -639,19 +626,19 @@ export class Application {
       }
 
       // Stop registered background services (watchers, timers, etc.)
-      await this.serviceManager.stopAll();
+      await this.serviceOrchestrator.stopAll();
 
       // Stop API and MCP tools (if they have shutdown method)
       if (
-        this.apiManager &&
-        'shutdown' in this.apiManager &&
-        typeof (this.apiManager as any).shutdown === 'function'
+        this.apiRouter &&
+        'shutdown' in this.apiRouter &&
+        typeof (this.apiRouter as any).shutdown === 'function'
       ) {
         if (this.logger) {
           this.logger.debug('Shutting down API manager...');
         }
         try {
-          await (this.apiManager as any).shutdown();
+          await (this.apiRouter as any).shutdown();
         } catch (error) {
           this.logger?.warn('Error shutting down API manager:', error);
         }
@@ -674,30 +661,30 @@ export class Application {
 
       // Stop conversation and text reference managers (if they have shutdown method)
       if (
-        this.conversationManager &&
-        'shutdown' in this.conversationManager &&
-        typeof (this.conversationManager as any).shutdown === 'function'
+        this.conversationStore &&
+        'shutdown' in this.conversationStore &&
+        typeof (this.conversationStore as any).shutdown === 'function'
       ) {
         if (this.logger) {
           this.logger.debug('Shutting down conversation manager...');
         }
         try {
-          await (this.conversationManager as any).shutdown();
+          await (this.conversationStore as any).shutdown();
         } catch (error) {
           this.logger?.warn('Error shutting down conversation manager:', error);
         }
       }
 
       if (
-        this.textReferenceManager &&
-        'shutdown' in this.textReferenceManager &&
-        typeof (this.textReferenceManager as any).shutdown === 'function'
+        this.textReferenceStore &&
+        'shutdown' in this.textReferenceStore &&
+        typeof (this.textReferenceStore as any).shutdown === 'function'
       ) {
         if (this.logger) {
           this.logger.debug('Shutting down text reference manager...');
         }
         try {
-          await (this.textReferenceManager as any).shutdown();
+          await (this.textReferenceStore as any).shutdown();
         } catch (error) {
           this.logger?.warn('Error shutting down text reference manager:', error);
         }
@@ -768,10 +755,27 @@ export class Application {
         this.logger.info('✅ McpToolsManager updated with new data.');
       }
 
-      if (this.apiManager) {
+      if (this.apiRouter) {
         // The API manager is only available for the SSE transport.
-        this.apiManager.updateData(this._promptsData, this._categories, this.convertedPrompts);
-        this.logger.info('✅ ApiManager updated with new data.');
+        this.apiRouter.updateData(this._promptsData, this._categories, this.convertedPrompts);
+        this.logger.info('✅ ApiRouter updated with new data.');
+      }
+
+      // Step 3.5: Re-sync resource index for hook consumption
+      if (this.serverRoot) {
+        try {
+          const { SqliteEngine } = await import('../infra/database/sqlite-engine.js');
+          const { createResourceIndexer } = await import('../infra/database/resource-indexer.js');
+          const dbManager = await SqliteEngine.getInstance(this.serverRoot, this.logger);
+          await dbManager.initialize();
+          const resourcesDir =
+            this.pathResolver?.getResourcesPath() ?? path.join(this.serverRoot, 'resources');
+          const indexer = createResourceIndexer(dbManager, this.logger, { resourcesDir });
+          await indexer.syncAll();
+          this.logger.info('✅ Resource index re-synced after hot-reload.');
+        } catch (error) {
+          this.logger.warn('Failed to re-sync resource index:', error);
+        }
       }
 
       // Step 4: Notify MCP clients that the prompt list has changed (proper hot-reload)
@@ -800,8 +804,8 @@ export class Application {
 
     try {
       const serviceName = 'prompt-hot-reload';
-      if (!this.serviceManager.hasService(serviceName)) {
-        this.serviceManager.register({
+      if (!this.serviceOrchestrator.hasService(serviceName)) {
+        this.serviceOrchestrator.register({
           name: serviceName,
           start: async () => {
             // Build auxiliary reload configs for methodology, gates, and script tools
@@ -820,11 +824,6 @@ export class Application {
               ? buildScriptAuxiliaryReloadConfig(this.logger, scriptLoader, promptsDir)
               : undefined;
 
-            // Build Claude Code cache refresh auxiliary reload config
-            const claudeCodeCacheAux = this.serverRoot
-              ? buildClaudeCodeCacheAuxiliaryReloadConfig(this.logger, this.serverRoot)
-              : undefined;
-
             // Build resource change tracking auxiliary reload config
             const resourceChangeTrackerAux = buildResourceChangeTrackerAuxiliaryReloadConfig(
               this.logger,
@@ -836,7 +835,6 @@ export class Application {
               methodologyAux,
               gateAux,
               scriptAux,
-              claudeCodeCacheAux,
               resourceChangeTrackerAux,
             ].filter((aux): aux is NonNullable<typeof aux> => aux !== undefined);
 
@@ -859,7 +857,7 @@ export class Application {
         });
       }
 
-      await this.serviceManager.startService(serviceName);
+      await this.serviceOrchestrator.startService(serviceName);
       this.hotReloadInitialized = true;
       this.logger.info('🔄 Prompt hot reload monitoring activated');
     } catch (error) {
@@ -897,8 +895,8 @@ export class Application {
         this._categories = result.categories;
         this.promptsFilePath = result.promptsFilePath;
 
-        if (this.apiManager) {
-          this.apiManager.updateData(this._promptsData, this._categories, this._convertedPrompts);
+        if (this.apiRouter) {
+          this.apiRouter.updateData(this._promptsData, this._categories, this._convertedPrompts);
         }
 
         if (this.mcpServer) {
@@ -962,11 +960,11 @@ export class Application {
     };
 
     return {
-      running: this.serverManager?.isRunning() || false,
-      transport: this.transportManager?.getTransportType(),
+      running: this.serverLifecycle?.isRunning() || false,
+      transport: this.transportRouter?.getTransportType(),
       promptsLoaded: this._promptsData.length,
       categoriesLoaded: this._categories.length,
-      serverStatus: this.serverManager?.getStatus(),
+      serverStatus: this.serverLifecycle?.getStatus(),
       executionCoordinator: executionCoordinatorStatus,
     };
   }
@@ -979,12 +977,12 @@ export class Application {
       logger: this.logger,
       configManager: this.configManager,
       promptManager: this.promptManager,
-      textReferenceManager: this.textReferenceManager,
-      conversationManager: this.conversationManager,
+      textReferenceStore: this.textReferenceStore,
+      conversationStore: this.conversationStore,
       // REMOVED: executionCoordinator and gateEvaluator - modular systems removed
       mcpToolsManager: this.mcpToolsManager,
-      apiManager: this.apiManager,
-      serverManager: this.serverManager,
+      apiRouter: this.apiRouter,
+      serverLifecycle: this.serverLifecycle,
     };
   }
 
@@ -1011,7 +1009,7 @@ export class Application {
     const moduleStatus: Record<string, boolean> = {};
 
     // Check foundation modules
-    const foundationHealthy = !!(this.logger && this.configManager && this.textReferenceManager);
+    const foundationHealthy = !!(this.logger && this.configManager && this.textReferenceStore);
     moduleStatus['foundation'] = foundationHealthy;
     if (!foundationHealthy) {
       issues.push('Foundation modules not properly initialized');
@@ -1031,18 +1029,18 @@ export class Application {
       this.mcpToolsManager
     );
     moduleStatus['modulesInitialized'] = modulesInitialized;
-    moduleStatus['serverRunning'] = !!(this.serverManager && this.transportManager);
+    moduleStatus['serverRunning'] = !!(this.serverLifecycle && this.transportRouter);
 
     moduleStatus['configManager'] = !!this.configManager;
     moduleStatus['logger'] = !!this.logger;
     moduleStatus['promptManager'] = !!this.promptManager;
-    moduleStatus['textReferenceManager'] = !!this.textReferenceManager;
-    moduleStatus['conversationManager'] = !!this.conversationManager;
+    moduleStatus['textReferenceStore'] = !!this.textReferenceStore;
+    moduleStatus['conversationStore'] = !!this.conversationStore;
     // REMOVED: moduleStatus for executionCoordinator and gateEvaluator - modular systems removed
     moduleStatus['mcpToolsManager'] = !!this.mcpToolsManager;
-    moduleStatus['transportManager'] = !!this.transportManager;
-    moduleStatus['apiManager'] = !!this.apiManager;
-    moduleStatus['serverManager'] = !!this.serverManager;
+    moduleStatus['transportRouter'] = !!this.transportRouter;
+    moduleStatus['apiRouter'] = !!this.apiRouter;
+    moduleStatus['serverLifecycle'] = !!this.serverLifecycle;
 
     // Check overall health
     return buildHealthReport({
@@ -1053,7 +1051,7 @@ export class Application {
       moduleStatus,
       promptsLoaded: this._promptsData.length,
       categoriesLoaded: this._categories.length,
-      serverStatus: this.serverManager?.getStatus(),
+      serverStatus: this.serverLifecycle?.getStatus(),
       issues,
     });
   }
@@ -1103,8 +1101,8 @@ export class Application {
       application: {
         promptsLoaded: this._promptsData.length,
         categoriesLoaded: this._categories.length,
-        ...(this.transportManager?.isSse()
-          ? { serverConnections: this.transportManager.getActiveConnectionsCount() }
+        ...(this.transportRouter?.isSse()
+          ? { serverConnections: this.transportRouter.getActiveConnectionsCount() }
           : {}),
       },
       executionCoordinator: executionCoordinatorMetrics,
@@ -1167,7 +1165,7 @@ export class Application {
     const shouldEnable =
       systemPromptEnabled || gatesConfig.enableMethodologyGates || config.dynamicToolDescriptions;
 
-    if (!this.frameworkStateManager) {
+    if (!this.frameworkStateStore) {
       this.pendingFrameworkSystemState = shouldEnable;
       return;
     }
@@ -1177,7 +1175,7 @@ export class Application {
       (shouldEnable
         ? 'Framework system enabled via configuration toggles'
         : 'Framework system disabled via configuration toggles');
-    this.frameworkStateManager.setFrameworkSystemEnabled(shouldEnable, resolvedReason);
+    this.frameworkStateStore.setFrameworkSystemEnabled(shouldEnable, resolvedReason);
     this.pendingFrameworkSystemState = undefined;
   }
 
@@ -1231,7 +1229,7 @@ export class Application {
         health: this.validateHealth(),
         performance: this.getPerformanceMetrics(),
         configuration: {
-          transport: this.transportManager?.getTransportType() || 'unknown',
+          transport: this.transportRouter?.getTransportType() || 'unknown',
           configLoaded: !!this.configManager,
         },
         errors,

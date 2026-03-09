@@ -9,6 +9,7 @@ import { describe, test, expect, beforeEach } from '@jest/globals';
 import { ExecutionContext } from '../../../../src/engine/execution/context/execution-context.js';
 import { ArgumentParser } from '../../../../src/engine/execution/parsers/argument-parser.js';
 import { UnifiedCommandParser } from '../../../../src/engine/execution/parsers/command-parser.js';
+import { SymbolicCommandBuilder } from '../../../../src/engine/execution/parsers/symbolic-command-builder.js';
 import { CommandParsingStage } from '../../../../src/engine/execution/pipeline/stages/01-parsing-stage.js';
 import { createSimpleLogger } from '../../../../src/infra/logging/index.js';
 
@@ -57,11 +58,13 @@ describe('CommandParsingStage - commandType Integration', () => {
   let stage: CommandParsingStage;
 
   beforeEach(() => {
+    const symbolicCommandBuilder = new SymbolicCommandBuilder(argumentParser, logger);
     stage = new CommandParsingStage(
       commandParser,
       argumentParser,
       () => [singleConverted, stepConverted, chainConverted],
-      logger
+      logger,
+      symbolicCommandBuilder
     );
   });
 

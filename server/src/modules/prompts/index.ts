@@ -13,18 +13,18 @@ export * from './category-manager.js';
 import * as path from 'node:path';
 
 import { PromptConverter } from './converter.js';
-import {
-  HotReloadManager,
-  createHotReloadManager,
-  type AuxiliaryReloadConfig,
-  type HotReloadEvent as PromptHotReloadEvent,
-} from '../hot-reload/hot-reload-manager.js';
 import { PromptLoader } from './loader.js';
 import { discoverPromptDirectories, buildWatchTargets } from './prompt-watch-setup.js';
 import { PromptRegistry } from './registry.js';
 import { type ConfigManager, type Logger } from '../../shared/types/index.js';
-import { ConversationManager } from '../text-refs/conversation.js';
-import { TextReferenceManager } from '../text-refs/index.js';
+import {
+  HotReloadObserver,
+  createHotReloadObserver,
+  type AuxiliaryReloadConfig,
+  type HotReloadEvent as PromptHotReloadEvent,
+} from '../hot-reload/hot-reload-observer.js';
+import { ConversationStore } from '../text-refs/conversation.js';
+import { TextReferenceStore } from '../text-refs/index.js';
 
 import type { Category, CategoryPromptsResult, PromptData } from './types.js';
 import type { ConvertedPrompt } from '../../engine/execution/types.js';
@@ -35,25 +35,25 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
  */
 export class PromptAssetManager {
   private logger: Logger;
-  private textReferenceManager: TextReferenceManager;
-  private conversationManager: ConversationManager;
+  private textReferenceStore: TextReferenceStore;
+  private conversationStore: ConversationStore;
   private configManager: ConfigManager;
 
   private converter: PromptConverter;
   private loader: PromptLoader;
   private registry: PromptRegistry | undefined;
-  private hotReloadManager: HotReloadManager | undefined;
+  private hotReloadObserver: HotReloadObserver | undefined;
 
   constructor(
     logger: Logger,
-    textReferenceManager: TextReferenceManager,
-    conversationManager: ConversationManager,
+    textReferenceStore: TextReferenceStore,
+    conversationStore: ConversationStore,
     configManager: ConfigManager,
     mcpServer?: McpServer
   ) {
     this.logger = logger;
-    this.textReferenceManager = textReferenceManager;
-    this.conversationManager = conversationManager;
+    this.textReferenceStore = textReferenceStore;
+    this.conversationStore = conversationStore;
     this.configManager = configManager;
 
     this.loader = new PromptLoader(logger);
@@ -64,14 +64,9 @@ export class PromptAssetManager {
     );
 
     if (mcpServer) {
-      this.registry = new PromptRegistry(
-        logger,
-        mcpServer,
-        configManager,
-        this.conversationManager
-      );
+      this.registry = new PromptRegistry(logger, mcpServer, configManager, this.conversationStore);
 
-      this.hotReloadManager = createHotReloadManager(
+      this.hotReloadObserver = createHotReloadObserver(
         logger,
         {
           enabled: true,
@@ -243,14 +238,14 @@ export class PromptAssetManager {
       auxiliaryReloads?: AuxiliaryReloadConfig[];
     }
   ): Promise<void> {
-    if (!this.hotReloadManager) {
-      this.logger.warn('HotReloadManager not available - hot reload not started');
+    if (!this.hotReloadObserver) {
+      this.logger.warn('HotReloadObserver not available - hot reload not started');
       return;
     }
 
     // Set up reload callback
     if (onReloadCallback) {
-      this.hotReloadManager.setReloadCallback(async (event) => {
+      this.hotReloadObserver.setReloadCallback(async (event) => {
         this.logger.info(`Hot reload triggered: ${event.reason}`);
         try {
           await onReloadCallback(event);
@@ -262,15 +257,15 @@ export class PromptAssetManager {
 
     // Register methodology-specific reload callback (keeps manager generic)
     if (options?.methodologyHotReload?.handler) {
-      this.hotReloadManager.setMethodologyReloadCallback(options.methodologyHotReload.handler);
+      this.hotReloadObserver.setMethodologyReloadCallback(options.methodologyHotReload.handler);
     }
 
     if (options?.auxiliaryReloads) {
-      this.hotReloadManager.setAuxiliaryReloads(options.auxiliaryReloads);
+      this.hotReloadObserver.setAuxiliaryReloads(options.auxiliaryReloads);
     }
 
     // Start monitoring
-    await this.hotReloadManager.start();
+    await this.hotReloadObserver.start();
 
     const promptsDir = path.dirname(promptsConfigPath);
     const categoryDirs = await discoverPromptDirectories(promptsDir, this.loader, this.logger);
@@ -280,7 +275,7 @@ export class PromptAssetManager {
       auxiliaryDirectories: options?.auxiliaryReloads?.map((r) => r.directories),
     });
 
-    await this.hotReloadManager.watchDirectories(watchTargets);
+    await this.hotReloadObserver.watchDirectories(watchTargets);
     this.logger.info(`Hot reload monitoring started for ${watchTargets.length} directories`);
   }
 
@@ -288,8 +283,8 @@ export class PromptAssetManager {
    * Stop automatic file watching
    */
   async stopHotReload(): Promise<void> {
-    if (this.hotReloadManager) {
-      await this.hotReloadManager.stop();
+    if (this.hotReloadObserver) {
+      await this.hotReloadObserver.stop();
       this.logger.info('Hot reload monitoring stopped');
     }
   }
@@ -330,12 +325,12 @@ export class PromptAssetManager {
       loader: this.loader,
       registry: this.registry,
       categoryManager: this.loader.getCategoryManager(),
-      hotReloadManager: this.hotReloadManager,
+      hotReloadObserver: this.hotReloadObserver,
     };
   }
 
-  getTextReferenceManager(): TextReferenceManager {
-    return this.textReferenceManager;
+  getTextReferenceStore(): TextReferenceStore {
+    return this.textReferenceStore;
   }
 
   /**
@@ -343,12 +338,12 @@ export class PromptAssetManager {
    */
   getStats(prompts?: ConvertedPrompt[]) {
     const stats: any = {
-      textReferences: this.textReferenceManager.getStats(),
+      textReferences: this.textReferenceStore.getStats(),
     };
 
     if (prompts && this.registry) {
       stats.registration = this.registry.getRegistrationStats(prompts);
-      stats.conversation = this.conversationManager.getConversationStats();
+      stats.conversation = this.conversationStore.getConversationStats();
     }
 
     if (prompts && this.converter) {
@@ -363,8 +358,8 @@ export class PromptAssetManager {
    * Prevents async handle leaks by stopping hot reload manager
    */
   async shutdown(): Promise<void> {
-    if (this.hotReloadManager) {
-      await this.hotReloadManager.stop();
+    if (this.hotReloadObserver) {
+      await this.hotReloadObserver.stop();
     }
   }
 }

@@ -1,6 +1,5 @@
 # Architecture & Design Decisions
 
-> Status: canonical | Last Updated: January 2025
 
 Key architectural choices and trade-offs behind the Claude Prompts MCP Server. Read this to understand _why_ things are built this way.
 
@@ -95,7 +94,7 @@ We expose **3 MCP tools** instead of 20+ specialized tools:
 2. **Intent Accuracy**: LLMs route better through a single "Manager" tool with distinct actions than guessing parameters for 20 functions.
 3. **Maintainability**: Internal structure can evolve without changing external API.
 
-Internally, `resource_manager` routes to specialized services (PromptResourceService, GateManager, FrameworkManager) based on `resource_type`.
+Internally, `resource_manager` routes to specialized handlers (PromptResourceHandler, GateToolHandler, FrameworkToolHandler) based on `resource_type`.
 
 ### Contract-Driven Development
 
@@ -187,7 +186,7 @@ Three components prevent distributed state bugs:
 | Gates | `server/resources/gates/*/gate.yaml` | GateHotReloadCoordinator |
 | Styles | `server/resources/styles/*/style.yaml` | StyleHotReloadCoordinator |
 | Methodologies | `server/resources/methodologies/*/*.yaml` | MethodologyHotReload |
-| Tool Descriptions | `_generated/tool-descriptions.contracts.json` | ToolDescriptionManager |
+| Tool Descriptions | `_generated/tool-descriptions.contracts.json` | ToolDescriptionLoader |
 
 ### Hot-Reload Strategy
 

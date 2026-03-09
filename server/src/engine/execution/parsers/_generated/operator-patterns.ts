@@ -13,6 +13,12 @@ export const GENERATED_OPERATOR_PATTERNS = {
     symbol: '-->',
     status: 'implemented',
   },
+  /** Delegated chain step (sub-agent execution) - ==> */
+  delegation: {
+    pattern: /==>/g,
+    symbol: '==>',
+    status: 'implemented',
+  },
   /** Quality gate for validation - :: */
   gate: {
     pattern: /\s+(::|=)\s*(?:([a-z][a-z0-9_-]*):["']([^"']+)["']|["']([^"']+)["']|([^\s"']+))/gi,
@@ -53,4 +59,11 @@ export const GENERATED_OPERATOR_PATTERNS = {
 
 export type OperatorId = keyof typeof GENERATED_OPERATOR_PATTERNS;
 
-export const IMPLEMENTED_OPERATORS = ['chain', 'gate', 'framework', 'style', 'repetition'] as const;
+export const IMPLEMENTED_OPERATORS = [
+  'chain',
+  'delegation',
+  'gate',
+  'framework',
+  'style',
+  'repetition',
+] as const;

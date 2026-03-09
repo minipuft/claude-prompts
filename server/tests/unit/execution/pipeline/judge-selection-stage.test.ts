@@ -4,9 +4,12 @@ import { ExecutionContext } from '../../../../src/engine/execution/context/execu
 import { JudgeSelectionStage } from '../../../../src/engine/execution/pipeline/stages/06a-judge-selection-stage.js';
 
 import type { ConfigManager } from '../../../../src/infra/config/index.js';
-import type { GateLoader } from '../../../../src/engine/gates/core/gate-loader.js';
-import type { LightweightGateDefinition } from '../../../../src/engine/gates/types.js';
-import type { ConvertedPrompt, ExecutionPlan } from '../../../../src/shared/types/index.js';
+import type { JudgeMenuFormatter } from '../../../../src/engine/gates/judge/judge-menu-formatter.js';
+import type {
+  JudgeResourceCollector,
+  ResourceMenu,
+} from '../../../../src/engine/gates/judge/judge-resource-collector.js';
+import type { ExecutionPlan, ToolResponse } from '../../../../src/shared/types/index.js';
 
 const createLogger = () => ({
   info: jest.fn(),
@@ -15,77 +18,68 @@ const createLogger = () => ({
   debug: jest.fn(),
 });
 
-const createConvertedPrompt = (overrides: Partial<ConvertedPrompt> = {}): ConvertedPrompt => ({
-  id: 'prompt-id',
-  name: 'Prompt',
-  description: 'desc',
-  category: 'general',
-  userMessageTemplate: 'Hello {{name}}',
-  arguments: [],
-  ...overrides,
-});
+const createExecutionPlan = (overrides: Partial<ExecutionPlan> = {}): ExecutionPlan =>
+  ({
+    strategy: 'prompt',
+    gates: [],
+    requiresFramework: true,
+    requiresSession: false,
+    ...overrides,
+  }) as ExecutionPlan;
 
-const createGuidancePrompt = (id: string, description: string): ConvertedPrompt => ({
-  id,
-  name: id,
-  description,
-  category: 'guidance',
-  userMessageTemplate: `Guidance: ${id}`,
-  arguments: [],
-});
-
-const createFrameworkResource = (id: string, description: string): ConvertedPrompt => ({
-  id,
-  name: id,
-  description,
-  category: 'guidance',
-  userMessageTemplate: '',
-  arguments: [],
-});
-
-const createGateDefinition = (id: string, description: string): LightweightGateDefinition => ({
-  id,
-  name: id,
-  description,
-  type: 'validation',
-  severity: 'medium',
-});
-
-const createExecutionPlan = (overrides: Partial<ExecutionPlan> = {}): ExecutionPlan => ({
-  strategy: 'prompt',
+const createEmptyResourceMenu = (): ResourceMenu => ({
+  styles: [],
+  frameworks: [],
   gates: [],
-  requiresFramework: true,
-  requiresSession: false,
-  ...overrides,
 });
 
-const createConfigManager = (judgeEnabled: boolean = true): jest.Mocked<ConfigManager> =>
+const createJudgeToolResponse = (text: string): ToolResponse => ({
+  content: [{ type: 'text', text }],
+  isError: false,
+});
+
+const createMockResourceCollector = (
+  menu: ResourceMenu = createEmptyResourceMenu()
+): jest.Mocked<JudgeResourceCollector> =>
+  ({
+    collectAllResources: jest.fn().mockResolvedValue(menu),
+  }) as unknown as jest.Mocked<JudgeResourceCollector>;
+
+const createMockMenuFormatter = (
+  responseText: string = 'Resource Selection Required'
+): jest.Mocked<JudgeMenuFormatter> =>
+  ({
+    buildJudgeResponse: jest.fn().mockReturnValue(createJudgeToolResponse(responseText)),
+    getOperatorContext: jest.fn().mockReturnValue({
+      hasFrameworkOperator: false,
+      hasInlineGates: false,
+      inlineGateIds: [],
+      hasStyleSelector: false,
+    }),
+    formatResourceMenuForClaude: jest.fn().mockReturnValue(''),
+  }) as unknown as jest.Mocked<JudgeMenuFormatter>;
+
+const createConfigLoader = (judgeEnabled: boolean = true): jest.Mocked<ConfigManager> =>
   ({
     isJudgeEnabled: jest.fn().mockReturnValue(judgeEnabled),
   }) as unknown as jest.Mocked<ConfigManager>;
 
 describe('JudgeSelectionStage', () => {
-  let gateLoader: jest.Mocked<GateLoader>;
+  let resourceCollector: jest.Mocked<JudgeResourceCollector>;
+  let menuFormatter: jest.Mocked<JudgeMenuFormatter>;
   let configManager: jest.Mocked<ConfigManager>;
   let stage: JudgeSelectionStage;
-  let promptsProvider: jest.Mock;
-  let frameworksProvider: jest.Mock;
 
   beforeEach(() => {
-    gateLoader = {
-      listAvailableGateDefinitions: jest.fn().mockResolvedValue([]),
-    } as unknown as jest.Mocked<GateLoader>;
-
-    promptsProvider = jest.fn().mockReturnValue([]);
-    configManager = createConfigManager(true);
-    frameworksProvider = jest.fn().mockResolvedValue([]);
+    resourceCollector = createMockResourceCollector();
+    menuFormatter = createMockMenuFormatter();
+    configManager = createConfigLoader(true);
 
     stage = new JudgeSelectionStage(
-      promptsProvider,
-      gateLoader,
+      resourceCollector,
+      menuFormatter,
       configManager,
-      createLogger(),
-      frameworksProvider
+      createLogger()
     );
   });
 
@@ -98,39 +92,43 @@ describe('JudgeSelectionStage', () => {
 
       expect(context.state.framework.judgePhaseTriggered).toBe(false);
       expect(context.response).toBeUndefined();
-      expect(promptsProvider).not.toHaveBeenCalled();
-    });
-
-    test('ignores deprecated guided parameter (no judge trigger)', async () => {
-      const context = new ExecutionContext({ command: '>>demo', guided: true });
-      context.executionPlan = createExecutionPlan();
-
-      await stage.execute(context);
-
-      expect(context.state.framework.judgePhaseTriggered).toBe(false);
-      expect(context.response).toBeUndefined();
-      expect(promptsProvider).not.toHaveBeenCalled();
+      expect(resourceCollector.collectAllResources).not.toHaveBeenCalled();
     });
 
     test('triggers judge phase when %judge modifier is used', async () => {
+      resourceCollector = createMockResourceCollector({
+        styles: [{ id: 'analytical', name: 'Analytical' } as any],
+        frameworks: [],
+        gates: [],
+      });
+      stage = new JudgeSelectionStage(
+        resourceCollector,
+        menuFormatter,
+        configManager,
+        createLogger()
+      );
+
       const context = new ExecutionContext({ command: '%judge >>demo' });
       context.executionPlan = createExecutionPlan({
         modifiers: { judge: true },
       });
-
-      const stylePrompt = createGuidancePrompt('analytical', 'Analytical style');
-      promptsProvider.mockReturnValue([stylePrompt]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
 
       await stage.execute(context);
 
       expect(context.state.framework.judgePhaseTriggered).toBe(true);
       expect(context.response).toBeDefined();
+      expect(resourceCollector.collectAllResources).toHaveBeenCalled();
+      expect(menuFormatter.buildJudgeResponse).toHaveBeenCalled();
     });
 
     test('skips judge phase when judge system is disabled in config', async () => {
-      configManager = createConfigManager(false);
-      stage = new JudgeSelectionStage(promptsProvider, gateLoader, configManager, createLogger());
+      configManager = createConfigLoader(false);
+      stage = new JudgeSelectionStage(
+        resourceCollector,
+        menuFormatter,
+        configManager,
+        createLogger()
+      );
 
       const context = new ExecutionContext({ command: '%judge >>demo' });
       context.executionPlan = createExecutionPlan({
@@ -144,161 +142,59 @@ describe('JudgeSelectionStage', () => {
     });
   });
 
-  describe('Judge Response Format', () => {
-    test('includes resource menu in judge response', async () => {
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const stylePrompt = createGuidancePrompt('analytical', 'Systematic analysis');
-      const frameworkPrompt = createGuidancePrompt('cageerf-guide', 'CAGEERF methodology');
-      const gate = createGateDefinition('code-quality', 'Code quality checks');
-
-      promptsProvider.mockReturnValue([stylePrompt]);
-      frameworksProvider.mockResolvedValue([createFrameworkResource('cageerf', 'CAGEERF')]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([gate]);
-
-      await stage.execute(context);
-
-      const response = context.response;
-      expect(response).toBeDefined();
-      const responseText = (response?.content[0] as { text: string }).text;
-
-      expect(responseText).toContain('Resource Selection Required');
-      expect(responseText).toContain('>>demo');
-      expect(responseText).toContain('prompt_engine');
-    });
-
-    test('includes selection instructions in judge response', async () => {
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const stylePrompt = createGuidancePrompt('analytical', 'Analysis style');
-      promptsProvider.mockReturnValue([stylePrompt]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
-
-      await stage.execute(context);
-
-      const response = context.response;
-      const responseText = (response?.content[0] as { text: string }).text;
-
-      expect(responseText).toContain('@<framework>');
-      expect(responseText).toContain('#<analytical|procedural|creative|reasoning>');
-      expect(responseText).toContain(':: <gate_id');
-    });
-  });
-
   describe('Resource Collection', () => {
-    test('separates styles from frameworks based on ID patterns', async () => {
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const analyticalStyle = createGuidancePrompt('analytical', 'Analytical style');
-      const cageerfFramework = createGuidancePrompt('cageerf-guide', 'CAGEERF');
-      const reactFramework = createGuidancePrompt('react-guide', 'ReACT');
-
-      promptsProvider.mockReturnValue([analyticalStyle, cageerfFramework, reactFramework]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
-
-      await stage.execute(context);
-
-      const response = context.response;
-      const responseText = (response?.content[0] as { text: string }).text;
-
-      // Styles section should contain analytical
-      expect(responseText).toContain('analytical');
-    });
-
-    test('only includes guidance category prompts', async () => {
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const guidancePrompt = createGuidancePrompt('analytical', 'Guidance');
-      const generalPrompt = createConvertedPrompt({ id: 'general', category: 'general' });
-
-      promptsProvider.mockReturnValue([guidancePrompt, generalPrompt]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
-
-      await stage.execute(context);
-
-      const response = context.response;
-      const responseText = (response?.content[0] as { text: string }).text;
-
-      expect(responseText).toContain('analytical');
-      expect(responseText).not.toContain('general-prompt');
-    });
-
     test('skips when no resources are available', async () => {
       const context = new ExecutionContext({ command: '%judge >>demo' });
       context.executionPlan = createExecutionPlan({
         modifiers: { judge: true },
       });
 
-      promptsProvider.mockReturnValue([]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
+      await stage.execute(context);
+
+      // Empty resource menu → no judge trigger
+      expect(context.state.framework.judgePhaseTriggered).toBe(false);
+      expect(context.response).toBeUndefined();
+    });
+
+    test('sets response when resources are available', async () => {
+      resourceCollector = createMockResourceCollector({
+        styles: [{ id: 'analytical', name: 'Analytical' } as any],
+        frameworks: [],
+        gates: [{ id: 'code-quality', name: 'Code Quality' } as any],
+      });
+      stage = new JudgeSelectionStage(
+        resourceCollector,
+        menuFormatter,
+        configManager,
+        createLogger()
+      );
+
+      const context = new ExecutionContext({ command: '%judge >>demo' });
+      context.executionPlan = createExecutionPlan({
+        modifiers: { judge: true },
+      });
 
       await stage.execute(context);
 
-      // Should not trigger judge phase if no resources
-      expect(context.state.framework.judgePhaseTriggered).toBe(false);
-      expect(context.response).toBeUndefined();
+      expect(context.state.framework.judgePhaseTriggered).toBe(true);
+      expect(context.response).toBeDefined();
+      expect(menuFormatter.buildJudgeResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ styles: expect.any(Array), gates: expect.any(Array) }),
+        context
+      );
     });
   });
 
   describe('Edge Cases', () => {
-    test('handles null promptsProvider gracefully', async () => {
-      const stageWithoutProvider = new JudgeSelectionStage(
-        null,
-        gateLoader,
-        configManager,
-        createLogger()
-      );
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const gate = createGateDefinition('code-quality', 'Quality gate');
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([gate]);
-
-      await stageWithoutProvider.execute(context);
-
-      expect(context.state.framework.judgePhaseTriggered).toBe(true);
-      expect(context.response).toBeDefined();
-    });
-
-    test('handles null gateLoader gracefully', async () => {
-      const stageWithoutGateLoader = new JudgeSelectionStage(
-        promptsProvider,
-        null,
-        configManager,
-        createLogger()
-      );
-      const context = new ExecutionContext({ command: '%judge >>demo' });
-      context.executionPlan = createExecutionPlan({
-        modifiers: { judge: true },
-      });
-
-      const stylePrompt = createGuidancePrompt('analytical', 'Style');
-      promptsProvider.mockReturnValue([stylePrompt]);
-
-      await stageWithoutGateLoader.execute(context);
-
-      expect(context.state.framework.judgePhaseTriggered).toBe(true);
-      expect(context.response).toBeDefined();
-    });
-
     test('handles null configManager gracefully', async () => {
+      resourceCollector = createMockResourceCollector({
+        styles: [{ id: 'analytical', name: 'Analytical' } as any],
+        frameworks: [],
+        gates: [],
+      });
       const stageWithoutConfig = new JudgeSelectionStage(
-        promptsProvider,
-        gateLoader,
+        resourceCollector,
+        menuFormatter,
         null,
         createLogger()
       );
@@ -306,14 +202,10 @@ describe('JudgeSelectionStage', () => {
       context.executionPlan = createExecutionPlan({
         modifiers: { judge: true },
       });
-
-      const stylePrompt = createGuidancePrompt('analytical', 'Style');
-      promptsProvider.mockReturnValue([stylePrompt]);
-      gateLoader.listAvailableGateDefinitions.mockResolvedValue([]);
 
       await stageWithoutConfig.execute(context);
 
-      // Should still work without config manager
+      // Should still work without config manager (defaults to enabled)
       expect(context.state.framework.judgePhaseTriggered).toBe(true);
     });
 
@@ -327,7 +219,7 @@ describe('JudgeSelectionStage', () => {
       await stage.execute(context);
 
       expect(context.state.framework.judgePhaseTriggered).toBe(false);
-      expect(promptsProvider).not.toHaveBeenCalled();
+      expect(resourceCollector.collectAllResources).not.toHaveBeenCalled();
     });
   });
 });

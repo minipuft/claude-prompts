@@ -12,6 +12,22 @@
 import type { ShellVerifyResult, PendingShellVerification } from './types.js';
 
 /**
+ * Gate-level shell verification result.
+ * Wraps ShellVerifyResult with gate metadata for gate review feedback.
+ */
+export interface GateShellVerifyResult {
+  gateId: string;
+  gateName: string;
+  command: string;
+  passed: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  timedOut?: boolean;
+}
+
+/**
  * Shell verification feedback types.
  */
 export type ShellVerifyFeedbackType = 'bounce_back' | 'escalation';
@@ -160,4 +176,48 @@ export function createEscalationFeedback(
     type: 'escalation',
     message: formatEscalationMessage(result, pending, truncatedOutput),
   };
+}
+
+/**
+ * Format a markdown section summarizing gate-level shell verification results.
+ *
+ * Used by GateReviewStage to enrich gate review feedback with actual command
+ * output (test failures, lint errors) instead of generic "review your work".
+ *
+ * @returns Markdown string, or empty string when no results to display.
+ */
+export function formatGateShellVerifySection(results: GateShellVerifyResult[]): string {
+  if (results.length === 0) {
+    return '';
+  }
+
+  const lines = ['## Shell Verification Results', ''];
+
+  for (const result of results) {
+    const status = result.passed ? 'PASSED' : 'FAILED';
+    lines.push(`### ${result.gateName} — ${status}`);
+    lines.push('');
+    lines.push(`**Command:** \`${result.command}\``);
+    lines.push(`**Exit Code:** ${result.exitCode}`);
+    lines.push(`**Duration:** ${result.durationMs}ms`);
+
+    if (result.timedOut === true) {
+      lines.push(`**Status:** Timed out after ${result.durationMs}ms`);
+    }
+
+    if (!result.passed) {
+      const errorOutput = result.stderr !== '' ? result.stderr : result.stdout;
+      if (errorOutput) {
+        const truncated = truncateForDisplay(errorOutput);
+        lines.push('');
+        lines.push('```');
+        lines.push(truncated);
+        lines.push('```');
+      }
+    }
+
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
 }

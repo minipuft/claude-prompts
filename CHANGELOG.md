@@ -18,7 +18,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-deregistration: prompts in the `exports` list are automatically hidden from MCP `prompts/list` at startup — no manual `registerWithMcp: false` needed
   - npm scripts: `skills:export`, `skills:diff`, `skills:pull`
 
+- **Methodology assertions**: Deterministic verification of methodology phase compliance in LLM responses
+  - Processing steps can declare `marker` (section header) and `assertions` (validation rules)
+  - Supported assertions: `required`, `min_length`, `max_length`, `contains_any`, `contains_all`, `matches_pattern`, `forbids`
+  - New pipeline stage 09b (`AssertionVerificationStage`) evaluates assertions post-execution and bounces back with retry feedback on failure
+  - Section splitter isolates response content by markdown headers for targeted evaluation
+  - Assertion–gate review composition: when assertions pass and an LLM gate review is pending, assertion results are merged into the review prompt as pre-validated structural context rather than auto-clearing the review
+
+- **Gate judge evaluation**: Context-isolated gate review via delegation to a sub-agent (`%judge` modifier)
+  - Per-gate `evaluation` config in `gate.yaml`: `mode: judge`, optional `model` hint and `adversarial` framing
+  - Judge envelope strips generation reasoning — evaluator sees only output + criteria
+  - Global defaults configurable, overridden by per-gate settings
+
+- **Gate services layer**: Extracted gate domain logic into dedicated service modules (`engine/gates/services/`)
+  - `CompositionalGateService` — composes gates from multiple sources
+  - `SemanticGateService` — semantic gate resolution
+  - `GateReferenceResolver` — resolves gate references to definitions
+  - `GateShellVerifyRunner` — runs shell verification commands
+  - `GateServiceFactory` — factory for gate service creation
+
+- **Request identity resolution**: Pipeline stage 00.4 resolves workspace and organization scope from MCP SDK `extra` field, enabling per-tenant state isolation
+  - CLI flags: `--workspace-id`, `--organization-id`, `--identity-mode` (permissive|locked)
+  - `continuityScopeId` threaded through pipeline for scoped state access
+  - DB schema v13: `organization_id`/`workspace_id` columns on scoped tables
+
+- **Delegation operator** (`==>`): Chain steps can delegate execution to sub-agents via client-specific delegation tools
+  - Agent type resolution: `step.agentType` → `prompt.delegationAgent` → fallback `"chain-executor"`
+  - Delegation envelope includes chain history (original args + prior step results) as context for the sub-agent
+
+- **Per-criterion verdicts**: Gate review CTA includes a `CRITERION_VERDICTS:` block for structured per-criterion pass/fail feedback
+  - `GateEnforcementAuthority.parseCriterionVerdicts()` extracts individual criterion outcomes from LLM responses
+
+- **Usage CTA on prompt responses**: Single prompt and chain completion responses now include a context-aware re-run example reconstructed from the execution's actual data
+  - Reconstructs the full `prompt_engine(command:"...")` string with only user-specified operators (`@framework`, `#style`, `%modifier`, `:: gates`)
+  - System-injected frameworks are excluded from the CTA — only `@operator` sources appear
+  - Chain completion shows re-run only; single prompts also show a chain suggestion
+  - Auto-chain prompts (with built-in `chainSteps`) suppress the chain suggestion line
+
+- **Gate review retry content trimmed**: Retry gate reviews (attempt > 1) now abbreviate the original task instructions and skip framework methodology block to reduce token cost on subsequent attempts
+
+- **Docs convention for prompt resources**: Prompt resources can now include a `docs/` subdirectory with `.md` files that are bundled into exported skill packages alongside SKILL.md. Doc files are included in the content hash for drift detection. Claude Code always bundles docs; Agent Skills adapters bundle behind the `assets` capability flag.
+
+- **Workflow gate resources**: 5 new gate categories shipped under `server/resources/gates/` for dev-workflow phase enforcement
+  - `workflow-preflight` — pre-implementation readiness checks
+  - `workflow-changelog` — changelog discipline gates
+  - `workflow-diagnosis` — root cause diagnosis gates
+  - `workflow-growth` — knowledge capture gates
+  - `workflow-integration` — integration completion gates
+
+- **Shell verify auto-pass in gate reviews**: Gate reviews with `shell_verify` criteria now run real commands before LLM evaluation — when all commands pass, the review is auto-cleared as ground-truth validated without LLM involvement
+
+### Fixed
+
+- **Skills-sync gate bundling via service module**: `npm run skills:export` now uses the canonical service module with full gate resolution. Prompts that declare `gateConfiguration.include` get gates bundled as `gates/{id}/gate.yaml` + `guidance.md` alongside the SKILL.md, with an inline `## Quality Gates` criteria table. Standalone gate/methodology/style skills are no longer exported.
+
+- **ArgumentHistoryTracker initialization race condition**: `trackExecution()` now auto-initializes if called before `initialize()` completes, preventing silent data loss when the first `prompt_engine` call arrives before the fire-and-forget init finishes
+
+- **Shell verification `gate_action` not terminating pipeline**: `retry` and `abort` gate actions after max verification attempts silently advanced the chain instead of resetting or stopping. Both now set proper responses to trigger pipeline early termination
+
+- **Stale build artifacts after file deletion**: Added `rm -rf dist/` clean step to esbuild config — orphaned `.js` files from previous builds could cause runtime confusion when source files were deleted
+
+- **Legacy test contract drift reconciled after naming/infrastructure refactors**: Updated outdated unit suites to match canonical constructor and API contracts
+  - Reconciled execution pipeline constructor/stage-order drift (`InlineGateExtractionStage`, `PromptExecutionPipeline`, `StepResponseCaptureStage`)
+  - Reconciled `system-control` tests from removed legacy APIs (`whoami`, `setChainSessionStore`, `setFrameworkRegistry`) to current action/setter surface
+  - Reconciled runtime/schema expectations (`runtime/options` identity fields, `ChainStepSchema` passthrough behavior)
+  - Reconciled resource write-path tests (`MethodologyFileService`, prompt `FileOperations`) to current canonical file-write behavior
+  - Validation outcome: `tests/unit` now passes end-to-end (`123` suites, `1293` tests)
+
 ### Changed
+
+- **Client-aware delegation routing**: Delegation CTAs are now selected from resolved client profile instead of a Claude-only default
+  - Added hybrid client profile precedence for routing (`launch defaults` → `trusted request metadata` → `options.client_profile` → SDK `clientInfo` → unknown fallback)
+  - Delegation strategies now map to `task_tool_v1` (Claude Code), `spawn_agent_v1` (Codex), and `neutral_v1` (unknown clients)
+  - Identity context now carries `clientProfile` metadata so chain execution and response formatting use the same strategy path
+
+- **VersionHistoryService migrated to SQLite**: Version history for prompts, gates, and methodologies now persists in the `version_history` table instead of `.history.json` sidecar files alongside resource directories. All consumer call sites updated to pass `resourceType`/`resourceId` instead of filesystem paths.
+
+- **All remaining state managers migrated to SQLite**: FrameworkStateManager, GateStateManager, ChainRunRegistry, and ResourceChangeTracker now persist via `SqliteStateStore<T>` — completing the transition from JSON files to `state.db` as the sole persistence backend
+
+- **Naming-smell refactor (explicit responsibility naming)**: Replaced vague `*Manager`/`Consolidated*` names with role-specific names to make ownership and behavior obvious in code search, reviews, and architecture boundaries while keeping runtime behavior unchanged
+  - Infrastructure and runtime:
+    - `ServerManager` → `ServerLifecycle`
+    - `TransportManager` → `TransportRouter`
+    - `ApiManager` → `ApiRouter`
+    - `HotReloadManager` → `HotReloadObserver`
+    - `ServiceManager` → `ServiceOrchestrator`
+    - `ToolDescriptionManager` → `ToolDescriptionLoader`
+    - `SessionOverrideManager` → `SessionOverrideResolver`
+  - State/persistence:
+    - `FrameworkStateManager` → `FrameworkStateStore`
+    - `GateStateManager`/`GateSystemManager` → `GateStateStore`
+    - `VerifyActiveStateManager` → `VerifyActiveStateStore`
+    - `TextReferenceManager` → `TextReferenceStore`
+    - `ConversationManager` → `ConversationStore`
+    - `ChainSessionManager` → `ChainSessionStore` (with deprecated compatibility alias retained temporarily where needed)
+  - MCP tool orchestration:
+    - `ConsolidatedMcpToolsManager` → `McpToolRouter`
+    - `ConsolidatedFrameworkManager` → `FrameworkToolHandler`
+    - `ConsolidatedGateManager` → `GateToolHandler`
+    - `ConsolidatedCheckpointManager` → `CheckpointToolHandler`
+    - `BaseResourceManager` → `BaseResourceHandler`
+  - Compatibility preserved for downstream callers where needed:
+    - `ChainSessionManager` remains as a deprecated alias for `ChainSessionStore`
+    - `createMcpToolsManager` remains as a deprecated alias for `createMcpToolRouter`
+
+- **Shell verification pending state persisted in chain session**: Pending shell verification snapshots now save to the chain session, enabling cross-request resumption after context compaction or session recovery
+
+- **Pipeline architecture consolidation**: Extracted domain logic from 6 oversized pipeline stages (01, 02, 05, 06a, 08, 10) into 13 domain-owning services across `gates/services/`, `gates/judge/`, `execution/parsers/`, `execution/capture/`, and `execution/formatting/`. All stages now follow the thin-orchestrator pattern (≤210 lines). Services injected via constructor in `PromptExecutionService.buildPromptExecutionPipeline()`. Fixed latent async bug: `buildDirectCommand` was missing `await` on `argumentParser.parseArguments()`
+
+- **System control tool decomposed**: `system-control.ts` (3,791 lines) replaced by a router + 10 dedicated action handlers under `mcp/tools/system-control/handlers/` (analytics, changes, config, framework, gate, guide, injection, maintenance, session, status). Each handler ≤150 lines with domain logic delegated to existing services
+
+- **Test infrastructure hardening**: Established regression-prevention baseline for the test suite
+  - Coverage ratchet: `statements: 35`, `branches: 29`, `functions: 40`, `lines: 36` (baseline 2026-02-24, target 80%)
+  - `node:sqlite` Jest shim (`node-sqlite-shim.cjs`) bypasses Jest's module sandbox for native Node.js built-ins
+  - CI coverage gate: `npm run test:coverage` enforced on Node 22.x with 15-minute timeout
+
+- Shell verification failure responses now include `chain_id` resume hint so the LLM can continue the chain after fixing the issue
+
+- **Triage prompt enhanced**: Secondary work type, source spec extraction, acceptance criteria table, and compound routing added to the `workflow/triage` prompt and `intent-quality` gate
 
 - **CLI argument parsing migrated to `node:util parseArgs`**: Replaced hand-rolled argument parsing across server entrypoint, runtime options, and path resolution with Node.js built-in `parseArgs` (zero new dependencies)
   - New canonical `parseServerCliArgs()` in `runtime/cli.ts` — single parse, consumed everywhere
@@ -57,6 +174,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release Please workflow**: Modernized with dry run support, job outputs, and GitHub summary reporting
 - **npm-publish workflow**: Simplified structure with cleaner version parsing and downstream triggers via direct curl
 
+### Removed
+
+- **Deleted orphaned cache generator system**: `cache-generator.ts`, `claude-code-cache-hot-reload.ts`, and `infra/cache/` barrel removed. These wrote `prompts.cache.json`/`gates.cache.json` to `server/cache/` with zero consumers (Python hooks read from SQLite `resource_index` directly).
+
+- **Removed dead `cache` parameter paths from Python hooks**: `cache_manager.py` functions no longer accept an unused `cache` dict parameter — all lookups go through SQLite `db_reader` directly.
+
+- **Removed orphaned `checkpoint_state` table from schema**: Table was created in SQLite schema but never wired to any consumer (`ConsolidatedCheckpointManager` uses `checkpoints.json`). Schema version bumped 11→12.
+
+- **Verify-active state migrated to SQLite**: Stop hook coordination moved from `verify-active.json` to `verify-state.db`
+  - Python hooks can read SQLite independently without JSON file race conditions
+  - File-based locking with retry for concurrent access safety
+  - Atomic writes via temp file + rename
+
+- **Deleted MethodologyTracker**: 577-line class that duplicated `FrameworkStateManager` by writing `framework-state.json` via `fs.writeFile`. `PromptGuidanceService` now reads active framework from `FrameworkManager` directly
+
+- **ToolDescriptionManager file persistence eliminated**: Removed `FSWatcher`, active config path, `startWatching()`/`stopWatching()`, and `maybePersistActiveConfig()`. Tool descriptions are now in-memory only — loaded from contracts JSON, overlaid by methodology guides at runtime
+
+- **Deleted `atomicWriteFile` utility**: Zero consumers remain after all state systems migrated to SQLite
+
 ### Added
 
 - **Workspace gate overlays**: Custom gates from `MCP_WORKSPACE` automatically supplement shipped defaults
@@ -80,6 +216,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default mode returns compact output: category → prompt IDs (~300-500 tokens for 50 prompts)
   - Full mode available with `detail:"full"` (~2500-3500 tokens)
   - Compared to MCP Resources bulk listing (~5000-8000 tokens)
+
+- **CPM CLI `enable`/`disable` commands**: Shorthand for toggling subsystem mode switches without memorizing config key paths
+  - Maps 10 subsystems (`gates`, `methodologies`, `resources`, `verification`, `analysis`, etc.) to their config keys
+  - Reports "already enabled/disabled" without writing when the value is unchanged
+  - Available subsystems listed on unknown input for discoverability
 
 - **Gate enforcement hook**: `hooks/gate-enforce.py` now registered as PreToolUse hook
   - Blocks `prompt_engine` calls with FAIL verdict until criteria addressed
@@ -195,10 +336,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - List shows `chainId` as the primary identifier for LLM context recovery after compaction
   - No need to first list sessions to discover opaque internal IDs
 
+- **CPM CLI config validation**: `cpm config validate` now recognizes all 46 config.json keys (previously 9 keys from `config.schema.json` were missing, causing false "unknown key" warnings for `prompts.directory`, `gates.directory`, `assertions.*`, `advanced.sessions.*`, and others)
+
 - **Repetition operator arguments**: Arguments after `* N` now properly attach to each repeated segment
   - Before: `>>prompt * 3 arg:"x"` → `>>prompt --> >>prompt --> >>prompt --> arg:"x"` (broken)
   - After: `>>prompt * 3 arg:"x"` → `>>prompt arg:"x" --> >>prompt arg:"x" --> >>prompt arg:"x"` (correct)
   - Fixes "Unknown prompt" errors when using syntax like `>>strategicImplement * 5 plan:"path"`
+
+- **Hook prompt suggestions broken**: ResourceIndexer was never wired into server startup — `resource_index` table stayed empty so Python hooks (`prompt-suggest.py`) couldn't find any prompts
+  - Wired `ResourceIndexer.syncAll()` + `DatabaseManager.persist()` into `module-initializer.ts` (startup) and `application.ts` (hot-reload)
+  - Hooks now see all indexed resources (prompts, gates, methodologies, styles, tools) immediately after server starts
 
 ### Removed
 

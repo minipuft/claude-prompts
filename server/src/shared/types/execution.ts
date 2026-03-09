@@ -138,4 +138,7 @@ export interface McpToolRequest {
 
   /** Additional execution options forwarded to downstream stages */
   readonly options?: Record<string, unknown>;
+
+  /** Raw MCP SDK extra payload (authInfo, headers, sessionId) captured at tool boundary */
+  readonly _extra?: Record<string, unknown>;
 }

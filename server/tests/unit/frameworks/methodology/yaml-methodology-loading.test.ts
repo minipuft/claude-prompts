@@ -11,7 +11,7 @@ import {
   resetDefaultRuntimeLoader,
 } from '../../../../src/engine/frameworks/methodology/index.js';
 
-import type { IMethodologyGuide } from '../../../../src/engine/frameworks/types/index.js';
+import type { MethodologyGuide } from '../../../../src/engine/frameworks/types/index.js';
 
 describe('YAML Methodology Loading', () => {
   beforeAll(() => {
@@ -53,14 +53,14 @@ describe('YAML Methodology Loading', () => {
   });
 
   describe('GenericMethodologyGuide from YAML', () => {
-    it('creates valid IMethodologyGuide from YAML definition', () => {
+    it('creates valid MethodologyGuide from YAML definition', () => {
       const loader = getDefaultRuntimeLoader();
       const definition = loader.loadMethodology('cageerf');
       expect(definition).toBeDefined();
 
       const guide = createGenericGuide(definition!);
 
-      // Verify IMethodologyGuide interface implementation
+      // Verify MethodologyGuide interface implementation
       expect(guide.frameworkId).toBe('cageerf');
       expect(guide.frameworkName).toBeTruthy();
       expect(guide.methodology).toBeTruthy();

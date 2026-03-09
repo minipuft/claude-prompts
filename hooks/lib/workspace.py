@@ -63,18 +63,10 @@ def get_workspace_root() -> Path | None:
 
 
 def get_server_dir(fallback: Path) -> Path:
-    """Get the server directory (contains cache, resources, etc.)."""
+    """Get the server directory (contains resources, config, etc.)."""
     workspace = get_workspace_root()
     if workspace:
         return workspace / "server"
-    return fallback
-
-
-def get_cache_dir(fallback: Path) -> Path:
-    """Get the cache directory for prompt/gate caches."""
-    workspace = get_workspace_root()
-    if workspace:
-        return workspace / "server" / "cache"
     return fallback
 
 
@@ -90,6 +82,16 @@ def get_runtime_state_dir(fallback: Path) -> Path:
     """Get the runtime-state directory for transient state files."""
     workspace = get_workspace_root()
     if workspace:
-        # MCP server writes to {workspace}/runtime-state/ (process.cwd() is workspace root)
-        return workspace / "runtime-state"
+        # MCP server writes to {workspace}/server/runtime-state/ (serverRoot = workspace/server)
+        return workspace / "server" / "runtime-state"
     return fallback
+
+
+def get_state_db_path() -> Path | None:
+    """Get path to the MCP server's state.db (read-only from hooks)."""
+    workspace = get_workspace_root()
+    if workspace:
+        db_path = workspace / "server" / "runtime-state" / "state.db"
+        if db_path.exists():
+            return db_path
+    return None

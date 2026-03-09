@@ -2,7 +2,7 @@
 import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
-import type { ContentAnalysisResult, IStyleManager } from '../../../../shared/types/index.js';
+import type { ContentAnalysisResult, StyleManagerPort } from '../../../../shared/types/index.js';
 import type {
   PromptGuidanceService,
   ServicePromptGuidanceResult,
@@ -31,7 +31,7 @@ export class PromptGuidanceStage extends BasePipelineStage {
 
   constructor(
     private readonly promptGuidanceService: PromptGuidanceService | null,
-    private readonly styleManager: IStyleManager | null,
+    private readonly styleManager: StyleManagerPort | null,
     logger: Logger
   ) {
     super(logger);

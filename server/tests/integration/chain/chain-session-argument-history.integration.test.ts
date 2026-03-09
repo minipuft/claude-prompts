@@ -9,7 +9,7 @@ import { ArgumentHistoryTracker } from '../../../src/modules/text-refs/argument-
 
 import type { Logger } from '../../../src/infra/logging/index.js';
 
-class StubTextReferenceManager {
+class StubTextReferenceStore {
   private store: Record<string, Record<number, { result: string; metadata: any }>> = {};
   storeChainStepResult = jest.fn((chainId: string, step: number, result: string, metadata: any) => {
     this.store[chainId] ||= {} as any;
@@ -37,14 +37,10 @@ const createLogger = (): Logger =>
 
 describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
   let tmpRoot: string;
-  let runtimeStateDir: string;
-  let argHistoryPath: string;
 
   beforeAll(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'chain-arg-int-'));
-    runtimeStateDir = path.join(tmpRoot, 'runtime-state');
-    argHistoryPath = path.join(runtimeStateDir, 'argument-history.json');
-    fs.mkdirSync(runtimeStateDir, { recursive: true });
+    fs.mkdirSync(path.join(tmpRoot, 'runtime-state'), { recursive: true });
   });
 
   afterAll(() => {
@@ -53,10 +49,11 @@ describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
     } catch {}
   });
 
-  test('real step completion writes argument-history and enriches chainContext', async () => {
+  test('real step completion writes argument-history to SQLite and enriches chainContext', async () => {
     const logger = createLogger();
-    const textReference = new StubTextReferenceManager();
-    const tracker = new ArgumentHistoryTracker(logger, 10, argHistoryPath);
+    const textReference = new StubTextReferenceStore();
+    const tracker = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    await tracker.initialize();
 
     const manager = new ChainSessionManager(
       logger,
@@ -80,8 +77,12 @@ describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
     expect(context.previous_step_results).toBeDefined();
     expect(context.previous_step_results['1']).toBe('REAL-OUTPUT-1');
 
-    const persisted = JSON.parse(fs.readFileSync(argHistoryPath, 'utf-8'));
-    expect(Object.keys(persisted.chains).length).toBeGreaterThan(0);
+    // Verify persistence: new tracker instance should see the data
+    const tracker2 = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    await tracker2.initialize();
+    const history = tracker2.getSessionHistory('sess-1');
+    expect(history.length).toBeGreaterThan(0);
+    await tracker2.shutdown();
 
     await manager.cleanup();
   });

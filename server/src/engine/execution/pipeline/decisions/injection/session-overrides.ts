@@ -17,7 +17,7 @@ import type { Logger } from '../../../../../infra/logging/index.js';
  * Session state is ephemeral - cleared on server restart.
  * For persistent configuration changes, use config.json.
  */
-export class SessionOverrideManager {
+export class SessionOverrideResolver {
   private readonly logger: Logger;
   private state: InjectionSessionState;
 
@@ -62,7 +62,7 @@ export class SessionOverrideManager {
     this.state.overrides.set(type, override);
     this.state.history.push(override);
 
-    this.logger.info('[SessionOverrideManager] Override set', {
+    this.logger.info('[SessionOverrideResolver] Override set', {
       type,
       enabled,
       target,
@@ -81,7 +81,7 @@ export class SessionOverrideManager {
     this.state.overrides.delete(type);
 
     if (existed) {
-      this.logger.info('[SessionOverrideManager] Override cleared', { type });
+      this.logger.info('[SessionOverrideResolver] Override cleared', { type });
     }
 
     return existed;
@@ -94,7 +94,7 @@ export class SessionOverrideManager {
     const count = this.state.overrides.size;
     this.state.overrides.clear();
 
-    this.logger.info('[SessionOverrideManager] All overrides cleared', { count });
+    this.logger.info('[SessionOverrideResolver] All overrides cleared', { count });
 
     return count;
   }
@@ -108,7 +108,7 @@ export class SessionOverrideManager {
     // Check if expired
     if (override?.expiresAt && Date.now() > override.expiresAt) {
       this.state.overrides.delete(type);
-      this.logger.debug('[SessionOverrideManager] Override expired', { type });
+      this.logger.debug('[SessionOverrideResolver] Override expired', { type });
       return undefined;
     }
 
@@ -206,45 +206,45 @@ export class SessionOverrideManager {
  * Singleton instance for the current session.
  * Should be created by the application during startup.
  */
-let sessionOverrideManager: SessionOverrideManager | null = null;
+let sessionOverrideResolver: SessionOverrideResolver | null = null;
 
 /**
  * Initialize the session override manager.
  * Call once during application startup.
  */
-export function initSessionOverrideManager(logger: Logger): SessionOverrideManager {
-  if (sessionOverrideManager) {
-    logger.warn('[SessionOverrideManager] Already initialized, returning existing instance');
-    return sessionOverrideManager;
+export function initSessionOverrideResolver(logger: Logger): SessionOverrideResolver {
+  if (sessionOverrideResolver) {
+    logger.warn('[SessionOverrideResolver] Already initialized, returning existing instance');
+    return sessionOverrideResolver;
   }
 
-  sessionOverrideManager = new SessionOverrideManager(logger);
-  return sessionOverrideManager;
+  sessionOverrideResolver = new SessionOverrideResolver(logger);
+  return sessionOverrideResolver;
 }
 
 /**
  * Get the current session override manager.
  * Throws if not initialized.
  */
-export function getSessionOverrideManager(): SessionOverrideManager {
-  if (!sessionOverrideManager) {
+export function getSessionOverrideResolver(): SessionOverrideResolver {
+  if (!sessionOverrideResolver) {
     throw new Error(
-      'SessionOverrideManager not initialized. Call initSessionOverrideManager first.'
+      'SessionOverrideResolver not initialized. Call initSessionOverrideResolver first.'
     );
   }
-  return sessionOverrideManager;
+  return sessionOverrideResolver;
 }
 
 /**
  * Check if the session override manager is initialized.
  */
-export function isSessionOverrideManagerInitialized(): boolean {
-  return sessionOverrideManager !== null;
+export function isSessionOverrideResolverInitialized(): boolean {
+  return sessionOverrideResolver !== null;
 }
 
 /**
  * Reset the session override manager (for testing).
  */
-export function resetSessionOverrideManager(): void {
-  sessionOverrideManager = null;
+export function resetSessionOverrideResolver(): void {
+  sessionOverrideResolver = null;
 }

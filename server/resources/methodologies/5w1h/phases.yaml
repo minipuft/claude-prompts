@@ -5,36 +5,66 @@ processingSteps:
     methodologyBasis: 5W1H Who question
     order: 1
     required: true
+    section_header: '## Who'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: objective_definition
     name: Objective Definition (What)
     description: Define exactly what needs to be accomplished and deliverables
     methodologyBasis: 5W1H What question
     order: 2
     required: true
+    section_header: '## What'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: timing_establishment
     name: Timing Establishment (When)
     description: Establish timing, deadlines, and sequence requirements
     methodologyBasis: 5W1H When question
     order: 3
     required: true
+    section_header: '## When'
+    guards:
+      required: true
+      min_length: 50
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: context_determination
     name: Context Determination (Where)
     description: Determine location, context, and environmental constraints
     methodologyBasis: 5W1H Where question
     order: 4
     required: true
+    section_header: '## Where'
+    guards:
+      required: true
+      min_length: 50
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: purpose_understanding
     name: Purpose Understanding (Why)
     description: Understand underlying purposes, motivations, and importance
     methodologyBasis: 5W1H Why question
     order: 5
     required: true
+    section_header: '## Why'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: method_planning
     name: Method Planning (How)
     description: Plan specific methods, approaches, and implementation strategies
     methodologyBasis: 5W1H How question
     order: 6
     required: true
+    section_header: '## How'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 executionSteps:
   - id: comprehensive_who_analysis
     name: Comprehensive Who Analysis

@@ -10,8 +10,9 @@
  */
 
 import type { ValidationResult } from '../execution/types.js';
+import type { JudgeEvaluationConfig } from './judge/types.js';
 import type { GatePassCriteria } from './types/gate-primitives.js';
-import type { IGateGuide, GateActivationContext, GateRegistryStats } from './types/index.js';
+import type { GateGuide, GateActivationContext, GateRegistryStats } from './types/index.js';
 
 export type { ValidationCheck } from '../execution/types.js';
 
@@ -22,7 +23,7 @@ export type { ValidationCheck } from '../execution/types.js';
 // Re-export all gate guide types from the types/ subfolder
 export type {
   // Core interface
-  IGateGuide,
+  GateGuide,
   GateActivationRules,
   GateActivationContext,
   GateDefinitionYaml,
@@ -248,6 +249,13 @@ export interface LightweightGateDefinition {
    * @default false
    */
   blockResponseOnFail?: boolean;
+
+  /**
+   * Judge evaluation configuration.
+   * When mode is 'judge', gate review is delegated to a context-isolated sub-agent
+   * instead of self-review. Loaded from gate.yaml `evaluation` key.
+   */
+  evaluation?: JudgeEvaluationConfig;
 }
 
 /**
@@ -299,8 +307,8 @@ export type GateAction = 'retry' | 'skip' | 'abort';
  * Breaks the concrete import cycle: gate-manager → registry → adapter → gate-manager.
  */
 export interface IGateManager {
-  get(id: string): IGateGuide | undefined;
-  getActiveGates(gateIds: string[], context: GateActivationContext): IGateGuide[];
-  list(enabledOnly?: boolean): IGateGuide[];
+  get(id: string): GateGuide | undefined;
+  getActiveGates(gateIds: string[], context: GateActivationContext): GateGuide[];
+  list(enabledOnly?: boolean): GateGuide[];
   getStats(): GateRegistryStats;
 }

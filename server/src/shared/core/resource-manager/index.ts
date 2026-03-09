@@ -1,14 +1,14 @@
-// @lifecycle canonical - Unified resource manager pattern exports
+// @lifecycle canonical - Unified resource handler pattern exports
 /**
  * Resource Manager Module
  *
- * Provides a unified base class for resource managers:
- * - BaseResourceManager: Abstract base class with common patterns
- * - Types: Shared type definitions for managers
+ * Provides a unified base class for resource handlers:
+ * - BaseResourceHandler: Abstract base class with common patterns
+ * - Types: Shared type definitions for handlers
  *
  * Architecture:
  * ```
- *                 BaseResourceManager<T>
+ *                 BaseResourceHandler<T>
  *                        │
  *        ┌───────────────┼───────────────┐
  *        │               │               │
@@ -17,20 +17,20 @@
  *
  * @example
  * ```typescript
- * import { BaseResourceManager, ResourceManagerStats } from './core/resource-manager';
+ * import { BaseResourceHandler, ResourceManagerStats } from './core/resource-manager';
  *
- * class MyManager extends BaseResourceManager<MyResource, MyEntry> {
+ * class MyManager extends BaseResourceHandler<MyResource, MyEntry> {
  *   // Implement abstract methods...
  * }
  * ```
  */
 
-export { BaseResourceManager } from './base-resource-manager.js';
+export { BaseResourceHandler } from './base-resource-handler.js';
 
 export type {
   ResourceManagerStats,
   ResourceManagerStatus,
-  BaseResourceManagerConfig,
+  BaseResourceHandlerConfig,
   RegistryEntry,
   BaseRegistryStats,
 } from './types.js';
