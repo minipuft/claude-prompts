@@ -29,6 +29,7 @@ import {
   type Logger,
   type ToolResponse,
   type ChainSessionService,
+  StateStoreOptions,
 } from '../../../shared/types/index.js';
 import { resolveContinuityScopeId } from '../../../shared/utils/request-identity-scope.js';
 
@@ -36,7 +37,6 @@ import type { ActionHandler } from './core/action-handler-base.js';
 import type { SystemAnalytics, SystemControlContext } from './core/types.js';
 import type { PromptGuidanceService } from '../../../engine/frameworks/prompt-guidance/index.js';
 import type { GateGuidanceRenderer } from '../../../engine/gates/guidance/GateGuidanceRenderer.js';
-import type { StateStoreOptions } from '../../../infra/database/stores/interface.js';
 
 function isSystemControlActionId(value: string): value is SystemControlActionId {
   return (SYSTEM_CONTROL_ACTION_IDS as readonly string[]).includes(value);

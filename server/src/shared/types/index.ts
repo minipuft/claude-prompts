@@ -11,9 +11,9 @@
 
 // ===== Import Domain-Specific Types =====
 
-import type { StateStoreOptions } from '../../infra/database/stores/interface.js';
+import type { StateStoreOptions } from './persistence.js';
 
-export type { StateStoreOptions } from '../../infra/database/stores/interface.js';
+export type { StateStoreOptions, StateStore, DatabasePort, ToolIndexEntry } from './persistence.js';
 export type { McpToolRequest } from './execution.js';
 
 // ConfigManager interface (cross-cutting: consumed by modules/, mcp/, engine/)

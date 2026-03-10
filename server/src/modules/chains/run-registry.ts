@@ -1,40 +1,30 @@
 // @lifecycle canonical - Persists chain run registry data via SQLite.
-import { SqliteEngine } from '../../infra/database/sqlite-engine.js';
-import { SqliteStateStore } from '../../infra/database/stores/sqlite-store.js';
-
 import type { PersistedChainRunRegistry } from './types.js';
 import type { Logger } from '../../shared/types/index.js';
+import type { StateStoreOptions, StateStore } from '../../shared/types/persistence.js';
 
 export interface ChainRunRegistry {
   ensureInitialized(): Promise<void>;
-  load(): Promise<PersistedChainRunRegistry>;
-  save(store: PersistedChainRunRegistry): Promise<void>;
+  load(scope?: StateStoreOptions): Promise<PersistedChainRunRegistry>;
+  save(store: PersistedChainRunRegistry, scope?: StateStoreOptions): Promise<void>;
 }
 
 export class SqliteChainRunRegistry implements ChainRunRegistry {
-  private readonly store: SqliteStateStore<PersistedChainRunRegistry>;
+  private readonly store: StateStore<PersistedChainRunRegistry>;
 
-  constructor(dbManager: SqliteEngine, logger?: Logger) {
-    this.store = new SqliteStateStore<PersistedChainRunRegistry>(
-      dbManager,
-      {
-        tableName: 'chain_run_registry',
-        stateColumn: 'state',
-        defaultState: () => ({}),
-      },
-      logger
-    );
+  constructor(store: StateStore<PersistedChainRunRegistry>, _logger?: Logger) {
+    this.store = store;
   }
 
   async ensureInitialized(): Promise<void> {
     await this.store.ensureInitialized();
   }
 
-  async load(): Promise<PersistedChainRunRegistry> {
-    return this.store.load();
+  async load(scope?: StateStoreOptions): Promise<PersistedChainRunRegistry> {
+    return this.store.load(scope);
   }
 
-  async save(store: PersistedChainRunRegistry): Promise<void> {
-    await this.store.save(store);
+  async save(store: PersistedChainRunRegistry, scope?: StateStoreOptions): Promise<void> {
+    await this.store.save(store, scope);
   }
 }

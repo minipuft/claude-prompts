@@ -19,9 +19,13 @@
 
 import { resolveContinuityScopeId } from '../../../shared/utils/request-identity-scope.js';
 
+import type { SqliteStateStoreConfig } from './interface.js';
+import type {
+  DatabasePort,
+  StateStore,
+  StateStoreOptions,
+} from '../../../shared/types/persistence.js';
 import type { Logger } from '../../logging/index.js';
-import type { SqliteEngine } from '../sqlite-engine.js';
-import type { StateStore, SqliteStateStoreConfig, StateStoreOptions } from './interface.js';
 
 const DEFAULT_SCOPE_ID = 'default';
 
@@ -43,10 +47,10 @@ export class SqliteStateStore<T> implements StateStore<T> {
   private readonly stateColumn: string;
   private readonly defaultState: () => T;
   private readonly logger?: Logger;
-  private readonly db: SqliteEngine;
+  private readonly db: DatabasePort;
   private scopeColumnsCache?: StateScopeColumns;
 
-  constructor(db: SqliteEngine, config: SqliteStateStoreConfig, logger?: Logger) {
+  constructor(db: DatabasePort, config: SqliteStateStoreConfig, logger?: Logger) {
     this.db = db;
     this.tableName = config.tableName;
     this.stateColumn = config.stateColumn ?? 'state';

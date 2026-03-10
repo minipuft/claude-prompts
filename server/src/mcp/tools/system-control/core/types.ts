@@ -5,8 +5,8 @@ import type { FrameworkStateStore } from '../../../../engine/frameworks/framewor
 import type { PromptGuidanceService } from '../../../../engine/frameworks/prompt-guidance/index.js';
 import type { GateStateStore } from '../../../../engine/gates/gate-state-store.js';
 import type { GateGuidanceRenderer } from '../../../../engine/gates/guidance/GateGuidanceRenderer.js';
-import type { StateStoreOptions } from '../../../../infra/database/stores/interface.js';
 import type {
+  StateStoreOptions,
   ConfigManager,
   MetricsCollector,
   Logger,

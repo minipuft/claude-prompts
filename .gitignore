@@ -150,3 +150,4 @@ assets/moodboard.png
 
 # CLI config files (user-specific)
 opencode.json
+state.db

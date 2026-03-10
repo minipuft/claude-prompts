@@ -18,7 +18,7 @@ import { createTwoFilesPatch } from 'diff';
 
 import { computeContentHash } from '../../shared/utils/hash.js';
 import { loadHistory } from '../../cli-shared/version-history.js';
-import type { SqliteEngine } from '../../infra/database/index.js';
+import type { DatabasePort } from '../../shared/types/persistence.js';
 import {
   ResourceMutationTransaction,
   ResourceVerificationError,
@@ -382,8 +382,7 @@ interface SyncManifestEntry {
   sourceSnapshot?: Record<string, string>; // Raw source files at export time, for drift diffing
 }
 
-// Tool entry type from ResourceIndexer
-type ToolIndexEntry = import('../../infra/database/resource-indexer.js').ToolIndexEntry;
+import type { ToolIndexEntry } from '../../shared/types/persistence.js';
 
 export interface SkillsSyncOptions {
   command: string;
@@ -400,7 +399,7 @@ export interface SkillsSyncOptions {
   force?: boolean;
   json?: boolean;
   verbose?: boolean;
-  dbManager?: SqliteEngine;
+  dbManager?: DatabasePort;
 }
 
 export interface SkillsSyncOutput {
@@ -498,7 +497,7 @@ async function loadSyncConfig(): Promise<SyncConfig> {
  */
 async function loadToolsCache(
   output: SkillsSyncOutput,
-  dbManager?: SqliteEngine
+  dbManager?: DatabasePort
 ): Promise<Record<string, ToolIndexEntry>> {
   if (dbManager?.isInitialized()) {
     try {
@@ -1107,7 +1106,7 @@ interface LoadFilters {
 async function loadAllResources(
   filters: LoadFilters | undefined,
   output: SkillsSyncOutput,
-  dbManager?: SqliteEngine
+  dbManager?: DatabasePort
 ): Promise<SkillIR[]> {
   const resources: SkillIR[] = [];
 
@@ -2019,7 +2018,7 @@ interface ManifestRow {
 function loadManifestEntries(
   clientId: string,
   scope: 'user' | 'project',
-  dbManager?: SqliteEngine
+  dbManager?: DatabasePort
 ): Map<string, SyncManifestEntry> {
   const map = new Map<string, SyncManifestEntry>();
   if (!dbManager?.isInitialized()) return map;
@@ -2052,7 +2051,7 @@ async function saveManifestBatch(
   scope: 'user' | 'project',
   entries: Map<string, SyncManifestEntry>,
   configHash: string,
-  dbManager?: SqliteEngine
+  dbManager?: DatabasePort
 ): Promise<void> {
   if (!dbManager?.isInitialized()) return;
 

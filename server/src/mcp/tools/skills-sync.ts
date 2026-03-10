@@ -12,8 +12,7 @@ import {
   type SkillsSyncOutput,
 } from '../../modules/skills-sync/service.js';
 
-import type { SqliteEngine } from '../../infra/database/index.js';
-import type { Logger, ToolResponse } from '../../shared/types/index.js';
+import type { DatabasePort, Logger, ToolResponse } from '../../shared/types/index.js';
 
 const SKILLS_SYNC_ACTIONS = ['status', 'export', 'sync', 'diff', 'pull', 'clone'] as const;
 type SkillsSyncAction = (typeof SKILLS_SYNC_ACTIONS)[number];
@@ -72,7 +71,7 @@ function createStructuredResponse(
 export class ConsolidatedSkillsSync {
   constructor(
     private readonly logger: Logger,
-    private readonly dbManager?: SqliteEngine
+    private readonly dbManager?: DatabasePort
   ) {}
 
   async handleAction(args: SkillsSyncInput): Promise<ToolResponse> {
@@ -276,7 +275,7 @@ export class ConsolidatedSkillsSync {
 
 export function createConsolidatedSkillsSync(
   logger: Logger,
-  dbManager?: SqliteEngine
+  dbManager?: DatabasePort
 ): ConsolidatedSkillsSync {
   return new ConsolidatedSkillsSync(logger, dbManager);
 }

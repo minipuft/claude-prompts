@@ -13,10 +13,9 @@
  * - Independent of semantic layer and conversation history
  */
 import { ArgumentHistoryEntry, ReviewContext, PersistedArgumentHistory } from './types.js';
-import { SqliteEngine } from '../../infra/database/sqlite-engine.js';
-import { SqliteStateStore } from '../../infra/database/stores/sqlite-store.js';
 
 import type { Logger } from '../../shared/types/index.js';
+import type { StateStore } from '../../shared/types/persistence.js';
 
 /**
  * ArgumentHistoryTracker Class
@@ -35,7 +34,7 @@ export class ArgumentHistoryTracker {
   private readonly maxEntriesPerChain: number;
 
   /** SQLite state store */
-  private stateStore?: SqliteStateStore<PersistedArgumentHistory>;
+  private stateStore?: StateStore<PersistedArgumentHistory>;
 
   /** Whether initialization has completed */
   private initialized: boolean = false;
@@ -68,6 +67,9 @@ export class ArgumentHistoryTracker {
       return;
     }
 
+    // Dynamic import: resolve infra dependencies at runtime (avoids static layer violation)
+    const { SqliteEngine } = await import('../../infra/database/sqlite-engine.js');
+    const { SqliteStateStore } = await import('../../infra/database/stores/sqlite-store.js');
     const dbManager = await SqliteEngine.getInstance(this.serverRoot, this.logger);
     await dbManager.initialize();
 

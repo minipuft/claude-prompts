@@ -11,7 +11,6 @@
  */
 
 import { SqliteChainRunRegistry, type ChainRunRegistry } from './run-registry.js';
-import { SqliteEngine } from '../../infra/database/sqlite-engine.js';
 import { StepState } from '../../shared/types/chain-execution.js';
 import { resolveContinuityScopeId } from '../../shared/utils/request-identity-scope.js';
 import { ArgumentHistoryTracker, TextReferenceStore } from '../text-refs/index.js';
@@ -26,7 +25,6 @@ import type {
   PersistedChainRunRegistry,
   SessionBlueprint,
 } from './types.js';
-import type { StateStoreOptions } from '../../infra/database/stores/interface.js';
 import type {
   GateReviewHistoryEntry,
   PendingGateReview,
@@ -35,6 +33,7 @@ import type {
   GateReviewPrompt,
 } from '../../shared/types/chain-execution.js';
 import type { Logger } from '../../shared/types/index.js';
+import type { DatabasePort, StateStoreOptions } from '../../shared/types/persistence.js';
 
 /** Callback invoked when a session is cleared (cleanup or explicit). */
 export type SessionClearedCallback = (
@@ -79,26 +78,27 @@ export class ChainSessionStore implements ChainSessionService {
   private readonly reviewSessionTimeoutMs: number;
   private readonly cleanupIntervalMs: number;
   private cleanupIntervalHandle?: NodeJS.Timeout;
-  private injectedDbEngine?: SqliteEngine;
-  private resolvedDbEngine?: SqliteEngine;
+  private injectedDbEngine?: DatabasePort;
+  private resolvedDbEngine?: DatabasePort;
   private readonly serverPid = String(process.pid);
+  private readonly pidScope: StateStoreOptions = { continuityScopeId: String(process.pid) };
   private initPromise!: Promise<void>;
 
   constructor(
     logger: Logger,
     textReferenceStore: TextReferenceStore,
     options: ChainSessionStoreOptions,
-    dbEngineOrTracker?: SqliteEngine | ArgumentHistoryTracker,
+    dbEngineOrTracker?: DatabasePort | ArgumentHistoryTracker,
     sessionStore?: ChainRunRegistry
   ) {
     this.logger = logger;
     this.textReferenceStore = textReferenceStore;
 
-    // Detect 4th arg type: SqliteEngine (DI for tests) or ArgumentHistoryTracker
-    if (dbEngineOrTracker instanceof SqliteEngine) {
-      this.injectedDbEngine = dbEngineOrTracker;
-    } else if (dbEngineOrTracker !== undefined) {
+    // Detect 4th arg type: DatabasePort (DI for tests) or ArgumentHistoryTracker
+    if (dbEngineOrTracker instanceof ArgumentHistoryTracker) {
       this.argumentHistoryTracker = dbEngineOrTracker;
+    } else if (dbEngineOrTracker !== undefined) {
+      this.injectedDbEngine = dbEngineOrTracker;
     }
 
     this.serverRoot = options.serverRoot ?? '';
@@ -128,13 +128,20 @@ export class ChainSessionStore implements ChainSessionService {
       if (!this.runRegistry) {
         const dbManager = this.injectedDbEngine
           ? this.injectedDbEngine
-          : await SqliteEngine.getInstance(this.serverRoot, this.logger);
+          : await this.resolveDbEngine();
         await dbManager.initialize();
         this.resolvedDbEngine = dbManager;
-        this.runRegistry = new SqliteChainRunRegistry(dbManager, this.logger);
+        // Dynamic import: construct SqliteStateStore at runtime (avoids static infra import)
+        const { SqliteStateStore } = await import('../../infra/database/stores/sqlite-store.js');
+        const store = new SqliteStateStore<PersistedChainRunRegistry>(
+          dbManager,
+          { tableName: 'chain_run_registry', stateColumn: 'state', defaultState: () => ({}) },
+          this.logger
+        );
+        this.runRegistry = new SqliteChainRunRegistry(store, this.logger);
       }
       await this.runRegistry.ensureInitialized();
-      this.cleanupStaleSessionRows();
+      this.cleanupStalePidRows();
       await this.loadSessions();
     } catch (error) {
       this.logger.warn(
@@ -180,7 +187,7 @@ export class ChainSessionStore implements ChainSessionService {
    */
   private async loadSessions(): Promise<void> {
     try {
-      const parsed = await this.runRegistry.load();
+      const parsed = await this.runRegistry.load(this.pidScope);
 
       const persistedSessions = parsed.runs ?? parsed.sessions ?? {};
       const persistedChainMapping = parsed.runMapping ?? parsed.chainMapping ?? {};
@@ -277,7 +284,7 @@ export class ChainSessionStore implements ChainSessionService {
   private async persistSessions(): Promise<void> {
     try {
       const data = this.serializeSessions();
-      await this.runRegistry.save(data);
+      await this.runRegistry.save(data, this.pidScope);
       this.syncToSessionTable();
     } catch (error) {
       this.logger.error(
@@ -358,35 +365,69 @@ export class ChainSessionStore implements ChainSessionService {
   }
 
   /**
-   * Remove chain_sessions rows belonging to dead server processes.
-   * Called once at startup to prevent stale rows from blocking hooks.
+   * Collect tenant_id values from a table where the PID is dead (not alive).
+   * Skips non-numeric IDs and optionally skips the current process PID.
    */
-  private cleanupStaleSessionRows(): void {
+  /** Lazy-resolve the database engine via dynamic import (avoids static infra dependency). */
+  private async resolveDbEngine(): Promise<DatabasePort> {
+    const { SqliteEngine } = await import('../../infra/database/sqlite-engine.js');
+    return SqliteEngine.getInstance(this.serverRoot, this.logger);
+  }
+
+  private collectDeadPidTenants(db: DatabasePort, query: string, skipOwnPid: boolean): string[] {
+    const rows = db.query<{ tenant_id: string }>(query);
+    const dead: string[] = [];
+    for (const row of rows) {
+      const pid = parseInt(row.tenant_id, 10);
+      if (isNaN(pid)) continue;
+      if (skipOwnPid && row.tenant_id === this.serverPid) continue;
+      try {
+        process.kill(pid, 0);
+      } catch {
+        dead.push(row.tenant_id);
+      }
+    }
+    return dead;
+  }
+
+  /**
+   * Remove rows belonging to dead server processes from both chain_sessions
+   * and chain_run_registry tables. Called once at startup to prevent stale
+   * rows from blocking hooks or consuming storage.
+   */
+  private cleanupStalePidRows(): void {
     const db = this.resolvedDbEngine;
     if (!db) return;
 
     try {
-      const rows = db.query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM chain_sessions');
-      const stalePids: string[] = [];
-      for (const row of rows) {
-        const pid = parseInt(row.tenant_id, 10);
-        if (isNaN(pid)) continue;
-        // Check if process is alive
-        try {
-          process.kill(pid, 0);
-        } catch {
-          stalePids.push(row.tenant_id);
-        }
+      // Clean chain_sessions (per-row PID table for hooks)
+      const staleSessions = this.collectDeadPidTenants(
+        db,
+        'SELECT DISTINCT tenant_id FROM chain_sessions',
+        false
+      );
+      for (const pid of staleSessions) {
+        db.run('DELETE FROM chain_sessions WHERE tenant_id = ?', [pid]);
       }
-      if (stalePids.length > 0) {
-        for (const pid of stalePids) {
-          db.run('DELETE FROM chain_sessions WHERE tenant_id = ?', [pid]);
-        }
-        this.logger.debug(`Cleaned up chain_sessions rows for ${stalePids.length} dead PIDs`);
+
+      // Clean chain_run_registry (PID-scoped blob rows) + legacy 'default' row
+      db.run("DELETE FROM chain_run_registry WHERE tenant_id = 'default'");
+      const staleRegistry = this.collectDeadPidTenants(
+        db,
+        'SELECT tenant_id FROM chain_run_registry',
+        true
+      );
+      for (const pid of staleRegistry) {
+        db.run('DELETE FROM chain_run_registry WHERE tenant_id = ?', [pid]);
+      }
+
+      const totalCleaned = staleSessions.length + staleRegistry.length;
+      if (totalCleaned > 0) {
+        this.logger.debug(`Cleaned up ${totalCleaned} stale PID rows from session/registry tables`);
       }
     } catch (error) {
       this.logger.debug(
-        `cleanupStaleSessionRows failed: ${error instanceof Error ? error.message : String(error)}`
+        `cleanupStalePidRows failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

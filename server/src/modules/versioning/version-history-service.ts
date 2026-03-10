@@ -7,8 +7,8 @@ import type {
   RollbackResult,
   SaveVersionOptions,
 } from './types.js';
-import type { SqliteEngine } from '../../infra/database/sqlite-engine.js';
 import type { VersioningConfig, Logger } from '../../shared/types/index.js';
+import type { DatabasePort } from '../../shared/types/persistence.js';
 
 type ResourceType = 'prompt' | 'gate' | 'methodology';
 
@@ -43,7 +43,7 @@ export interface VersioningConfigProvider {
 export class VersionHistoryService {
   private logger: Logger;
   private configProvider: VersioningConfigProvider;
-  private dbManager: SqliteEngine | null = null;
+  private dbManager: DatabasePort | null = null;
 
   constructor(deps: { logger: Logger; configManager: VersioningConfigProvider }) {
     this.logger = deps.logger;
@@ -51,12 +51,13 @@ export class VersionHistoryService {
   }
 
   /**
-   * Get SqliteEngine instance (lazy initialization).
+   * Get database instance (lazy initialization via dynamic import).
+   * Dynamic import is architecturally acceptable: module types against DatabasePort
+   * from shared/types and only resolves the concrete implementation at runtime.
    */
-  private async getDb(): Promise<SqliteEngine> {
+  private async getDb(): Promise<DatabasePort> {
     if (!this.dbManager) {
       const serverRoot = this.configProvider.getServerRoot();
-      // Dynamic import to avoid circular dependency at module level
       const { SqliteEngine: Engine } = await import('../../infra/database/sqlite-engine.js');
       this.dbManager = await Engine.getInstance(serverRoot, this.logger);
     }

@@ -35,8 +35,8 @@ import yaml from 'js-yaml';
 export type ToolLoaderFn = (promptDir: string, promptId: string) => LoadedScriptTool[];
 import { computeContentHash } from '../../shared/utils/hash.js';
 
-import type { SqliteEngine } from './sqlite-engine.js';
 import type { JSONSchemaDefinition, LoadedScriptTool } from '../../shared/types/automation.js';
+import type { DatabasePort, ToolIndexEntry } from '../../shared/types/persistence.js';
 import type { Logger } from '../logging/index.js';
 
 /**
@@ -60,35 +60,9 @@ export interface IndexedResource {
   indexed_at: string;
 }
 
-/**
- * Tool entry returned by queryTools() for skills-sync consumption.
- * Contains the 6 fields skills-sync needs, keyed by `{promptId}/{toolId}`.
- */
-export interface ToolIndexEntry {
-  id: string;
-  name: string;
-  runtime: string;
-  inputSchema: JSONSchemaDefinition;
-  execution: {
-    trigger: string;
-    confirm: boolean;
-    strict: boolean;
-    timeout?: number;
-  };
-  env?: Record<string, string>;
-  /** Parent prompt ID */
-  promptId: string;
-  /** Parent prompt category */
-  category: string;
-  /** Description of the tool */
-  description: string;
-  /** Relative path from resources/ to the tool directory */
-  toolDir: string;
-  /** Path to the script file (relative to tool dir) */
-  scriptPath: string;
-  /** Content hash for incremental sync */
-  contentHash: string;
-}
+// ToolIndexEntry SSOT is in shared/types/persistence.ts (cross-layer contract).
+
+export type { ToolIndexEntry } from '../../shared/types/persistence.js';
 
 /**
  * Sync result statistics
@@ -376,12 +350,12 @@ export interface ResourceIndexerConfig {
  * Synchronizes file-based resources to SQLite for queryable lookups.
  */
 export class ResourceIndexer {
-  private readonly db: SqliteEngine;
+  private readonly db: DatabasePort;
   private readonly logger: Logger;
   private readonly config: Required<Omit<ResourceIndexerConfig, 'toolLoader'>>;
   private readonly toolLoader?: ToolLoaderFn;
 
-  constructor(db: SqliteEngine, logger: Logger, config: ResourceIndexerConfig) {
+  constructor(db: DatabasePort, logger: Logger, config: ResourceIndexerConfig) {
     this.db = db;
     this.logger = logger;
     this.toolLoader = config.toolLoader;
@@ -996,7 +970,7 @@ export class ResourceIndexer {
  * Factory function to create a ResourceIndexer instance
  */
 export function createResourceIndexer(
-  db: SqliteEngine,
+  db: DatabasePort,
   logger: Logger,
   config: ResourceIndexerConfig
 ): ResourceIndexer {

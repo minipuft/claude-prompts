@@ -26,6 +26,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import type { DatabasePort } from '../../shared/types/persistence.js';
 import type { Logger } from '../logging/index.js';
 
 /** Bump this when changing the embedded schema. Triggers drop-and-recreate. */
@@ -47,7 +48,7 @@ export interface DatabaseConfig {
  * Replaces the former sql.js WASM-based DatabaseManager with node:sqlite.
  * All state writes go directly to the file — no persist() step needed.
  */
-export class SqliteEngine {
+export class SqliteEngine implements DatabasePort {
   private static instance: SqliteEngine | null = null;
 
   private db: DatabaseSync | null = null;

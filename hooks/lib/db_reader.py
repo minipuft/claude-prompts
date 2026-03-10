@@ -258,30 +258,45 @@ def _load_from_session_table(conn: sqlite3.Connection) -> dict | None:
 
 
 def _load_from_run_registry(conn: sqlite3.Connection) -> dict | None:
-    """Legacy fallback: read from chain_run_registry blob."""
+    """Fallback: read from PID-scoped chain_run_registry blob rows."""
     try:
-        cursor = conn.execute("SELECT state FROM chain_run_registry LIMIT 1")
-        row = cursor.fetchone()
+        cursor = conn.execute("SELECT tenant_id, state FROM chain_run_registry")
+        rows = cursor.fetchall()
     except sqlite3.OperationalError:
         return None
 
-    if not row or not row["state"]:
+    if not rows:
         return None
-
-    registry = json.loads(row["state"])
-    runs = registry.get("runs", {})
 
     best = None
     best_activity = 0
-    for session in runs.values():
-        if not isinstance(session, dict):
+
+    for row in rows:
+        tenant_id = row["tenant_id"]
+        # Only read blobs from live server processes
+        try:
+            pid = int(tenant_id)
+        except (ValueError, TypeError):
             continue
-        if session.get("lifecycle") == "dormant":
+        if not _is_pid_alive(pid):
             continue
-        activity = session.get("lastActivity", 0)
-        if activity > best_activity:
-            best = session
-            best_activity = activity
+
+        state_json = row["state"]
+        if not state_json:
+            continue
+
+        registry = json.loads(state_json)
+        runs = registry.get("runs", {})
+
+        for session in runs.values():
+            if not isinstance(session, dict):
+                continue
+            if session.get("lifecycle") == "dormant":
+                continue
+            activity = session.get("lastActivity", 0)
+            if activity > best_activity:
+                best = session
+                best_activity = activity
 
     if not best:
         return None

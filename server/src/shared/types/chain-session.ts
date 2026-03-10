@@ -20,7 +20,7 @@ import type {
   StepMetadata,
 } from './chain-execution.js';
 import type { ExecutionModifiers, ExecutionPlan } from './core-config.js';
-import type { StateStoreOptions } from '../../infra/database/stores/interface.js';
+import type { StateStoreOptions } from './persistence.js';
 
 // Re-export StepState for consumers that previously imported it via modules/chains/types.ts
 export { StepState };
