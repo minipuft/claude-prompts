@@ -138,6 +138,9 @@ scripts/dev-link.sh
 # IDE workspace files
 plans/claude-prompts.code-workspace
 
+# Act event payloads (local CD testing)
+.github/events/
+
 # Claude Desktop Extension artifacts
 *.mcpb
 .mcpb-staging/
