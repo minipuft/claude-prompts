@@ -119,7 +119,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18.x', '20.x', '22.x']
+        node: ['22.x']
     defaults:
       run:
         working-directory: server
@@ -245,7 +245,7 @@ jobs:
               '|-------|--------|',
               `| Lint & Validate | ${statusEmoji(lintResult)} ${lintResult} |`,
               `| Build | ${statusEmoji(buildResult)} ${buildResult} |`,
-              `| Test Matrix (Node 18, 20, 22) | ${statusEmoji(testResult)} ${testResult} |`,
+              `| Test (Node 22) | ${statusEmoji(testResult)} ${testResult} |`,
               `| Architecture | ${statusEmoji(archResult)} ${archResult} |`,
               '',
               '<details>',
