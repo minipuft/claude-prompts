@@ -52,6 +52,9 @@ Current time: ...
 > [!NOTE]
 > Single-file prompts are great for getting started. Once your template grows past ~20 lines, switch to the directory pattern below.
 
+> [!TIP]
+> **Prompt ID convention**: Use `snake_case` (lowercase with underscores). Hyphens are accepted as input but automatically normalized to underscores — `my-prompt` and `my_prompt` resolve to the same prompt.
+
 ---
 
 ## 2. The Directory Pattern (Scalable)

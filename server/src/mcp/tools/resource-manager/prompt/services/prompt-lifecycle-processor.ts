@@ -8,7 +8,12 @@ import { ObjectDiffGenerator } from '../analysis/object-diff-generator.js';
 import { PromptAnalyzer } from '../analysis/prompt-analyzer.js';
 import { PromptResourceContext } from '../core/context.js';
 import { FileOperations } from '../operations/file-operations.js';
-import { validateRequiredFields, validateToolDefinitions } from '../utils/validation.js';
+import {
+  normalizePromptId,
+  validatePromptId,
+  validateRequiredFields,
+  validateToolDefinitions,
+} from '../utils/validation.js';
 
 import type { ConvertedPrompt } from '../../../../../engine/execution/types.js';
 import type { PromptData } from '../../../../../modules/prompts/types.js';
@@ -30,6 +35,30 @@ export class PromptLifecycleProcessor {
 
   async createPrompt(args: any): Promise<ToolResponse> {
     validateRequiredFields(args, ['id', 'name', 'description', 'user_message_template']);
+    const rawId = String(args.id);
+    validatePromptId(rawId);
+
+    // Normalize ID: hyphens/spaces → underscores (canonical form)
+    const canonicalId = normalizePromptId(rawId);
+
+    // Check for duplicate (normalized ID already exists)
+    const existing = this.getConvertedPrompts().find(
+      (p) => normalizePromptId(p.id) === canonicalId
+    );
+    if (existing) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ **Prompt creation blocked**: A prompt with ID \`${existing.id}\` already exists.\nThe requested ID \`${rawId}\` normalizes to \`${canonicalId}\` which conflicts with the existing prompt.\n\n💡 Hyphens and underscores are treated as equivalent in prompt IDs.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    // Use normalized ID from here forward
+    (args as Record<string, unknown>)['id'] = canonicalId;
 
     const typedArgs = args as {
       id: string;

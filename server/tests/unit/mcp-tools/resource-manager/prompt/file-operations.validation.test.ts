@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { FileOperations } from '../../../../../src/mcp/tools/resource-manager/prompt/operations/file-operations.js';
+import {
+  normalizePromptId,
+  validatePromptId,
+} from '../../../../../src/mcp/tools/resource-manager/prompt/utils/validation.js';
 
 import type { ConfigManager, Logger } from '../../../../../src/shared/types/index.js';
 
@@ -56,5 +60,73 @@ describe('FileOperations canonical prompt writes', () => {
     );
     expect(yamlContent).toContain('id: sample_prompt');
     expect(yamlContent).toContain('name: Sample Prompt');
+  });
+});
+
+describe('normalizePromptId', () => {
+  it('converts hyphens to underscores', () => {
+    expect(normalizePromptId('hot-reload-test')).toBe('hot_reload_test');
+  });
+
+  it('converts spaces to underscores', () => {
+    expect(normalizePromptId('hot reload test')).toBe('hot_reload_test');
+  });
+
+  it('lowercases the ID', () => {
+    expect(normalizePromptId('Hot-Reload-Test')).toBe('hot_reload_test');
+  });
+
+  it('collapses multiple consecutive delimiters', () => {
+    expect(normalizePromptId('hot--reload__test')).toBe('hot_reload_test');
+  });
+
+  it('trims leading/trailing underscores', () => {
+    expect(normalizePromptId('-hot-reload-')).toBe('hot_reload');
+  });
+
+  it('trims whitespace', () => {
+    expect(normalizePromptId('  my_prompt  ')).toBe('my_prompt');
+  });
+
+  it('returns already-normalized IDs unchanged', () => {
+    expect(normalizePromptId('code_review')).toBe('code_review');
+  });
+
+  it('treats my-prompt and my_prompt as equivalent', () => {
+    expect(normalizePromptId('my-prompt')).toBe(normalizePromptId('my_prompt'));
+  });
+});
+
+describe('validatePromptId', () => {
+  it('accepts valid underscore IDs', () => {
+    expect(() => validatePromptId('code_review')).not.toThrow();
+  });
+
+  it('accepts valid hyphen IDs', () => {
+    expect(() => validatePromptId('code-review')).not.toThrow();
+  });
+
+  it('accepts alphanumeric IDs', () => {
+    expect(() => validatePromptId('prompt1')).not.toThrow();
+  });
+
+  it('rejects IDs starting with a number', () => {
+    expect(() => validatePromptId('1prompt')).toThrow(/must start with a letter/);
+  });
+
+  it('rejects IDs starting with underscore', () => {
+    expect(() => validatePromptId('_private')).toThrow(/must start with a letter/);
+  });
+
+  it('rejects IDs with special characters', () => {
+    expect(() => validatePromptId('my@prompt')).toThrow(/must start with a letter/);
+  });
+
+  it('rejects empty strings', () => {
+    expect(() => validatePromptId('')).toThrow(/non-empty string/);
+  });
+
+  it('rejects IDs over 100 characters', () => {
+    expect(() => validatePromptId('a'.repeat(101))).toThrow(/100 characters/);
   });
 });

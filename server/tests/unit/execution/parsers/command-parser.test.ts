@@ -272,3 +272,109 @@ describe('UnifiedCommandParser fuzzy prompt suggestions', () => {
     );
   });
 });
+
+describe('UnifiedCommandParser hyphen-agnostic prompt resolution', () => {
+  let parser: UnifiedCommandParser;
+
+  const hyphenPrompts: ConvertedPrompt[] = [
+    {
+      id: 'hot_reload_test',
+      name: 'Hot Reload Test',
+      description: 'Test hot reload',
+      category: 'testing',
+      arguments: [],
+      userMessageTemplate: 'Test {{topic}}',
+    },
+    {
+      id: 'code_review',
+      name: 'Code Review',
+      description: 'Review code',
+      category: 'review',
+      arguments: [],
+      userMessageTemplate: 'Review {{code}}',
+    },
+    {
+      id: 'deep_analysis',
+      name: 'Deep Analysis',
+      description: 'Deep analysis',
+      category: 'analysis',
+      arguments: [],
+      userMessageTemplate: 'Analyze {{input}}',
+    },
+  ] as ConvertedPrompt[];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    parser = new UnifiedCommandParser(mockLogger);
+  });
+
+  test('resolves hyphenated input to underscore prompt ID', async () => {
+    const result = await parser.parseCommand('>>hot-reload-test', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+
+  test('resolves underscore input to underscore prompt ID (exact match)', async () => {
+    const result = await parser.parseCommand('>>hot_reload_test', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+
+  test('resolves bare hyphenated name to underscore prompt ID', async () => {
+    const result = await parser.parseCommand('hot-reload-test', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+
+  test('resolves hyphenated input with arguments', async () => {
+    const result = await parser.parseCommand('>>hot-reload-test topic:"testing"', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+    expect(result.rawArgs).toContain('topic');
+  });
+
+  test('resolves mixed-delimiter input (e.g., hot_reload-test)', async () => {
+    const result = await parser.parseCommand('>>hot_reload-test', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+
+  test('preserves canonical ID when prompt uses hyphens in stored ID', async () => {
+    // Edge case: if a prompt somehow has hyphens in its stored ID,
+    // the resolver should return the stored ID as-is
+    const promptsWithHyphenId: ConvertedPrompt[] = [
+      {
+        id: 'my-legacy-prompt',
+        name: 'My Legacy Prompt',
+        description: 'A prompt with hyphens in ID',
+        category: 'general',
+        arguments: [],
+        userMessageTemplate: 'Test',
+      },
+    ] as ConvertedPrompt[];
+
+    const result = await parser.parseCommand('>>my_legacy_prompt', promptsWithHyphenId);
+
+    // Should find via normalized fallback and return the actual stored ID
+    expect(result.promptId).toBe('my-legacy-prompt');
+  });
+
+  test('case-insensitive resolution works with hyphens', async () => {
+    const result = await parser.parseCommand('>>Hot-Reload-Test', hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+
+  test('still throws for genuinely unknown prompts', async () => {
+    await expect(parser.parseCommand('>>nonexistent_prompt', hyphenPrompts)).rejects.toThrow(
+      /Unknown prompt/
+    );
+  });
+
+  test('JSON format resolves hyphenated prompt IDs', async () => {
+    const jsonCommand = JSON.stringify({ command: '>>hot-reload-test' });
+    const result = await parser.parseCommand(jsonCommand, hyphenPrompts);
+
+    expect(result.promptId).toBe('hot_reload_test');
+  });
+});

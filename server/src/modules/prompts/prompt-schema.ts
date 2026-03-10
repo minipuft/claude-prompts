@@ -277,8 +277,14 @@ export type PromptsConfigYaml = z.infer<typeof PromptsConfigSchema>;
 export const PromptYamlSchema = z
   .object({
     // Required core fields
-    /** Unique identifier for the prompt (must match directory name) */
-    id: z.string().min(1, 'Prompt ID is required'),
+    /** Unique identifier for the prompt (must match directory name). Convention: lowercase with underscores. */
+    id: z
+      .string()
+      .min(1, 'Prompt ID is required')
+      .regex(
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/,
+        'Prompt ID must start with a letter and contain only alphanumeric characters, underscores, or hyphens'
+      ),
     /** Human-readable name */
     name: z.string().min(1, 'Prompt name is required'),
     /** Category this prompt belongs to (auto-derived from directory if omitted) */
