@@ -1,10 +1,13 @@
 // @lifecycle canonical - Processes gate verdicts, actions, and hook events for chain sessions.
+import { parseGateVerdict } from '../core/gate-verdict-contract.js';
+
 import type { HookRegistry, HookExecutionContext } from '../../../infra/hooks/index.js';
 import type { Logger } from '../../../infra/logging/index.js';
 import type { McpNotificationEmitter } from '../../../infra/observability/notifications/index.js';
 import type { ChainSession, ChainSessionService } from '../../../shared/types/index.js';
 import type { ExecutionContext, SessionContext } from '../../execution/context/index.js';
 import type { GateAction } from '../../execution/pipeline/decisions/index.js';
+import type { ParsedGateVerdict } from '../core/gate-verdict-contract.js';
 
 /**
  * Result of processing gate verdicts for a request.
@@ -281,7 +284,7 @@ export class GateVerdictProcessor {
     sessionId: string,
     sessionContext: SessionContext,
     capturedGateIds: string[],
-    verdictPayload: NonNullable<ReturnType<GateVerdictProcessor['parseGateVerdict']>>
+    verdictPayload: ParsedGateVerdict
   ): void {
     const pending = this.chainSessionManager.getPendingGateReview(sessionId);
     if (pending !== undefined) {
@@ -415,19 +418,19 @@ export class GateVerdictProcessor {
   }
 
   /**
-   * Parse a gate verdict using the authority (preferred) or local fallback.
+   * Parse a gate verdict using the authority (preferred) or contract fallback.
    */
   private parseVerdict(
     context: ExecutionContext,
     raw: string | undefined,
     source: 'gate_verdict' | 'user_response'
-  ): ReturnType<GateVerdictProcessor['parseGateVerdict']> {
-    return context.gateEnforcement?.parseVerdict(raw, source) ?? this.parseGateVerdict(raw, source);
+  ): ParsedGateVerdict | null {
+    return context.gateEnforcement?.parseVerdict(raw, source) ?? parseGateVerdict(raw, source);
   }
 
   private recordVerdictDetection(
     context: ExecutionContext,
-    verdictPayload: NonNullable<ReturnType<GateVerdictProcessor['parseGateVerdict']>>,
+    verdictPayload: ParsedGateVerdict,
     outcome: string
   ): void {
     const verdictDetection: NonNullable<typeof context.state.gates.verdictDetection> = {
@@ -534,68 +537,5 @@ export class GateVerdictProcessor {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private parseGateVerdict(
-    raw: string | undefined,
-    source: 'gate_verdict' | 'user_response'
-  ): {
-    verdict: 'PASS' | 'FAIL';
-    rationale: string;
-    raw: string;
-    source: 'gate_verdict' | 'user_response';
-    detectedPattern?: string;
-  } | null {
-    if (raw === undefined || raw.length === 0) {
-      return null;
-    }
-
-    // Validate only the first non-empty line (per-gate verdicts may follow)
-    const firstLine =
-      raw
-        .trim()
-        .split('\n')
-        .find((l) => l.trim().length > 0)
-        ?.trim() ?? raw;
-
-    const patterns = [
-      { regex: /^GATE_REVIEW:\s*(PASS|FAIL)\s*-\s*(.+)$/i, priority: 'primary' },
-      { regex: /^GATE_REVIEW:\s*(PASS|FAIL)\s*:\s*(.+)$/i, priority: 'high' },
-      { regex: /^GATE\s+(PASS|FAIL)\s*-\s*(.+)$/i, priority: 'high' },
-      { regex: /^GATE\s+(PASS|FAIL)\s*:\s*(.+)$/i, priority: 'medium' },
-      { regex: /^(PASS|FAIL)\s*[-:]\s*(.+)$/i, priority: 'fallback' },
-    ];
-
-    for (const { regex, priority } of patterns) {
-      if (priority === 'fallback' && source === 'user_response') {
-        continue;
-      }
-
-      const match = firstLine.match(regex);
-      if (match !== null) {
-        const [, verdictRaw, rationaleRaw] = match;
-        if (verdictRaw === undefined || verdictRaw.length === 0) {
-          continue;
-        }
-        const rationale = rationaleRaw?.trim() ?? '';
-
-        if (rationale.length === 0) {
-          this.logger.warn(
-            `Gate verdict detected but missing rationale: "${raw.substring(0, 50)}..."`
-          );
-          continue;
-        }
-
-        return {
-          verdict: verdictRaw.toUpperCase() as 'PASS' | 'FAIL',
-          rationale,
-          raw,
-          source,
-          detectedPattern: priority,
-        };
-      }
-    }
-
-    return null;
   }
 }

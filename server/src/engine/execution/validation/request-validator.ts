@@ -9,6 +9,7 @@ import { ZodError } from 'zod';
 
 import { mcpToolRequestSchema } from './schemas.js';
 import { CHAIN_ID_PATTERN, recordParameterIssue } from '../../../shared/utils/index.js';
+import { isValidGateVerdict } from '../../gates/core/gate-verdict-contract.js';
 
 import type { McpToolRequest } from '../../../shared/types/execution.js';
 
@@ -78,24 +79,7 @@ export class McpToolRequestValidator {
    * @returns True if gate verdict matches required format
    */
   static isValidGateVerdict(gateVerdict: unknown): gateVerdict is string {
-    if (typeof gateVerdict !== 'string') {
-      return false;
-    }
-
-    const normalized = gateVerdict.trim();
-    if (!normalized.length) {
-      return false;
-    }
-
-    // Validate only the first non-empty line (per-gate verdicts may follow)
-    const firstLine =
-      normalized
-        .split('\n')
-        .find((l) => l.trim().length > 0)
-        ?.trim() ?? normalized;
-    return /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
-      firstLine
-    );
+    return isValidGateVerdict(gateVerdict);
   }
 
   /**

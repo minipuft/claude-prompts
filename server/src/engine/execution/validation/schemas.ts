@@ -141,20 +141,7 @@ export const mcpToolRequestSchema = z
           'Chain ID must follow format: chain-{prompt} or chain-{prompt}#runNumber'
         )
         .optional(),
-      gate_verdict: z
-        .string()
-        .trim()
-        .refine((v) => {
-          const firstLine =
-            v
-              .split('\n')
-              .find((l) => l.trim().length > 0)
-              ?.trim() ?? v;
-          return /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
-            firstLine
-          );
-        }, 'Gate verdict must start with: "GATE_REVIEW: PASS/FAIL - reason" (per-gate verdicts may follow)')
-        .optional(),
+      gate_verdict: z.string().trim().optional(),
       gate_action: gateActionSchema.optional(),
       user_response: z.string().trim().optional(),
       force_restart: z.boolean().optional(),

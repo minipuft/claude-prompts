@@ -5,7 +5,7 @@ import {
   getVerdictValidationSettings,
 } from '../config/index.js';
 
-export type GateVerdictSource = 'gate_verdict';
+export type GateVerdictSource = 'gate_verdict' | 'user_response';
 
 export interface ParsedGateVerdict {
   readonly verdict: 'PASS' | 'FAIL';
@@ -22,9 +22,6 @@ export const GATE_VERDICT_THROW_MESSAGE =
   'Gate verdict must follow format: "GATE_REVIEW: PASS/FAIL - reason"';
 
 export const GATE_VERDICT_REQUIRED_FORMAT = 'GATE_REVIEW: PASS|FAIL - <rationale>';
-
-// Canonical schema-level matcher for contracts and tool input validation.
-export const GATE_VERDICT_SCHEMA_REGEX = /^GATE_REVIEW:\s*(?:PASS|FAIL)\s*-\s*.+$/i;
 
 export function buildGateVerdictExample(
   verdict: 'PASS' | 'FAIL',

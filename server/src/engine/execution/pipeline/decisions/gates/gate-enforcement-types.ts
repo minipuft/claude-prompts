@@ -1,11 +1,12 @@
 // @lifecycle canonical - Type definitions for gate enforcement authority.
 
 import type { PendingGateReview } from '../../../../../shared/types/chain-execution.js';
+import type { GateVerdictSource } from '../../../../gates/core/gate-verdict-contract.js';
 
-/**
- * Source of a gate verdict for audit/debugging.
- */
-export type VerdictSource = 'gate_verdict' | 'user_response';
+export type {
+  GateVerdictSource as VerdictSource,
+  ParsedGateVerdict as ParsedVerdict,
+} from '../../../../gates/core/gate-verdict-contract.js';
 
 /**
  * Gate enforcement modes that determine behavior on failure.
@@ -16,17 +17,6 @@ export type EnforcementMode = 'blocking' | 'advisory' | 'informational';
  * User action choices when retry limit is exceeded.
  */
 export type GateAction = 'retry' | 'skip' | 'abort';
-
-/**
- * Parsed verdict from user input.
- */
-export interface ParsedVerdict {
-  readonly verdict: 'PASS' | 'FAIL';
-  readonly rationale: string;
-  readonly raw: string;
-  readonly source: VerdictSource;
-  readonly detectedPattern?: string;
-}
 
 /**
  * Retry configuration for gate reviews.
@@ -62,7 +52,7 @@ export interface ActionResult {
  */
 export interface VerdictParseInput {
   readonly raw: string | undefined;
-  readonly source: VerdictSource;
+  readonly source: GateVerdictSource;
 }
 
 /**

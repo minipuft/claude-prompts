@@ -255,10 +255,6 @@ function typeToZod(param: ParameterDefinition): string {
     if (name === 'chain_id') {
       zodCode += `.regex(/^chain-[a-zA-Z0-9_-]+(?:#\\d+)?$/, 'Chain ID must follow format: chain-{prompt}[#runNumber]')`;
     }
-    if (name === 'gate_verdict') {
-      // Accept union of formats; minimal form is safe here because this is a dedicated parameter
-      zodCode += `.refine((v) => /^(?:GATE_REVIEW:\\s*(?:PASS|FAIL)\\s*[-:]\\s*.+|GATE\\s+(?:PASS|FAIL)\\s*[-:]\\s*.+|(?:PASS|FAIL)\\s*[-:]\\s*.+)$/i.test(v), 'Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)')`;
-    }
   }
 
   // Add optional modifier if not required
