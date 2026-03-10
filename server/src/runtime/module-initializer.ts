@@ -208,10 +208,16 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
     try {
       const { SqliteEngine } = await import('../infra/database/sqlite-engine.js');
       const { createResourceIndexer } = await import('../infra/database/resource-indexer.js');
+      const { ScriptToolDefinitionLoader } =
+        await import('../modules/automation/core/script-definition-loader.js');
       const dbManager = await SqliteEngine.getInstance(serverRoot, logger);
       await dbManager.initialize();
       const resourcesDir = pathResolver?.getResourcesPath() ?? path.join(serverRoot, 'resources');
-      const indexer = createResourceIndexer(dbManager, logger, { resourcesDir });
+      const scriptLoader = new ScriptToolDefinitionLoader({ validateOnLoad: true });
+      const indexer = createResourceIndexer(dbManager, logger, {
+        resourcesDir,
+        toolLoader: (dir, id) => scriptLoader.loadAllToolsForPrompt(dir, id),
+      });
       await indexer.syncAll();
       if (isVerbose) logger.info('✅ ResourceIndexer synced to SQLite');
     } catch (error) {

@@ -8,7 +8,8 @@ import type { ChainStepPrompt } from '../../execution/operators/types.js';
 import type { FrameworkDecisionInput } from '../../execution/pipeline/decisions/index.js';
 import type { GateSource } from '../../execution/pipeline/state/types.js';
 import type { ConvertedPrompt, ExecutionModifiers } from '../../execution/types.js';
-import type { FrameworkManager } from '../../frameworks/index.js';
+/** Narrow provider: returns active framework ID without importing FrameworkManager. */
+type ActiveFrameworkIdProvider = () => string | undefined;
 import type { GateContext } from '../core/gate-definitions.js';
 import type { GateDefinitionProvider } from '../core/gate-loader.js';
 import type { TemporaryGateRegistry } from '../core/temporary-gate-registry.js';
@@ -42,7 +43,7 @@ export class GateEnhancementService {
   constructor(
     private readonly gateService: GateService | null,
     private readonly temporaryGateRegistry: TemporaryGateRegistry | undefined,
-    private readonly frameworkManagerProvider: () => FrameworkManager | undefined,
+    private readonly activeFrameworkIdProvider: ActiveFrameworkIdProvider,
     private readonly gateManagerProvider: () => GateManager | undefined,
     private readonly gateLoader: GateDefinitionProvider | undefined,
     private readonly metricsRecorder: GateMetricsRecorder,
@@ -479,17 +480,8 @@ export class GateEnhancementService {
   private buildDecisionInput(context: ExecutionContext): FrameworkDecisionInput {
     let globalActiveFramework = context.frameworkContext?.selectedFramework?.id;
 
-    const frameworkManager = this.frameworkManagerProvider();
-
-    if (!globalActiveFramework && frameworkManager) {
-      try {
-        const activeFramework = frameworkManager.selectFramework({});
-        globalActiveFramework = activeFramework?.id;
-      } catch (error) {
-        this.logger.warn('[GateEnhancementService] selectFramework failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    if (!globalActiveFramework) {
+      globalActiveFramework = this.activeFrameworkIdProvider();
     }
 
     const result: FrameworkDecisionInput = {};

@@ -53,7 +53,11 @@ import {
   ResponseFormattingStage,
   PostFormattingCleanupStage,
 } from '../../../../engine/execution/pipeline/index.js';
-import { JudgeMenuFormatter } from '../../../../engine/gates/judge/judge-menu-formatter.js';
+import { getDefaultRuntimeLoader } from '../../../../engine/frameworks/methodology/index.js';
+import {
+  JudgeMenuFormatter,
+  type MethodologyJudgePromptProvider,
+} from '../../../../engine/gates/judge/judge-menu-formatter.js';
 import { JudgeResourceCollector } from '../../../../engine/gates/judge/judge-resource-collector.js';
 import { GateEnhancementService } from '../../../../engine/gates/services/gate-enhancement-service.js';
 import { GateMetricsRecorder } from '../../../../engine/gates/services/gate-metrics-recorder.js';
@@ -192,14 +196,52 @@ export class PipelineBuilder {
           },
         };
 
+    const frameworksProvider = () => {
+      try {
+        const loader = getDefaultRuntimeLoader();
+        const ids = loader.discoverMethodologies();
+        return ids
+          .map((id) => {
+            const def = loader.loadMethodology(id);
+            if (!def || def.enabled === false) return null;
+            const description =
+              (def as unknown as Record<string, unknown>)['description'] ??
+              def.systemPromptGuidance?.trim().split('\n')[0] ??
+              'Methodology framework';
+            return {
+              id: (def.methodology || def.id).toLowerCase(),
+              name: def.name || def.methodology || def.id,
+              description: String(description),
+              category: 'guidance' as const,
+              userMessageTemplate: '',
+              arguments: [],
+              registerWithMcp: false,
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null);
+      } catch {
+        return [];
+      }
+    };
+
+    const judgePromptProvider: MethodologyJudgePromptProvider = (frameworkId) => {
+      try {
+        const loader = getDefaultRuntimeLoader();
+        const definition = loader.loadMethodology(frameworkId);
+        return definition?.judgePrompt;
+      } catch {
+        return undefined;
+      }
+    };
+
     const judgeResourceCollector = new JudgeResourceCollector(
       deps.getConvertedPrompts,
       deps.lightweightGateSystem.gateLoader,
       deps.logger,
-      undefined, // frameworksProvider - uses default methodology loader
+      frameworksProvider,
       deps.styleManager ?? null
     );
-    const judgeMenuFormatter = new JudgeMenuFormatter(deps.logger);
+    const judgeMenuFormatter = new JudgeMenuFormatter(deps.logger, judgePromptProvider);
     const judgeSelectionStage = new JudgeSelectionStage(
       judgeResourceCollector,
       judgeMenuFormatter,
@@ -217,7 +259,7 @@ export class PipelineBuilder {
     const gateEnhancementService = new GateEnhancementService(
       gateService,
       temporaryGateRegistry,
-      () => deps.frameworkManager,
+      () => deps.frameworkManager?.selectFramework({})?.id,
       () => deps.gateManager,
       deps.lightweightGateSystem.gateLoader,
       new GateMetricsRecorder(deps.getAnalyticsService, gateService?.serviceType),

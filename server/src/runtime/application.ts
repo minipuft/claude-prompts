@@ -766,11 +766,17 @@ export class Application {
         try {
           const { SqliteEngine } = await import('../infra/database/sqlite-engine.js');
           const { createResourceIndexer } = await import('../infra/database/resource-indexer.js');
+          const { ScriptToolDefinitionLoader } =
+            await import('../modules/automation/core/script-definition-loader.js');
           const dbManager = await SqliteEngine.getInstance(this.serverRoot, this.logger);
           await dbManager.initialize();
           const resourcesDir =
             this.pathResolver?.getResourcesPath() ?? path.join(this.serverRoot, 'resources');
-          const indexer = createResourceIndexer(dbManager, this.logger, { resourcesDir });
+          const scriptLoader = new ScriptToolDefinitionLoader({ validateOnLoad: true });
+          const indexer = createResourceIndexer(dbManager, this.logger, {
+            resourcesDir,
+            toolLoader: (dir, id) => scriptLoader.loadAllToolsForPrompt(dir, id),
+          });
           await indexer.syncAll();
           this.logger.info('✅ Resource index re-synced after hot-reload.');
         } catch (error) {

@@ -6,9 +6,9 @@ import {
   toIdentityContext,
   validateLockedIdentityContext,
   validateStrictIdentityClaims,
-} from '../../../src/mcp/tools/request-identity-resolver.js';
+} from '../../../src/shared/utils/request-identity-resolver.js';
 
-import type { McpRequestExtra } from '../../../src/mcp/tools/request-identity-resolver.js';
+import type { McpRequestExtra } from '../../../src/shared/utils/request-identity-resolver.js';
 
 const UNKNOWN_CLIENT_PROFILE = {
   clientFamily: 'unknown',

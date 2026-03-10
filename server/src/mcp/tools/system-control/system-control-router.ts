@@ -1,16 +1,6 @@
 // @lifecycle canonical - Thin router for system_control MCP tool actions.
 
-import { FrameworkManager } from '../../../engine/frameworks/framework-manager.js';
-import { FrameworkStateStore } from '../../../engine/frameworks/framework-state-store.js';
-import { GateStateStore } from '../../../engine/gates/gate-state-store.js';
-import {
-  type ConfigManager,
-  type MetricsCollector,
-  type Logger,
-  type ToolResponse,
-  type ChainSessionService,
-} from '../../../shared/types/index.js';
-import { resolveContinuityScopeId } from '../../../shared/utils/request-identity-scope.js';
+import { resolveRequestIdentity } from '../../../shared/utils/request-identity-resolver.js';
 import {
   SYSTEM_CONTROL_ACTION_IDS,
   type SystemControlActionId,
@@ -18,7 +8,6 @@ import {
 import { recordActionInvocation } from '../../metadata/usage-tracker.js';
 import { SafeConfigWriter, createSafeConfigWriter } from '../config-utils.js';
 import { ResponseFormatter } from '../prompt-engine/processors/response-formatter.js';
-import { resolveRequestIdentity } from '../request-identity-resolver.js';
 import { ToolDescriptionLoader } from '../tool-description-loader.js';
 import { createStructuredResponse } from './core/response-utils.js';
 import { AnalyticsActionHandler } from './handlers/analytics-action-handler.js';
@@ -31,6 +20,17 @@ import { InjectionActionHandler } from './handlers/injection-action-handler.js';
 import { MaintenanceActionHandler } from './handlers/maintenance-action-handler.js';
 import { SessionActionHandler } from './handlers/session-action-handler.js';
 import { StatusActionHandler } from './handlers/status-action-handler.js';
+import { FrameworkManager } from '../../../engine/frameworks/framework-manager.js';
+import { FrameworkStateStore } from '../../../engine/frameworks/framework-state-store.js';
+import { GateStateStore } from '../../../engine/gates/gate-state-store.js';
+import {
+  type ConfigManager,
+  type MetricsCollector,
+  type Logger,
+  type ToolResponse,
+  type ChainSessionService,
+} from '../../../shared/types/index.js';
+import { resolveContinuityScopeId } from '../../../shared/utils/request-identity-scope.js';
 
 import type { ActionHandler } from './core/action-handler-base.js';
 import type { SystemAnalytics, SystemControlContext } from './core/types.js';

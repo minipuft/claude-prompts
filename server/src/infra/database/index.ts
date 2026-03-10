@@ -38,6 +38,7 @@ export {
   type IndexedResourceType,
   type ResourceIndexerConfig,
   type SyncResult,
+  type ToolLoaderFn,
 } from './resource-indexer.js';
 export {
   SqliteStateStore,

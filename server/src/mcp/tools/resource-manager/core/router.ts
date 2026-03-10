@@ -7,8 +7,8 @@
  */
 
 import { PROMPT_ONLY_ACTIONS, METHODOLOGY_ONLY_ACTIONS, CHECKPOINT_ONLY_ACTIONS } from './types.js';
+import { resolveRequestIdentity } from '../../../../shared/utils/request-identity-resolver.js';
 import { resolveContinuityScopeId } from '../../../../shared/utils/request-identity-scope.js';
-import { resolveRequestIdentity } from '../../../tools/request-identity-resolver.js';
 
 import type {
   ResourceManagerInput,

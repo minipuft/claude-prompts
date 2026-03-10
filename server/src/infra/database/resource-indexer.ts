@@ -31,7 +31,8 @@ import * as path from 'node:path';
 
 import yaml from 'js-yaml';
 
-import { ScriptToolDefinitionLoader } from '../../modules/automation/core/script-definition-loader.js';
+/** Injected tool loader — avoids direct import from modules layer. */
+export type ToolLoaderFn = (promptDir: string, promptId: string) => LoadedScriptTool[];
 import { computeContentHash } from '../../shared/utils/hash.js';
 
 import type { SqliteEngine } from './sqlite-engine.js';
@@ -365,6 +366,8 @@ export interface ResourceIndexerConfig {
   trackStyles?: boolean;
   /** Whether to track script tools (nested in prompts) */
   trackTools?: boolean;
+  /** Injected tool loader for discovering script tools in prompt directories */
+  toolLoader?: ToolLoaderFn;
 }
 
 /**
@@ -375,11 +378,13 @@ export interface ResourceIndexerConfig {
 export class ResourceIndexer {
   private readonly db: SqliteEngine;
   private readonly logger: Logger;
-  private readonly config: Required<ResourceIndexerConfig>;
+  private readonly config: Required<Omit<ResourceIndexerConfig, 'toolLoader'>>;
+  private readonly toolLoader?: ToolLoaderFn;
 
   constructor(db: SqliteEngine, logger: Logger, config: ResourceIndexerConfig) {
     this.db = db;
     this.logger = logger;
+    this.toolLoader = config.toolLoader;
     this.config = {
       resourcesDir: config.resourcesDir,
       trackPrompts: config.trackPrompts ?? true,
@@ -813,11 +818,16 @@ export class ResourceIndexer {
    * Sync script tools from prompt directories.
    *
    * Tools are nested inside prompts: prompts/{category}/{id}/tools/{toolId}/
-   * Uses ScriptToolDefinitionLoader to discover and parse tool definitions.
+   * Uses injected tool loader to discover and parse tool definitions.
    * Indexes each tool as type='tool' with composite id: `{promptId}/{toolId}`.
    */
   async syncTools(): Promise<SyncResult> {
     const result: SyncResult = { added: 0, modified: 0, removed: 0, unchanged: 0, errors: 0 };
+
+    if (!this.toolLoader) {
+      this.logger.debug('ResourceIndexer: Tool loader not provided, skipping tool sync');
+      return result;
+    }
 
     const indexed = new Map<string, IndexedResource>();
     const rows = this.db.query<IndexedResource>("SELECT * FROM resource_index WHERE type = 'tool'");
@@ -826,7 +836,6 @@ export class ResourceIndexer {
     const prompts = this.db.query<IndexedResource>(
       "SELECT * FROM resource_index WHERE type = 'prompt'"
     );
-    const loader = new ScriptToolDefinitionLoader({ validateOnLoad: true });
     const seen = new Set<string>();
 
     for (const prompt of prompts) {
@@ -835,7 +844,7 @@ export class ResourceIndexer {
       const category = prompt.category ?? '';
 
       try {
-        const tools = loader.loadAllToolsForPrompt(promptDir, prompt.id);
+        const tools = this.toolLoader(promptDir, prompt.id);
         for (const tool of tools) {
           const compositeId = `${prompt.id}/${tool.id}`;
           seen.add(compositeId);

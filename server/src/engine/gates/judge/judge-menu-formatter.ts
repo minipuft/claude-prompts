@@ -1,10 +1,17 @@
 // @lifecycle canonical - Formats resource menus and judge responses for Claude.
-import { getDefaultRuntimeLoader } from '../../frameworks/methodology/index.js';
-
 import type { ResourceMenu } from './judge-resource-collector.js';
 import type { Logger } from '../../../infra/logging/index.js';
 import type { ToolResponse } from '../../../shared/types/index.js';
 import type { ExecutionContext } from '../../execution/context/index.js';
+
+/** Narrow type for methodology judge prompt data — avoids frameworks/ import. */
+export interface JudgePromptData {
+  systemMessage?: string;
+  userMessageTemplate?: string;
+}
+
+/** Provider that resolves a methodology's judge prompt by framework ID. */
+export type MethodologyJudgePromptProvider = (frameworkId: string) => JudgePromptData | undefined;
 
 /**
  * Context about operators already specified in the command.
@@ -25,7 +32,10 @@ export interface OperatorContext {
  * Extracted from JudgeSelectionStage (pipeline stage 06a).
  */
 export class JudgeMenuFormatter {
-  constructor(private readonly logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    private readonly judgePromptProvider?: MethodologyJudgePromptProvider | null
+  ) {}
 
   /**
    * Build the complete judge response with resource menu and selection instructions.
@@ -233,16 +243,14 @@ export class JudgeMenuFormatter {
     return clean.trim();
   }
 
-  private getActiveMethodologyJudgePrompt(context: ExecutionContext) {
+  private getActiveMethodologyJudgePrompt(context: ExecutionContext): JudgePromptData | undefined {
     const frameworkId = context.frameworkContext?.selectedFramework?.methodology;
-    if (!frameworkId) {
+    if (!frameworkId || !this.judgePromptProvider) {
       return undefined;
     }
 
     try {
-      const loader = getDefaultRuntimeLoader();
-      const definition = loader.loadMethodology(frameworkId.toLowerCase());
-      return definition?.judgePrompt;
+      return this.judgePromptProvider(frameworkId.toLowerCase());
     } catch (error) {
       this.logger.warn('[JudgeMenuFormatter] Failed to load methodology judge prompt', {
         frameworkId,

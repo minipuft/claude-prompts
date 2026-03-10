@@ -4,12 +4,12 @@ import {
   resolveRequestIdentityContext,
   validateLockedIdentityContext,
   validateStrictIdentityClaims,
-} from '../../../src/mcp/tools/request-identity-resolver.js';
+} from '../../../src/shared/utils/request-identity-resolver.js';
 
 import type {
   McpRequestExtra,
   RequestIdentityResolverOptions,
-} from '../../../src/mcp/tools/request-identity-resolver.js';
+} from '../../../src/shared/utils/request-identity-resolver.js';
 import type { IdentityConfig, IdentityLaunchDefaults } from '../../../src/shared/types/index.js';
 
 function resolveOrRejectToolRequest(

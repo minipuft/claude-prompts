@@ -1,10 +1,7 @@
 // @lifecycle canonical - Collects available resources (styles, frameworks, gates) for judge selection.
-import { getDefaultRuntimeLoader } from '../../frameworks/methodology/index.js';
-
 import type { Logger } from '../../../infra/logging/index.js';
 import type { StyleManagerPort } from '../../../shared/types/index.js';
 import type { ConvertedPrompt } from '../../execution/types.js';
-import type { MethodologyDefinition } from '../../frameworks/methodology/methodology-definition-types.js';
 import type { GateDefinitionProvider } from '../../gates/core/gate-loader.js';
 import type { LightweightGateDefinition } from '../../gates/types.js';
 
@@ -90,59 +87,17 @@ export class JudgeResourceCollector {
   }
 
   private async collectFrameworkResources(): Promise<ConvertedPrompt[]> {
-    if (this.frameworksProvider) {
-      try {
-        const provided = await this.frameworksProvider();
-        if (Array.isArray(provided)) {
-          return provided;
-        }
-      } catch (error) {
-        this.logger.warn(
-          '[JudgeResourceCollector] Framework provider failed, falling back to loader',
-          { error }
-        );
-      }
+    if (!this.frameworksProvider) {
+      return [];
     }
 
     try {
-      const loader = getDefaultRuntimeLoader();
-      const ids = loader.discoverMethodologies();
-
-      const resources: ConvertedPrompt[] = [];
-
-      for (const id of ids) {
-        const definition = loader.loadMethodology(id);
-        if (!definition || definition.enabled === false) {
-          continue;
-        }
-
-        resources.push(this.mapMethodologyToFrameworkResource(definition));
-      }
-
-      return resources;
+      const provided = await this.frameworksProvider();
+      return Array.isArray(provided) ? provided : [];
     } catch (error) {
-      this.logger.warn('[JudgeResourceCollector] Failed to load methodologies for framework menu', {
-        error,
-      });
+      this.logger.warn('[JudgeResourceCollector] Framework provider failed', { error });
       return [];
     }
-  }
-
-  private mapMethodologyToFrameworkResource(definition: MethodologyDefinition): ConvertedPrompt {
-    const description =
-      (definition as any).description ||
-      definition.systemPromptGuidance?.trim().split('\n')[0] ||
-      'Methodology framework';
-
-    return {
-      id: (definition.methodology || definition.id).toLowerCase(),
-      name: definition.name || definition.methodology || definition.id,
-      description,
-      category: 'guidance',
-      userMessageTemplate: '',
-      arguments: [],
-      registerWithMcp: false,
-    };
   }
 
   private async loadAllGates(): Promise<LightweightGateDefinition[]> {
