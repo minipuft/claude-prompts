@@ -648,7 +648,7 @@ export class McpToolRouter {
               .trim()
               .refine(
                 (v) =>
-                  /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
+                  /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/im.test(
                     v
                   ),
                 'Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)'
