@@ -240,28 +240,130 @@ jobs:
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore: publish dist ${{ needs.plugin-dist.outputs.version }}"
           git push origin dist --force
 
-  validate-distribution:
+  # Sync version to all downstream repos — centralized, no downstream config needed
+  sync-downstream:
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-      || github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     needs: publish-dist
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: minipuft/minipuft-plugins
+            name: marketplace
+          - repo: minipuft/gemini-prompts
+            name: gemini
+          - repo: minipuft/opencode-prompts
+            name: opencode
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout upstream (for version)
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          path: upstream
 
-      - uses: actions/setup-node@v6
+      - name: Extract version
+        id: version
+        run: |
+          version=$(node -p "require('./upstream/server/package.json').version")
+          major=$(echo "$version" | cut -d. -f1)
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "major=$major" >> $GITHUB_OUTPUT
+
+      - name: Checkout downstream
+        uses: actions/checkout@v6
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: server/package-lock.json
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          path: downstream
 
-      - name: Validate distribution versions
-        working-directory: server
-        run: node scripts/validate-versions.js --distribution --skip-npm
+      - name: Update ${{ matrix.name }}
+        working-directory: downstream
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.name }}" in
+            marketplace)
+              jq --arg v "$VERSION" '
+                .plugins |= map(
+                  if .name == "claude-prompts"
+                  then .version = $v | .license = "AGPL-3.0-only"
+                  else .
+                  end
+                )
+              ' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
+              ;;
+
+            gemini)
+              # Update extension manifest version
+              jq --arg v "$VERSION" '.version = $v' gemini-extension.json > tmp.json && mv tmp.json gemini-extension.json
+              # Update npm dependency range to match major
+              jq --arg r "^${MAJOR}.0.0" '.dependencies["claude-prompts"] = $r' package.json > tmp.json && mv tmp.json package.json
+              ;;
+
+            opencode)
+              # Update npm dependency range to match major
+              jq --arg r "^${MAJOR}.0.0" '.dependencies["claude-prompts"] = $r' package.json > tmp.json && mv tmp.json package.json
+              ;;
+          esac
+
+      - name: Validate update
+        working-directory: downstream
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.name }}" in
+            marketplace)
+              actual=$(jq -r '.plugins[] | select(.name == "claude-prompts") | .version' .claude-plugin/marketplace.json)
+              [ "$actual" = "$VERSION" ] || { echo "ERROR: marketplace version $actual != $VERSION"; exit 1; }
+              jq empty .claude-plugin/marketplace.json
+              ;;
+
+            gemini)
+              actual=$(jq -r '.version' gemini-extension.json)
+              [ "$actual" = "$VERSION" ] || { echo "ERROR: gemini version $actual != $VERSION"; exit 1; }
+              jq empty gemini-extension.json
+              jq empty package.json
+              ;;
+
+            opencode)
+              jq empty package.json
+              dep=$(jq -r '.dependencies["claude-prompts"]' package.json)
+              echo "Dependency range updated to: $dep"
+              ;;
+          esac
+
+          echo "Validation passed for ${{ matrix.name }}"
+
+      - name: Create PR
+        id: create-pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          path: downstream
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          title: "chore: sync claude-prompts to v${{ steps.version.outputs.version }}"
+          body: |
+            Automated version sync from [claude-prompts v${{ steps.version.outputs.version }}](https://github.com/minipuft/claude-prompts/releases/tag/v${{ steps.version.outputs.version }}).
+
+            **Validated**: JSON parseable, version matches, upstream dist branch published.
+          branch: upstream-sync/v${{ steps.version.outputs.version }}
+          commit-message: "chore: sync claude-prompts to v${{ steps.version.outputs.version }}"
+
+      - name: Auto-merge PR
+        if: steps.create-pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          gh pr merge ${{ steps.create-pr.outputs.pull-request-number }} \
+            --repo ${{ matrix.repo }} \
+            --merge \
+            --auto
 
   # Build Claude Code plugin archive (manual only)
   claude-code-plugin:
@@ -356,8 +458,8 @@ jobs:
           name: claude-prompts-plugin-${{ steps.version.outputs.version }}.zip
           path: claude-prompts-plugin-${{ steps.version.outputs.version }}.zip
 
-  # NOTE: Gemini CLI extension and OpenCode plugin are maintained in separate repositories:
-  # - https://github.com/minipuft/gemini-prompts
-  # - https://github.com/minipuft/opencode-prompts
-  # Both use claude-prompts as an npm dependency (^1.x semver range).
-  # Dependabot creates daily PRs to update the explicit version in package.json.
+  # NOTE: Downstream repos are synced automatically by the sync-downstream job above.
+  # - minipuft/minipuft-plugins (marketplace.json version + license)
+  # - minipuft/gemini-prompts (gemini-extension.json version + package.json dependency)
+  # - minipuft/opencode-prompts (package.json dependency range)
+  # PRs are created and auto-merged — no downstream workflow config needed.
