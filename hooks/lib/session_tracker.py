@@ -70,7 +70,7 @@ class SessionTracker:
             try:
                 with open(self.state_file) as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         # Create new state
@@ -91,7 +91,7 @@ class SessionTracker:
         try:
             with open(self.state_file, "w") as f:
                 json.dump(self.state, f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def set_goal(self, goal: str, verification_command: str, working_directory: str = "") -> None:

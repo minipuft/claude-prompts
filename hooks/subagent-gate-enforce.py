@@ -55,7 +55,7 @@ def read_transcript(path: str) -> list[dict]:
                     messages.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-    except (IOError, OSError):
+    except OSError:
         return []
     return messages
 

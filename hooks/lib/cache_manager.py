@@ -8,11 +8,11 @@ Uses db_reader for SQLite access to runtime-state/state.db (read-only).
 from typing import TypedDict
 
 from db_reader import (
-    load_prompts,
-    load_gates,
     get_prompt_by_id_from_db,
-    get_valid_styles_from_db,
     get_valid_frameworks_from_db,
+    get_valid_styles_from_db,
+    load_gates,
+    load_prompts,
 )
 
 
@@ -238,7 +238,7 @@ def fuzzy_match_prompt_id(
 
     scored: list[tuple[str, int]] = []
 
-    for prompt_id in cache.get("prompts", {}).keys():
+    for prompt_id in cache.get("prompts", {}):
         id_lower = prompt_id.lower()
         score = 0
 

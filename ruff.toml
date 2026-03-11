@@ -1,0 +1,25 @@
+target-version = "py310"
+src = ["hooks"]
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+# E=pycodestyle, F=pyflakes, W=warnings, I=isort,
+# UP=pyupgrade, B=bugbear, SIM=simplify, C4=comprehensions
+ignore = [
+    "SIM102",   # collapsible-if — readability preference in hooks
+    "SIM105",   # suppressible-exception — try/except/pass is clearer in lock cleanup
+    "SIM108",   # if-else-block-instead-of-ternary — readability over brevity
+    "SIM112",   # uncapitalized-env-vars — env var names match external conventions
+    "SIM118",   # in-dict-keys — .keys() is explicit and harmless
+]
+
+[lint.per-file-ignores]
+"hooks/tests/*" = ["E501", "SIM117", "E402"]
+# E501: long test strings/assertions
+# SIM117: nested with/patch is idiomatic pytest
+# E402: sys.path manipulation before imports
+"hooks/lib/_generated/*" = ["E501"]
+# Generated code — line length not worth reformatting
+"hooks/lib/lesson_extractor.py" = ["E501"]
+# Regex patterns with long literal strings

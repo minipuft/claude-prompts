@@ -15,8 +15,6 @@ Covers:
 import sys
 from pathlib import Path
 
-import pytest
-
 HOOKS_LIB = Path(__file__).parent.parent / "lib"
 sys.path.insert(0, str(HOOKS_LIB))
 
@@ -193,7 +191,7 @@ class TestSessionTracker:
         tracker.clear()
 
         # State should be cleared from SQLite
-        from hook_state_store import load_state, TABLE_RALPH_SESSION_STATE
+        from hook_state_store import TABLE_RALPH_SESSION_STATE, load_state
         state = load_state(TABLE_RALPH_SESSION_STATE, "test-clear")
         assert state is None
 
@@ -245,5 +243,5 @@ class TestClearRalphSession:
         tracker.set_goal("Test", "echo test")
         clear_ralph_session("clear-test")
 
-        from hook_state_store import load_state, TABLE_RALPH_SESSION_STATE
+        from hook_state_store import TABLE_RALPH_SESSION_STATE, load_state
         assert load_state(TABLE_RALPH_SESSION_STATE, "clear-test") is None

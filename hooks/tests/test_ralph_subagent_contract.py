@@ -11,8 +11,6 @@ Covers:
 
 from ralph_subagent_contract import (
     DELEGATION_METHOD,
-    GATE_REVIEW_PATTERN,
-    QUALITY_GATES_PATTERN,
     extract_quality_gates,
     is_ralph_protocol_prompt,
     parse_gate_review,

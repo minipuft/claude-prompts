@@ -13,15 +13,14 @@ This data feeds the session story for context-isolated Ralph instances.
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
 # Add hooks lib to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
+from lesson_extractor import summarize_error
 from session_tracker import get_session_tracker
-from lesson_extractor import extract_lesson, extract_approach, summarize_error
 from verify_active_store import load_verify_active_state
 
 

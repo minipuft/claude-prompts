@@ -1,0 +1,3 @@
+python_version = "3.10"
+project_includes = ["hooks/**/*.py"]
+search_path = ["hooks/lib", "hooks/lib/_generated"]

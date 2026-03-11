@@ -26,13 +26,13 @@ from pathlib import Path
 # Add hooks lib to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
-from verify_active_store import (
-    load_verify_active_state,
-    save_verify_active_state,
-    clear_verify_active_state,
-)
 from db_reader import load_active_chain_state
 from session_state import load_session_state
+from verify_active_store import (
+    clear_verify_active_state,
+    load_verify_active_state,
+    save_verify_active_state,
+)
 from workspace import get_runtime_state_dir
 
 
@@ -102,7 +102,7 @@ def load_context_isolation_config() -> dict:
             "spawnTimeout": isolation.get("timeout", defaults["spawnTimeout"]),
             "permissionMode": isolation.get("permissionMode", defaults["permissionMode"]),
         }
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return defaults
 
 
@@ -232,9 +232,9 @@ def spawn_isolated_iteration(
     })
 
     # Import here to avoid import errors when not in isolation mode
+    from cli_spawner import SpawnConfig, spawn_claude_print
     from session_tracker import get_session_tracker
     from task_protocol import create_task_file
-    from cli_spawner import spawn_claude_print, SpawnConfig
 
     config = verify_state["config"]
     state = verify_state.get("state", {})
@@ -353,7 +353,11 @@ def spawn_isolated_iteration(
         error_output = verify_result["stderr"] or verify_result["stdout"] or "No output"
         return {
             "passed": False,
-            "output": f"Spawned instance attempted fix but verification still fails.\n\nSpawned output:\n{result.output[:500]}\n\nVerification error:\n{error_output}",
+            "output": (
+                "Spawned instance attempted fix but verification still fails.\n\n"
+                f"Spawned output:\n{result.output[:500]}\n\n"
+                f"Verification error:\n{error_output}"
+            ),
             "stats": stats_dict,
             "spawn_output": result.output[:1000] if result.output else None,
         }
@@ -424,7 +428,7 @@ def main():
     state = verify_state.get("state", {})
 
     # Staleness check: if state is older than 1 hour, discard and allow stop
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
     started_at = state.get("startedAt", "")
     if started_at:
         try:

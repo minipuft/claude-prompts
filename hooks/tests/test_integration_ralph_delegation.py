@@ -17,11 +17,10 @@ Scenarios:
 import importlib.util
 import io
 import json
-import os
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -90,10 +89,9 @@ def run_subagent_gate_enforce(hook_input: dict) -> tuple[int, dict | None]:
     """
     captured = io.StringIO()
 
-    with patch("sys.stdin", io.StringIO(json.dumps(hook_input))):
-        with redirect_stdout(captured):
-            with pytest.raises(SystemExit) as exc:
-                gate_enforce.main()
+    with patch("sys.stdin", io.StringIO(json.dumps(hook_input))), redirect_stdout(captured):
+        with pytest.raises(SystemExit) as exc:
+            gate_enforce.main()
 
     output = captured.getvalue().strip()
     exit_code = exc.value.code
@@ -199,7 +197,7 @@ class TestDelegationReEntryLoop:
     def test_subagent_pass_clears_delegation_state(self, tmp_path, patch_workspace):
         """After sub-agent emits GATE_REVIEW: PASS, delegation state is cleared."""
         # Set up delegation state in session_state
-        from session_state import save_session_state, load_session_state
+        from session_state import load_session_state, save_session_state
 
         session_id = "ralph-reentry-test"
         save_session_state(session_id, {
@@ -246,9 +244,8 @@ class TestDelegationReEntryLoop:
         This is the complete delegation re-entry loop test.
         """
         from session_state import (
-            save_session_state,
             load_session_state,
-            clear_delegation_state,
+            save_session_state,
         )
 
         session_id = "ralph-full-cycle"
@@ -352,7 +349,7 @@ class TestDelegationReEntryLoop:
 
     def test_subagent_fail_keeps_delegation_active(self, tmp_path, patch_workspace):
         """When sub-agent emits GATE_REVIEW: FAIL, delegation state is NOT cleared (blocked)."""
-        from session_state import save_session_state, load_session_state
+        from session_state import load_session_state, save_session_state
 
         session_id = "ralph-fail-test"
         save_session_state(session_id, {
@@ -391,7 +388,7 @@ class TestDelegationReEntryLoop:
 
     def test_subagent_no_verdict_keeps_delegation_active(self, tmp_path, patch_workspace):
         """When sub-agent forgets to emit a verdict, delegation state is NOT cleared."""
-        from session_state import save_session_state, load_session_state
+        from session_state import load_session_state, save_session_state
 
         session_id = "ralph-no-verdict"
         save_session_state(session_id, {
@@ -442,7 +439,7 @@ class TestConcurrentSessionIsolation:
 
     def test_session_state_isolation(self, patch_workspace):
         """Two sessions in hooks-state.db don't interfere."""
-        from session_state import save_session_state, load_session_state, clear_delegation_state
+        from session_state import clear_delegation_state, load_session_state, save_session_state
 
         # Set up session A: delegation pending
         save_session_state("session-A", {
@@ -525,9 +522,9 @@ class TestConcurrentSessionIsolation:
     def test_session_state_survives_other_session_deletion(self, patch_workspace):
         """Deleting one session doesn't affect the other."""
         from session_state import (
-            save_session_state,
-            load_session_state,
             clear_session_state,
+            load_session_state,
+            save_session_state,
         )
 
         save_session_state("session-keep", {
@@ -570,7 +567,7 @@ class TestConcurrentSessionIsolation:
 
     def test_concurrent_subagent_enforce_different_sessions(self, tmp_path, patch_workspace):
         """Two sub-agents finishing for different sessions: each clears only its own state."""
-        from session_state import save_session_state, load_session_state
+        from session_state import load_session_state, save_session_state
 
         # Both sessions have pending delegation
         for sid in ("concurrent-A", "concurrent-B"):
@@ -634,9 +631,9 @@ class TestVerifyStateSingleSlot:
     def test_save_and_load_round_trip(self, patch_workspace):
         """Verify state can be saved and loaded."""
         from verify_active_store import (
-            save_verify_active_state,
-            load_verify_active_state,
             clear_verify_active_state,
+            load_verify_active_state,
+            save_verify_active_state,
         )
 
         state = make_verify_state(command="npm test", iteration=2, max_iterations=5)
@@ -653,8 +650,8 @@ class TestVerifyStateSingleSlot:
     def test_second_save_overwrites_first(self, patch_workspace):
         """Writing a new verify state replaces the previous one (single slot)."""
         from verify_active_store import (
-            save_verify_active_state,
             load_verify_active_state,
+            save_verify_active_state,
         )
 
         state_1 = make_verify_state(command="npm test", iteration=1)
@@ -670,8 +667,8 @@ class TestVerifyStateSingleSlot:
     def test_delegation_metadata_persists_in_verify_state(self, patch_workspace):
         """Delegation metadata saved by ralph-stop persists in verify state."""
         from verify_active_store import (
-            save_verify_active_state,
             load_verify_active_state,
+            save_verify_active_state,
         )
 
         state = make_verify_state(
@@ -734,7 +731,6 @@ class TestEdgeCases:
 
     def test_max_iterations_stops_loop(self):
         """After max iterations, verification is abandoned and stop is allowed."""
-        vs = make_verify_state(command="npm test", iteration=9, max_iterations=10)
         # iteration=9 → +1 = 10 → 10 == 10 doesn't trigger, but 10 > 10 does
         # Actually: `if iteration > max_iterations` checks after increment
         # iteration=10 in state → +1 = 11 > 10 → max reached

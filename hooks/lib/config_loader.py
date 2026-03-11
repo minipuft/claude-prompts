@@ -41,7 +41,7 @@ def load_config() -> Config:
         return DEFAULT_CONFIG
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config = json.load(f)
             return config
     except (json.JSONDecodeError, OSError):

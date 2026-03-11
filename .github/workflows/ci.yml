@@ -70,6 +70,16 @@ jobs:
       - name: Lint (ratchet)
         run: npm run lint:ratchet
 
+      - name: Lint Python hooks (Ruff)
+        uses: astral-sh/ruff-action@v3
+        with:
+          src: ./hooks
+
+      - name: Typecheck Python hooks (Pyrefly)
+        run: |
+          pip install pyrefly --quiet
+          pyrefly check hooks/ --baseline hooks/.pyrefly-baseline.json
+
   # ============================================================
   # Stage 2: Build (single Node LTS, upload artifact)
   # Build once, share with test matrix

@@ -12,8 +12,6 @@ Covers:
 import sys
 from pathlib import Path
 
-import pytest
-
 HOOKS_LIB = Path(__file__).parent.parent / "lib"
 sys.path.insert(0, str(HOOKS_LIB))
 
@@ -67,8 +65,9 @@ class TestTaskFileRoundTrip:
         assert "MEMORY_UPDATE:" in content
 
     def test_task_file_yaml_frontmatter(self, patch_workspace):
-        import yaml
         import re
+
+        import yaml
         from session_tracker import SessionTracker
         from task_protocol import create_task_file
 
@@ -190,7 +189,7 @@ class TestParseTaskFile:
 class TestResultFile:
     def test_create_result_file(self, patch_workspace):
         from session_tracker import SessionTracker
-        from task_protocol import create_task_file, create_result_file, parse_result_file
+        from task_protocol import create_result_file, create_task_file, parse_result_file
 
         tracker = SessionTracker("result-test")
         tracker.set_goal("Test", "echo test")
@@ -221,7 +220,7 @@ class TestResultFile:
 
     def test_result_file_fail_status(self, patch_workspace):
         from session_tracker import SessionTracker
-        from task_protocol import create_task_file, create_result_file, parse_result_file
+        from task_protocol import create_result_file, create_task_file, parse_result_file
 
         tracker = SessionTracker("fail-result-test")
         tracker.set_goal("Test", "echo test")

@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from db_reader import load_active_chain_state
-from session_state import load_session_state, format_chain_reminder
+from session_state import format_chain_reminder, load_session_state
 
 
 def parse_hook_input() -> dict:

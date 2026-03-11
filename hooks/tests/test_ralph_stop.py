@@ -16,7 +16,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -203,8 +203,8 @@ class TestMainDecisions:
 
     def _run_hook(self, hook_input, verify_state=None):
         """Simulate running the hook with mocked stdin and verify state."""
-        import io
         import contextlib
+        import io
 
         captured = io.StringIO()
 

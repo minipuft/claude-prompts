@@ -18,9 +18,8 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-
-from workspace import get_runtime_state_dir
 from session_tracker import SessionTracker
+from workspace import get_runtime_state_dir
 
 
 @dataclass
@@ -130,7 +129,6 @@ def create_task_file(
 
     # Build last failure section
     if last_failure_output:
-        iteration_num = tracker.get_iteration_count()
         last_failure = f"```\n{last_failure_output[:2000]}\n```"
     else:
         last_failure = "No previous failure recorded."

@@ -56,7 +56,10 @@ def main():
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Gate FAIL: {reason}. Review the failing criteria, address the gaps in your output, then resubmit your verdict."
+                    "permissionDecisionReason": (
+                        f"Gate FAIL: {reason}. Review the failing criteria, "
+                        "address the gaps in your output, then resubmit your verdict."
+                    )
                 }
             }
             print(json.dumps(hook_response))
@@ -74,7 +77,10 @@ def main():
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Gate review required: {gate}. Review your output against the gate criteria before continuing."
+                    "permissionDecisionReason": (
+                        f"Gate review required: {gate}. "
+                        "Review your output against the gate criteria before continuing."
+                    )
                 }
             }
             print(json.dumps(hook_response))

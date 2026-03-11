@@ -24,7 +24,6 @@ HOOKS_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(HOOKS_DIR))
 sys.path.insert(0, str(HOOKS_DIR / "lib"))
 
-from importlib import import_module
 
 # Import as module (filename has hyphens)
 import importlib.util
@@ -256,8 +255,8 @@ class TestMainHookDecisions:
 
     def _run_hook(self, hook_input, transcript_path=None):
         """Simulate running the hook by calling main() with mocked stdin."""
-        import io
         import contextlib
+        import io
 
         input_data = dict(hook_input)
         if transcript_path:

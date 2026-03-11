@@ -24,21 +24,21 @@ sys.path.insert(0, str(Path(__file__).parent / "lib"))
 sys.path.insert(0, str(Path(__file__).parent / "lib" / "_generated"))
 
 from cache_manager import (
-    load_prompts_cache,
-    get_prompt_by_id,
-    match_prompts_to_intent,
-    get_chains_only,
     fuzzy_match_prompt_id,
-    is_valid_style,
+    get_chains_only,
+    get_prompt_by_id,
     is_valid_framework,
+    is_valid_style,
+    load_prompts_cache,
+    match_prompts_to_intent,
 )
-from db_reader import load_active_chain_state
-from session_state import load_session_state, format_chain_reminder
 from config_loader import is_expanded_output
+from db_reader import load_active_chain_state
+from session_state import format_chain_reminder, load_session_state
 
 # Import generated operator patterns (SSOT: server/tooling/contracts/operators.json)
 try:
-    from operators import detect_operator, detect_all_operators, OPERATORS
+    from operators import OPERATORS, detect_operator
     HAS_GENERATED_OPERATORS = True
 except ImportError:
     HAS_GENERATED_OPERATORS = False
