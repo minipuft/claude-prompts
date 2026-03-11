@@ -3,7 +3,7 @@ name: Codebase Diagnostics
 description: >-
   Systematically diagnose issues in codebases including bugs, performance problems, security vulnerabilities,
   architecture issues, and technical debt
-license: MIT
+license: AGPL-3.0-only
 compatibility:
   agent-skills: 1.0.0
 metadata:

@@ -6,7 +6,7 @@
   },
   "homepage": "https://github.com/minipuft/claude-prompts",
   "repository": "https://github.com/minipuft/claude-prompts",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": [
     "mcp",
     "prompts",

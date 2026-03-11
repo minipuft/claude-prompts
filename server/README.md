@@ -1,7 +1,7 @@
 # Claude Prompts MCP Server
 
 [![npm version](https://img.shields.io/npm/v/claude-prompts.svg)](https://www.npmjs.com/package/claude-prompts)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.18-brightgreen.svg)](https://nodejs.org/)
 
 MCP server for prompt management, thinking frameworks, and quality gates. Hot-reloads prompts, injects structured reasoning, enforces output validation—all through MCP tools Claude can call directly.
@@ -492,4 +492,4 @@ Config: `skills-sync.yaml` (git-ignored, personal). See [Skills Sync Guide](docs
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](../LICENSE)

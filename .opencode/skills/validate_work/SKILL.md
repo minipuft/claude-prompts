@@ -3,7 +3,7 @@ name: Validate Work
 description: >-
   Run validation commands and check workflow compliance before commits. Reports typecheck, lint, test status and
   coverage delta.
-license: MIT
+license: AGPL-3.0-only
 compatibility:
   agent-skills: 1.0.0
 metadata:

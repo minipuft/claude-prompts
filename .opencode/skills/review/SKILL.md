@@ -3,7 +3,7 @@ name: Review
 description: >-
   Comprehensive code review that validates modern standards compliance, library best practices, and identifies
   consolidation opportunities with existing systems
-license: MIT
+license: AGPL-3.0-only
 compatibility:
   agent-skills: 1.0.0
 metadata:

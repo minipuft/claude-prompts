@@ -7,8 +7,7 @@ These patterns are for USER CONTEXT HINTS only.
 Full parsing happens server-side in symbolic-operator-parser.ts
 """
 import re
-from re import Pattern
-from typing import TypedDict
+from typing import TypedDict, Pattern
 
 
 class OperatorInfo(TypedDict):
