@@ -138,16 +138,25 @@ const distributionChecks = [
     validate: (data) => assertVersion('Gemini extension', data.version),
   },
   {
-    label: 'opencode-prompts package.json',
+    label: 'opencode-prompts dependency',
     url: 'https://raw.githubusercontent.com/minipuft/opencode-prompts/main/package.json',
-    validate: (data) => assertVersion('OpenCode package', data.version),
-  },
-  {
-    label: 'opencode-prompts release manifest',
-    url: 'https://raw.githubusercontent.com/minipuft/opencode-prompts/main/.release-please-manifest.json',
     validate: (data) => {
-      const version = data.server || data['.'];
-      assertVersion('OpenCode release manifest', version);
+      const dep = data.dependencies?.['claude-prompts'];
+      if (!dep) {
+        throw new Error('OpenCode package missing claude-prompts dependency');
+      }
+      // Check that the semver range covers the current version (^MAJOR.0.0)
+      const majorMatch = dep.match(/\^(\d+)\./);
+      if (!majorMatch) {
+        throw new Error(`OpenCode dependency range unexpected format: ${dep}`);
+      }
+      const depMajor = parseInt(majorMatch[1], 10);
+      const coreMajor = parseInt(coreVersion.split('.')[0], 10);
+      if (depMajor !== coreMajor) {
+        throw new Error(
+          `OpenCode dependency ${dep} does not cover ${coreVersion} (major mismatch: ${depMajor} vs ${coreMajor})`
+        );
+      }
     },
   },
 ];
