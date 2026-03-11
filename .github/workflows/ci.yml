@@ -76,6 +76,7 @@ jobs:
           src: ./hooks
 
       - name: Typecheck Python hooks (Pyrefly)
+        working-directory: .
         run: |
           pip install pyrefly --quiet
           pyrefly check hooks/ --baseline hooks/.pyrefly-baseline.json
