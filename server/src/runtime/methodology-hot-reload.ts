@@ -2,12 +2,12 @@
 import { createMethodologyHotReloadRegistration } from '../engine/frameworks/methodology/index.js';
 
 import type { Logger } from '../infra/logging/index.js';
-import type { McpToolsManager } from '../mcp/tools/index.js';
-import type { AuxiliaryReloadConfig } from '../modules/hot-reload/hot-reload-manager.js';
+import type { McpToolRouter } from '../mcp/tools/index.js';
+import type { AuxiliaryReloadConfig } from '../modules/hot-reload/hot-reload-observer.js';
 
 export function buildMethodologyAuxiliaryReloadConfig(
   logger: Logger,
-  mcpToolsManager?: McpToolsManager
+  mcpToolsManager?: McpToolRouter
 ): AuxiliaryReloadConfig | undefined {
   const frameworkManager = mcpToolsManager?.getFrameworkManager?.();
   if (!frameworkManager) {

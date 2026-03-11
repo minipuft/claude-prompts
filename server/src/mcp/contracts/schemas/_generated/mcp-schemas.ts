@@ -20,16 +20,7 @@ export const promptEngineSchema = z
     /** Your completed output from executing the previous step. Paste your work here when resuming a chain. Use with chain_id; do not include command when resuming. */
     user_response: z.string().trim().optional(),
     /** Gate review verdict with flexible format support. Primary: 'GATE_REVIEW: PASS|FAIL - reason'. Also accepts: 'GATE PASS - reason', 'GATE_REVIEW: FAIL: reason', 'PASS - reason' (minimal). */
-    gate_verdict: z
-      .string()
-      .refine(
-        (v) =>
-          /^(?:GATE_REVIEW:\s*(?:PASS|FAIL)\s*[-:]\s*.+|GATE\s+(?:PASS|FAIL)\s*[-:]\s*.+|(?:PASS|FAIL)\s*[-:]\s*.+)$/i.test(
-            v
-          ),
-        'Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)'
-      )
-      .optional(),
+    gate_verdict: z.string().optional(),
     /** User choice after gate retry limit exhaustion. 'retry' resets attempt count for another try, 'skip' bypasses the failed gate and continues, 'abort' stops chain execution entirely. */
     gate_action: z.enum(['retry', 'skip', 'abort']).optional(),
     /** Quality gates for output validation. Four formats supported:  **1. Registered IDs** (strings): Use predefined gates like 'code-quality', 'research-quality'.  **2. Quick Gates** (RECOMMENDED for LLM-generated validation): `{name, description}` - Create named, domain-specific checks on the fly. Example: `{name: 'Source Quality', description: 'All sources must be official docs'}`.  **3. Full Definitions**: Complete schema with severity, criteria[], pass_criteria[], guidance for production workflows.  **4. Shell Verification** (ground-truth validation): `:: verify:"command"` runs shell commands; exit 0 = PASS.    - **Presets**: `:fast` (1 attempt, 30s), `:full` (5 attempts, 5min), `:extended` (10 attempts, 10min)    - **Options**: `max:N` (attempts), `timeout:N` (seconds), `loop:true` (autonomous Stop hook)    - **Example**: `>>fix-bug :: verify:"npm test" :full loop:true` */
@@ -186,6 +177,41 @@ export const resourceManagerSchema = z
   .passthrough();
 
 export type resourceManagerInput = z.infer<typeof resourceManagerSchema>;
+
+/**
+ * Zod schema for skills_sync MCP tool
+ * Generated from contract version 1
+ */
+export const skillsSyncSchema = z
+  .object({
+    /** Operation: status (inspect config/manifests), export (write skills), sync (reconcile to registrations with optional prune), diff (show drift and optional .patch output), pull (merge exported prose edits back to canonical YAML), clone (create canonical resources from SKILL.md). */
+    action: z.enum(['status', 'export', 'sync', 'diff', 'pull', 'clone']),
+    /** Target client id. Use one of: claude-code, cursor, codex, opencode, or all. */
+    client: z.string().optional(),
+    /** Output scope for client directories. Default: user. */
+    scope: z.enum(['user', 'project']).optional(),
+    /** Optional resource type filter. */
+    resource_type: z.enum(['prompt', 'gate', 'methodology', 'style']).optional(),
+    /** Optional resource id filter. */
+    id: z.string().optional(),
+    /** For sync: when true (default), remove stale managed skills not present in current registrations. */
+    prune: z.boolean().optional(),
+    /** For export/sync/pull/clone: show planned changes without writing files. */
+    dry_run: z.boolean().optional(),
+    /** For diff: write .patch files to this directory instead of stdout only. */
+    output: z.string().optional(),
+    /** For clone: path to the source SKILL.md file. Required for clone action. */
+    file: z.string().optional(),
+    /** For clone: target category for prompt resources. Default: general. */
+    category: z.string().optional(),
+    /** For pull: show unified diffs without writing changes. */
+    preview: z.boolean().optional(),
+    /** For clone: overwrite existing resource directory. */
+    force: z.boolean().optional(),
+  })
+  .passthrough();
+
+export type skillsSyncInput = z.infer<typeof skillsSyncSchema>;
 
 /**
  * Zod schema for system_control MCP tool

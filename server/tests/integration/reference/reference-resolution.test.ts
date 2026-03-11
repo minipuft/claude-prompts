@@ -23,8 +23,8 @@ import type {
   ToolDetectionMatch,
 } from '../../../src/modules/automation/types.js';
 import type {
-  IToolDetectionService,
-  IScriptExecutor,
+  ToolDetectionServicePort,
+  ScriptExecutorPort,
 } from '../../../src/engine/execution/reference/prompt-reference-resolver.js';
 
 describe('PromptReferenceResolver', () => {
@@ -293,8 +293,8 @@ describe('processTemplateWithRefs', () => {
 describe('PromptReferenceResolver with scripts', () => {
   let mockLogger: Logger;
   let prompts: ConvertedPrompt[];
-  let mockToolDetection: jest.Mocked<IToolDetectionService>;
-  let mockScriptExecutor: jest.Mocked<IScriptExecutor>;
+  let mockToolDetection: jest.Mocked<ToolDetectionServicePort>;
+  let mockScriptExecutor: jest.Mocked<ScriptExecutorPort>;
 
   const createScriptTool = (id: string): LoadedScriptTool => ({
     id,
@@ -349,7 +349,7 @@ describe('PromptReferenceResolver with scripts', () => {
           requiresConfirmation: false,
         } as ToolDetectionMatch,
       ]),
-    } as unknown as jest.Mocked<IToolDetectionService>;
+    } as unknown as jest.Mocked<ToolDetectionServicePort>;
 
     mockScriptExecutor = {
       execute: jest.fn().mockResolvedValue({
@@ -360,7 +360,7 @@ describe('PromptReferenceResolver with scripts', () => {
         exitCode: 0,
         durationMs: 100,
       } as ScriptExecutionResult),
-    } as unknown as jest.Mocked<IScriptExecutor>;
+    } as unknown as jest.Mocked<ScriptExecutorPort>;
   });
 
   test('executes scripts when resolving reference with scriptTools', async () => {

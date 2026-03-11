@@ -20,7 +20,7 @@ export interface VersionEntry {
 }
 
 /**
- * Structure of the .history.json sidecar file
+ * Assembled history for a resource (loaded from version_history table)
  */
 export interface HistoryFile {
   /** Type of resource (prompt, gate, methodology) */

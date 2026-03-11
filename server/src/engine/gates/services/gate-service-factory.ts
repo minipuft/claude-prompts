@@ -2,7 +2,7 @@
 import { CompositionalGateService } from './compositional-gate-service.js';
 import { SemanticGateService } from './semantic-gate-service.js';
 
-import type { GateServiceConfig, IGateService } from './gate-service-interface.js';
+import type { GateServiceConfig, GateService } from './gate-service-interface.js';
 import type { Logger } from '../../../infra/logging/index.js';
 import type { ConfigManager } from '../../../shared/types/index.js';
 import type { GateValidator } from '../core/gate-validator.js';
@@ -16,7 +16,7 @@ export class GateServiceFactory {
     private readonly gateValidator: GateValidator
   ) {}
 
-  createGateService(): IGateService {
+  createGateService(): GateService {
     const config = this.configManager.getConfig();
     const llmIntegration = config.analysis?.semanticAnalysis?.llmIntegration;
 
@@ -50,7 +50,7 @@ export class GateServiceFactory {
     return new CompositionalGateService(this.logger, this.gateGuidanceRenderer);
   }
 
-  async hotReload(): Promise<IGateService> {
+  async hotReload(): Promise<GateService> {
     this.logger.info('[GateServiceFactory] Reloading configuration for gate service');
     await this.configManager.loadConfig();
     return this.createGateService();

@@ -8,11 +8,13 @@ MCP server for prompt management, thinking frameworks, and quality gates. Hot-re
 
 ## Quick Start
 
-| Method                | Command                    | Best For     |
-| --------------------- | -------------------------- | ------------ |
-| **Desktop Extension** | Drag `.mcpb` into Settings | End users    |
-| **NPX**               | `npx -y claude-prompts`    | Auto-updates |
-| **Local Dev**         | `npm run start:stdio`      | Contributors |
+| Method                | Command                                       | Best For     |
+| --------------------- | --------------------------------------------- | ------------ |
+| **Desktop Extension** | Drag `.mcpb` into Settings                    | End users    |
+| **NPX**               | `npx -y claude-prompts --client=claude-code`  | Auto-updates |
+| **Local Dev**         | `npm run start:stdio -- --client=claude-code` | Contributors |
+
+Set `--client` to match your host client (`claude-code`, `codex`, `gemini`, `opencode`, `cursor`, or `unknown`) so handoff guidance stays client-aware.
 
 **Desktop Extension** — [Download `.mcpb`](https://github.com/minipuft/claude-prompts/releases), drag into Claude Desktop Settings. Done.
 
@@ -21,7 +23,10 @@ MCP server for prompt management, thinking frameworks, and quality gates. Hot-re
 ```json
 {
   "mcpServers": {
-    "claude-prompts": { "command": "npx", "args": ["-y", "claude-prompts@latest"] }
+    "claude-prompts": {
+      "command": "npx",
+      "args": ["-y", "claude-prompts@latest", "--client=claude-code"]
+    }
   }
 }
 ```
@@ -209,7 +214,7 @@ Edit `~/.config/claude/claude_desktop_config.json`:
   "mcpServers": {
     "claude-prompts": {
       "command": "npx",
-      "args": ["-y", "claude-prompts@latest"],
+      "args": ["-y", "claude-prompts@latest", "--client", "claude-code"],
       "env": {
         "MCP_WORKSPACE": "/home/YOUR_USERNAME/my-prompts"
       }
@@ -292,7 +297,7 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
   "mcpServers": {
     "claude-prompts": {
       "command": "npx",
-      "args": ["-y", "claude-prompts@latest"]
+      "args": ["-y", "claude-prompts@latest", "--client", "claude-code"]
     }
   }
 }
@@ -305,7 +310,7 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
   "mcpServers": {
     "claude-prompts": {
       "command": "npx",
-      "args": ["-y", "claude-prompts@latest"],
+      "args": ["-y", "claude-prompts@latest", "--client", "claude-code"],
       "env": {
         "MCP_WORKSPACE": "/home/user/my-mcp-workspace"
       }
@@ -321,7 +326,7 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
   "mcpServers": {
     "claude-prompts": {
       "command": "npx",
-      "args": ["-y", "claude-prompts@latest"],
+      "args": ["-y", "claude-prompts@latest", "--client", "claude-code"],
       "env": {
         "MCP_PROMPTS_PATH": "/home/user/projects/my-app/prompts"
       }
@@ -329,6 +334,30 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
   }
 }
 ```
+
+**Codex launch profile — Handoff preset (`spawn_agent_v1`):**
+
+```json
+{
+  "mcpServers": {
+    "claude-prompts": {
+      "command": "npx",
+      "args": ["-y", "claude-prompts@latest", "--client", "codex"]
+    }
+  }
+}
+```
+
+Supported presets:
+
+| `--client` value | Handoff profile      | Status               | Notes                                                       |
+| ---------------- | -------------------- | -------------------- | ----------------------------------------------------------- |
+| `claude-code`    | `task_tool_v1`       | canonical            | Task tool routing                                           |
+| `codex`          | `spawn_agent_v1`     | canonical            | `spawn_agent` preferred; fallback handoff guidance included |
+| `gemini`         | `gemini_subagent_v1` | canonical            | Gemini sub-agent capability guidance                        |
+| `opencode`       | `opencode_agent_v1`  | canonical            | OpenCode agent capability guidance                          |
+| `cursor`         | `cursor_agent_v1`    | experimental/testing | Cursor handoff wording enabled with fallback guidance       |
+| `unknown`        | `neutral_v1`         | canonical            | Neutral client fallback                                     |
 
 ---
 
@@ -363,6 +392,9 @@ npx claude-prompts --prompts /path/to/prompts
 # Select transport
 npx claude-prompts --transport sse
 
+# Client-aware handoff routing at launch
+npx claude-prompts --client codex
+
 # Debugging
 npx claude-prompts --verbose
 npx claude-prompts --debug-startup
@@ -372,23 +404,27 @@ npx claude-prompts --log-level debug
 npx claude-prompts --startup-test --verbose
 ```
 
-| Flag                    | Purpose                                      |
-| ----------------------- | -------------------------------------------- |
-| `-h`, `--help`          | Show help and exit                           |
-| `--init /path`          | Initialize a new workspace with starters     |
-| `--workspace /path`     | Base directory for all user assets           |
-| `--prompts /path`       | Direct path to a prompts directory           |
-| `--methodologies /path` | Custom methodologies directory               |
-| `--gates /path`         | Custom gates directory                       |
-| `--scripts /path`       | Custom scripts directory                     |
-| `--styles /path`        | Custom styles directory                      |
-| `--config /path`        | Custom server config.json                    |
-| `--transport MODE`      | Transport: `stdio`, `sse`, `streamable-http` |
-| `--log-level LEVEL`     | Log level: `debug`, `info`, `warn`, `error`  |
-| `--verbose`             | Detailed logging                             |
-| `--quiet`               | Suppress non-error output                    |
-| `--debug-startup`       | Verbose startup diagnostics                  |
-| `--startup-test`        | Validate and exit (good for testing setup)   |
+| Flag                      | Purpose                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `-h`, `--help`            | Show help and exit                                                               |
+| `--init /path`            | Initialize a new workspace with starters                                         |
+| `--workspace /path`       | Base directory for all user assets                                               |
+| `--prompts /path`         | Direct path to a prompts directory                                               |
+| `--methodologies /path`   | Custom methodologies directory                                                   |
+| `--gates /path`           | Custom gates directory                                                           |
+| `--scripts /path`         | Custom scripts directory                                                         |
+| `--styles /path`          | Custom styles directory                                                          |
+| `--config /path`          | Custom server config.json                                                        |
+| `--workspace-id VALUE`    | Launch default workspace scope                                                   |
+| `--organization-id VALUE` | Launch default organization scope                                                |
+| `--identity-mode VALUE`   | Identity policy: `permissive` or `locked`                                        |
+| `--client VALUE`          | Client preset: `claude-code`, `codex`, `gemini`, `opencode`, `cursor`, `unknown` |
+| `--transport MODE`        | Transport: `stdio`, `sse`, `streamable-http`                                     |
+| `--log-level LEVEL`       | Log level: `debug`, `info`, `warn`, `error`                                      |
+| `--verbose`               | Detailed logging                                                                 |
+| `--quiet`                 | Suppress non-error output                                                        |
+| `--debug-startup`         | Verbose startup diagnostics                                                      |
+| `--startup-test`          | Validate and exit (good for testing setup)                                       |
 
 ---
 
@@ -424,6 +460,8 @@ Full guides in the [main repository](https://github.com/minipuft/claude-prompts)
 - [Prompt Authoring](https://github.com/minipuft/claude-prompts/blob/main/docs/tutorials/build-first-prompt.md) — Tutorial
 - [Chains](https://github.com/minipuft/claude-prompts/blob/main/docs/concepts/chains-lifecycle.md) — Multi-step patterns
 - [Gates](https://github.com/minipuft/claude-prompts/blob/main/docs/concepts/quality-gates.md) — Quality validation
+- [Client Integration](https://github.com/minipuft/claude-prompts/blob/main/docs/guides/client-integration.md) — Per-client `--client` install setup
+- [Client Capabilities](https://github.com/minipuft/claude-prompts/blob/main/docs/reference/client-capabilities.md) — Preset mapping, status, and integration limits
 - [Skills Sync](https://github.com/minipuft/claude-prompts/blob/main/docs/guides/skills-sync.md) — Export prompts to client-native skills
 
 ---

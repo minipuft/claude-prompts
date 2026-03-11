@@ -10,7 +10,8 @@
  */
 
 import * as esbuild from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,7 +27,7 @@ const buildOptions = {
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node18',
+  target: 'node22',
   // Use ESM format to preserve import.meta.url for path resolution
   // Add a require shim in banner to handle CJS dependencies
   format: 'esm',
@@ -55,13 +56,20 @@ const buildOptions = {
     'node:stream', 'node:stream/web', 'node:string_decoder', 'node:tls',
     'node:tty', 'node:url', 'node:util', 'node:v8', 'node:vm', 'node:zlib',
     'node:worker_threads', 'node:perf_hooks', 'node:async_hooks', 'node:inspector',
+    'node:sqlite',
   ],
 
-  // Banner: Note that source file already has shebang, so we only need the require shim
-  // The require shim allows CJS packages (like Express deps) to use require() in ESM bundle
+  // Banner: ESM shims for CJS dependencies (Express)
+  // - require shim: CJS packages use require() in ESM bundle
+  // - __dirname/__filename shims: needed by some CJS packages
+  // Uses var (not const) so source-level const __filename/__dirname redeclarations work
   banner: {
     js: `import { createRequire as __createRequire } from 'module';
-const require = __createRequire(import.meta.url);`,
+import { fileURLToPath as __fileURLToPath } from 'url';
+import { dirname as __pathDirname } from 'path';
+const require = __createRequire(import.meta.url);
+var __filename = __fileURLToPath(import.meta.url);
+var __dirname = __pathDirname(__filename);`,
   },
 
   // Define build-time constants
@@ -97,11 +105,15 @@ async function build() {
     console.log(`  Mode: ${isProduction ? 'production' : 'development'}`);
 
     if (isWatch) {
-      // Watch mode for development
+      // Watch mode for development (skip clean to preserve declarations)
       const ctx = await esbuild.context(buildOptions);
       await ctx.watch();
       console.log('Watching for changes...');
     } else {
+      // Clean dist/ to prevent stale artifacts from deleted source files
+      rmSync('dist', { recursive: true, force: true });
+      mkdirSync('dist', { recursive: true });
+
       // Single build
       const result = await esbuild.build(buildOptions);
 
@@ -115,6 +127,13 @@ async function build() {
           console.log(`Inputs: ${Object.keys(output.inputs).length} files`);
         }
       }
+
+      // Generate type declarations (consumed via package.json "types" field)
+      console.log('Generating type declarations...');
+      execSync('npx tsc --emitDeclarationOnly --declaration --outDir dist', {
+        stdio: 'inherit',
+        cwd: __dirname,
+      });
 
       console.log('\nBuild complete: dist/index.js');
     }

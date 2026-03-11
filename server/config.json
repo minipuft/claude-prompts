@@ -7,13 +7,21 @@
       "timeoutMinutes": 1440
     }
   },
+  "phaseGuards": {
+    "mode": "enforce",
+    "maxRetries": 2
+  },
   "execution": {
     "judge": true
   },
   "gates": {
     "directory": "resources/gates",
     "enabled": true,
-    "methodologyGates": true
+    "evaluation": {
+      "defaultMode": "self"
+    },
+    "methodologyGates": true,
+    "mode": "on"
   },
   "hooks": {
     "expandedOutput": true
@@ -25,8 +33,13 @@
   "methodologies": {
     "dynamicToolDescriptions": true,
     "enabled": true,
+    "systemPromptFrequency": 3,
+    "systemPromptTarget": "steps",
+    "gateGuidanceFrequency": 0,
+    "gateGuidanceTarget": "both",
     "styleGuidance": true,
-    "systemPromptFrequency": 3
+    "styleGuidanceFrequency": 0,
+    "styleGuidanceTarget": "steps"
   },
   "prompts": {
     "directory": "resources/prompts",
@@ -72,5 +85,12 @@
     "autoVersion": true,
     "enabled": true,
     "maxVersions": 50
+  },
+  "analysis": {
+    "semanticAnalysis": {
+      "llmIntegration": {
+        "mode": "on"
+      }
+    }
   }
 }

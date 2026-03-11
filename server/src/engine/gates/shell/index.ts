@@ -25,6 +25,7 @@ export {
 
 // Message formatting services (extracted from ShellVerificationStage)
 export type {
+  GateShellVerifyResult,
   ShellVerifyFeedback,
   ShellVerifyFeedbackType,
 } from './shell-verify-message-formatter.js';
@@ -35,11 +36,12 @@ export {
   formatEscalationMessage,
   createBounceBackFeedback,
   createEscalationFeedback,
+  formatGateShellVerifySection,
 } from './shell-verify-message-formatter.js';
 
 // State file management for Stop hook integration
-export type { VerifyActiveStateManagerConfig } from './verify-active-state-manager.js';
+export type { VerifyActiveStateStoreConfig } from './verify-active-state-store.js';
 export {
-  VerifyActiveStateManager,
-  createVerifyActiveStateManager,
-} from './verify-active-state-manager.js';
+  VerifyActiveStateStore,
+  createVerifyActiveStateStore,
+} from './verify-active-state-store.js';

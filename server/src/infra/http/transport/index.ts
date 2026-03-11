@@ -12,7 +12,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import express, { Request, Response } from 'express';
 
-import { EventEmittingConfigManager } from '../../config/index.js';
+import { ConfigLoader } from '../../config/index.js';
 import { Logger } from '../../logging/index.js';
 
 import type { TransportMode } from '../../../shared/types/index.js';
@@ -30,9 +30,9 @@ export enum TransportType {
 /**
  * Transport Manager class
  */
-export class TransportManager {
+export class TransportRouter {
   private logger: Logger;
-  private configManager: EventEmittingConfigManager;
+  private configManager: ConfigLoader;
   private mcpServer: any;
   private transport: TransportMode;
   private sseTransports: Map<string, SSEServerTransport> = new Map();
@@ -40,7 +40,7 @@ export class TransportManager {
 
   constructor(
     logger: Logger,
-    configManager: EventEmittingConfigManager,
+    configManager: ConfigLoader,
     mcpServer: any,
     transport: TransportMode
   ) {
@@ -54,10 +54,7 @@ export class TransportManager {
    * Determine transport mode from command line arguments or configuration
    * Priority: CLI args > config.transport > default (stdio)
    */
-  static determineTransport(
-    args: string[],
-    configManager: EventEmittingConfigManager
-  ): TransportMode {
+  static determineTransport(args: string[], configManager: ConfigLoader): TransportMode {
     // CLI argument takes highest priority
     const transportArg = args.find((arg: string) => arg.startsWith('--transport='));
     if (transportArg) {
@@ -68,7 +65,7 @@ export class TransportManager {
       }
       // Use stderr to avoid corrupting STDIO protocol
       console.error(
-        `[TransportManager] Invalid --transport value: "${value}". Using config default.`
+        `[TransportRouter] Invalid --transport value: "${value}". Using config default.`
       );
     }
 
@@ -398,13 +395,13 @@ export class TransportManager {
 /**
  * Create and configure a transport manager
  */
-export function createTransportManager(
+export function createTransportRouter(
   logger: Logger,
-  configManager: EventEmittingConfigManager,
+  configManager: ConfigLoader,
   mcpServer: any,
   transport: TransportMode
-): TransportManager {
-  const transportManager = new TransportManager(logger, configManager, mcpServer, transport);
+): TransportRouter {
+  const transportRouter = new TransportRouter(logger, configManager, mcpServer, transport);
 
-  return transportManager;
+  return transportRouter;
 }

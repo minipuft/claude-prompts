@@ -1,0 +1,5 @@
+id: test-style
+name: Test Style
+description: A test style for CLI integration tests
+guidanceFile: guidance.md
+enabled: true

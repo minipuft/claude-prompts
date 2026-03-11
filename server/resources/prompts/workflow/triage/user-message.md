@@ -34,11 +34,20 @@ Compare current vs expected to determine:
 - **explore**: Can't classify yet, need more investigation
 - **optimize**: Current = Expected, but too slow/resource-heavy
 
+If the request involves two work types, identify both. The higher-risk type is primary.
+
 ### 4. SCOPE: Impact Analysis
 
 - What files/modules are affected?
 - What systems does this touch?
 - What's the risk level?
+- Are external libraries involved? Which versions?
+
+### 5. SOURCE SPEC: Acceptance Criteria
+
+- Does the request reference a spec, ticket, plan, or user story?
+- If yes: extract concrete acceptance criteria with observable behaviors
+- If no: state "none" — do not invent criteria
 
 ---
 
@@ -50,6 +59,7 @@ After analysis, produce this EXACT format:
 ## Intent Declaration
 
 **Work Type**: [bug_fix | feature | refactor | explore | optimize]
+**Secondary Type**: [none | bug_fix | feature | refactor | optimize]
 **Confidence**: [high | medium | low]
 
 **Scope**:
@@ -57,6 +67,15 @@ After analysis, produce this EXACT format:
 - Files: [list specific files]
 - Systems: [list affected systems]
 - Risk: [low | medium | high]
+
+**External Dependencies**: [none | lib@version, lib@version]
+
+**Source Spec**: [none | ticket URL | spec.md | checkpoint plan | user story]
+
+**Acceptance Criteria** (when source spec exists):
+| # | Criterion | Observable Behavior | Verification |
+|---|-----------|-------------------|--------------|
+| 1 | [what must be true] | [how to observe it] | [test type or manual check] |
 
 **Problem Statement**:
 [Current state] → [Desired state]
@@ -69,8 +88,19 @@ After analysis, produce this EXACT format:
 
 **Routing Rules**:
 
-- bug_fix → `/testing` (reproduce bug first)
-- feature → `/refactoring` (pre-flight check)
-- refactor → `/refactoring` (architecture validation)
-- explore → Continue `/search` (loop until intent emerges)
-- optimize → Profile first, then implement
+| Work Type | Next Phase         | Rationale                 |
+| --------- | ------------------ | ------------------------- |
+| bug_fix   | `/testing`         | Reproduce bug first       |
+| feature   | `/refactoring`     | Pre-flight check          |
+| refactor  | `/refactoring`     | Architecture validation   |
+| explore   | Continue `/search` | Loop until intent emerges |
+| optimize  | Profile first      | Measure before optimizing |
+
+**Compound Routing** (when secondary type declared):
+
+| Primary + Secondary | Route                             | Added Constraint                                   |
+| ------------------- | --------------------------------- | -------------------------------------------------- |
+| feature + refactor  | `/refactoring`                    | Pre-flight covers BOTH new code and displaced code |
+| bug_fix + refactor  | `/testing` → fix → `/refactoring` | After fix, refactor surrounding structure          |
+| feature + optimize  | `/refactoring`                    | Performance budget check during implementation     |
+| refactor + optimize | `/refactoring`                    | Profile before AND after structural changes        |

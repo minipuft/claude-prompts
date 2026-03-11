@@ -7,11 +7,13 @@
  */
 
 import { PROMPT_ONLY_ACTIONS, METHODOLOGY_ONLY_ACTIONS, CHECKPOINT_ONLY_ACTIONS } from './types.js';
+import { resolveRequestIdentity } from '../../../../shared/utils/request-identity-resolver.js';
+import { resolveContinuityScopeId } from '../../../../shared/utils/request-identity-scope.js';
 
 import type {
   ResourceManagerInput,
   ResourceManagerDependencies,
-  IPromptResourceService,
+  PromptResourceHandlerPort,
   ResourceType,
   ResourceAction,
   ActionValidationResult,
@@ -22,10 +24,10 @@ import type {
   FrameworkManagerActionId,
   FrameworkManagerInput,
 } from '../../framework-manager/core/types.js';
-import type { ConsolidatedFrameworkManager } from '../../framework-manager/index.js';
+import type { FrameworkToolHandler } from '../../framework-manager/index.js';
 import type { GateManagerActionId, GateManagerInput } from '../../gate-manager/core/types.js';
-import type { ConsolidatedGateManager } from '../../gate-manager/index.js';
-import type { ConsolidatedCheckpointManager } from '../checkpoint/index.js';
+import type { GateToolHandler } from '../../gate-manager/index.js';
+import type { CheckpointToolHandler } from '../checkpoint/index.js';
 import type { CheckpointManagerInput, CheckpointAction } from '../checkpoint/types.js';
 
 /**
@@ -33,14 +35,14 @@ import type { CheckpointManagerInput, CheckpointAction } from '../checkpoint/typ
  */
 export class ResourceManagerRouter {
   private readonly logger: Logger;
-  private readonly promptResourceService: IPromptResourceService;
-  private readonly gateManager: ConsolidatedGateManager;
-  private readonly frameworkManager: ConsolidatedFrameworkManager;
-  private readonly checkpointManager?: ConsolidatedCheckpointManager;
+  private readonly promptResourceHandler: PromptResourceHandlerPort;
+  private readonly gateManager: GateToolHandler;
+  private readonly frameworkManager: FrameworkToolHandler;
+  private readonly checkpointManager?: CheckpointToolHandler;
 
   constructor(deps: ResourceManagerDependencies) {
     this.logger = deps.logger;
-    this.promptResourceService = deps.promptResourceService;
+    this.promptResourceHandler = deps.promptResourceHandler;
     this.gateManager = deps.gateManager;
     this.frameworkManager = deps.frameworkManager;
     this.checkpointManager = deps.checkpointManager;
@@ -72,17 +74,22 @@ export class ResourceManagerRouter {
       id: args.id,
     });
 
+    // Extract tenant scope from MCP SDK extra and enrich context for sub-managers
+    const identity = resolveRequestIdentity(context);
+    const scopeId = resolveContinuityScopeId(identity);
+    const enrichedContext = scopeId !== 'default' ? { ...context, _scopeId: scopeId } : context;
+
     // Route to appropriate handler
     try {
       switch (resource_type) {
         case 'prompt':
-          return await this.routeToPromptResource(args, context);
+          return await this.routeToPromptResource(args, enrichedContext);
         case 'gate':
-          return await this.routeToGateManager(args, context);
+          return await this.routeToGateManager(args, enrichedContext);
         case 'methodology':
-          return await this.routeToFrameworkManager(args, context);
+          return await this.routeToFrameworkManager(args, enrichedContext);
         case 'checkpoint':
-          return await this.routeToCheckpointManager(args, context);
+          return await this.routeToCheckpointManager(args, enrichedContext);
         default:
           return this.createErrorResponse(`Unknown resource_type: ${resource_type}`);
       }
@@ -170,8 +177,8 @@ export class ResourceManagerRouter {
       limit: args.limit,
     };
 
-    return await this.promptResourceService.handleAction(
-      promptArgs as Parameters<typeof this.promptResourceService.handleAction>[0],
+    return await this.promptResourceHandler.handleAction(
+      promptArgs as Parameters<typeof this.promptResourceHandler.handleAction>[0],
       context
     );
   }

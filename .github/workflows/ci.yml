@@ -70,6 +70,17 @@ jobs:
       - name: Lint (ratchet)
         run: npm run lint:ratchet
 
+      - name: Lint Python hooks (Ruff)
+        uses: astral-sh/ruff-action@v3
+        with:
+          src: ./hooks
+
+      - name: Typecheck Python hooks (Pyrefly)
+        working-directory: .
+        run: |
+          pip install pyrefly --quiet
+          pyrefly check --baseline hooks/.pyrefly-baseline.json
+
   # ============================================================
   # Stage 2: Build (single Node LTS, upload artifact)
   # Build once, share with test matrix
@@ -119,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18.x', '20.x', '22.x']
+        node: ['22.x']
     defaults:
       run:
         working-directory: server
@@ -145,6 +156,11 @@ jobs:
 
       - name: Unit tests
         run: npm run test:ci
+        timeout-minutes: 15
+
+      - name: Coverage threshold check
+        if: matrix.node == '22.x'
+        run: npm run test:coverage
         timeout-minutes: 15
 
       - name: E2E tests
@@ -240,7 +256,7 @@ jobs:
               '|-------|--------|',
               `| Lint & Validate | ${statusEmoji(lintResult)} ${lintResult} |`,
               `| Build | ${statusEmoji(buildResult)} ${buildResult} |`,
-              `| Test Matrix (Node 18, 20, 22) | ${statusEmoji(testResult)} ${testResult} |`,
+              `| Test (Node 22) | ${statusEmoji(testResult)} ${testResult} |`,
               `| Architecture | ${statusEmoji(archResult)} ${archResult} |`,
               '',
               '<details>',

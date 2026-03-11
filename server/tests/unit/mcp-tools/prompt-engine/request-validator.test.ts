@@ -64,15 +64,37 @@ describe('McpToolRequestValidator', () => {
       );
     });
 
-    it('should reject invalid gate_verdict format', () => {
+    it('should pass through gate_verdict without format validation (validated downstream by engine)', () => {
       const raw = {
         command: '>>test',
         gate_verdict: 'INVALID FORMAT',
       };
 
-      expect(() => McpToolRequestValidator.validate(raw)).toThrow(
-        'McpToolRequest validation failed: gate_verdict: Gate verdict must follow one of: "GATE_REVIEW: PASS/FAIL - reason", "GATE PASS/FAIL - reason", or minimal "PASS/FAIL - reason" (param only)'
-      );
+      const result = McpToolRequestValidator.validate(raw);
+      expect(result.gate_verdict).toBe('INVALID FORMAT');
+    });
+
+    it('should accept multi-line gate_verdict with per-gate verdicts', () => {
+      const raw = {
+        command: '>>test',
+        gate_verdict:
+          'GATE_REVIEW: PASS - All criteria met\n\nGATE_VERDICTS:\n[1] PASS - code-quality: Clean implementation\n[2] PASS - test-coverage: Tests added',
+      };
+
+      const result = McpToolRequestValidator.validate(raw);
+      expect(result.gate_verdict).toContain('GATE_REVIEW: PASS - All criteria met');
+      expect(result.gate_verdict).toContain('GATE_VERDICTS:');
+    });
+
+    it('should accept multi-line gate_verdict with leading whitespace lines', () => {
+      const raw = {
+        command: '>>test',
+        gate_verdict:
+          '\n  \nGATE_REVIEW: FAIL - Missing test coverage\n\nGATE_VERDICTS:\n[1] FAIL - test-coverage: No tests',
+      };
+
+      const result = McpToolRequestValidator.validate(raw);
+      expect(result.gate_verdict).toContain('GATE_REVIEW: FAIL');
     });
 
     it('should freeze the returned object', () => {

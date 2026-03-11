@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 import { type ConfigManager, type Logger } from '../../shared/types/index.js';
 import { isChainPrompt } from '../../shared/utils/chainUtils.js';
-import { ConversationManager } from '../text-refs/conversation.js';
+import { ConversationStore } from '../text-refs/conversation.js';
 
 import type { ConvertedPrompt } from '../../engine/execution/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -25,7 +25,7 @@ export class PromptRegistry {
   private logger: Logger;
   private mcpServer: PromptRegistryServer;
   private configManager: ConfigManager;
-  private conversationManager: ConversationManager;
+  private conversationStore: ConversationStore;
   // templateProcessor removed - functionality consolidated into UnifiedPromptProcessor
   private registeredPromptIds = new Set<string>(); // Track registered prompt IDs to prevent duplicates
   private exportedPromptIds = new Set<string>(); // Prompt IDs exported as skills (auto-deregistered)
@@ -47,12 +47,12 @@ export class PromptRegistry {
     logger: Logger,
     mcpServer: PromptRegistryServer,
     configManager: ConfigManager,
-    conversationManager: ConversationManager
+    conversationStore: ConversationStore
   ) {
     this.logger = logger;
     this.mcpServer = mcpServer;
     this.configManager = configManager;
-    this.conversationManager = conversationManager;
+    this.conversationStore = conversationStore;
     // templateProcessor removed - functionality consolidated into UnifiedPromptProcessor
   }
 
@@ -180,7 +180,7 @@ export class PromptRegistry {
         userMessageText = `[System Info: ${promptData.systemMessage}]\n\n${userMessageText}`;
       }
 
-      const previousMessageContext = this.conversationManager.getPreviousMessage();
+      const previousMessageContext = this.conversationStore.getPreviousMessage();
 
       // Process the template with special context
       // Using direct processing since TemplateProcessor was consolidated
@@ -189,7 +189,7 @@ export class PromptRegistry {
       });
 
       // Store in conversation history for future reference
-      this.conversationManager.addToConversationHistory({
+      this.conversationStore.addToConversationHistory({
         role: 'user',
         content: userMessageText,
         timestamp: Date.now(),
@@ -278,11 +278,11 @@ export class PromptRegistry {
       const userMessageText = await this.processTemplateDirect(
         convertedPrompt.userMessageTemplate,
         args,
-        { previous_message: this.conversationManager.getPreviousMessage() }
+        { previous_message: this.conversationStore.getPreviousMessage() }
       );
 
       // Add the message to conversation history
-      this.conversationManager.addToConversationHistory({
+      this.conversationStore.addToConversationHistory({
         role: 'user',
         content: userMessageText,
         timestamp: Date.now(),
@@ -293,7 +293,7 @@ export class PromptRegistry {
       const response = `Processed prompt: ${promptId}\nWith message: ${userMessageText}`;
 
       // Store the response in conversation history
-      this.conversationManager.addToConversationHistory({
+      this.conversationStore.addToConversationHistory({
         role: 'assistant',
         content: response,
         timestamp: Date.now(),

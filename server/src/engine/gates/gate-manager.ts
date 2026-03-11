@@ -3,21 +3,21 @@
  * Gate Manager
  *
  * Orchestration layer for the gate system.
- * Extends BaseResourceManager to provide unified resource management patterns.
+ * Extends BaseResourceHandler to provide unified resource management patterns.
  *
  * Coordinates between:
  * - GateRegistry: Lifecycle management for gate guides
- * - GateSystemManager: Runtime enable/disable state
+ * - GateStateStore: Runtime enable/disable state
  * - Gate selection and activation logic
  */
 
 import { GateRegistry, createGateRegistry, type GateRegistryConfig } from './registry/index.js';
 import { Logger } from '../../infra/logging/index.js';
-import { BaseResourceManager } from '../../shared/core/resource-manager/index.js';
+import { BaseResourceHandler } from '../../shared/core/resource-manager/index.js';
 
-import type { GateSystemManager } from './gate-state-manager.js';
+import type { GateStateStore } from './gate-state-store.js';
 import type {
-  IGateGuide,
+  GateGuide,
   GateActivationContext,
   GateSelectionContext,
   GateSelectionResult,
@@ -55,18 +55,18 @@ export interface GateManagerConfig {
  * ```
  */
 export class GateManager
-  extends BaseResourceManager<IGateGuide, GateGuideEntry, GateManagerConfig, GateRegistryStats>
+  extends BaseResourceHandler<GateGuide, GateGuideEntry, GateManagerConfig, GateRegistryStats>
   implements IGateManager
 {
   private registry: GateRegistry | null = null;
-  private stateManager: GateSystemManager | null = null;
+  private stateManager: GateStateStore | null = null;
 
   constructor(logger: Logger, config: GateManagerConfig = {}) {
     super(logger, config);
   }
 
   // ============================================================================
-  // BaseResourceManager Abstract Method Implementations
+  // BaseResourceHandler Abstract Method Implementations
   // ============================================================================
 
   protected get managerName(): string {
@@ -86,7 +86,7 @@ export class GateManager
     };
   }
 
-  protected getResource(id: string): IGateGuide | undefined {
+  protected getResource(id: string): GateGuide | undefined {
     return this.registry!.getGuide(id);
   }
 
@@ -94,7 +94,7 @@ export class GateManager
     return this.registry!.hasGuide(id);
   }
 
-  protected listResources(enabledOnly: boolean): IGateGuide[] {
+  protected listResources(enabledOnly: boolean): GateGuide[] {
     return this.registry!.getAllGuides(enabledOnly);
   }
 
@@ -137,9 +137,9 @@ export class GateManager
   /**
    * Set the gate system state manager for synchronization
    */
-  setStateManager(stateManager: GateSystemManager): void {
+  setStateManager(stateManager: GateStateStore): void {
     this.stateManager = stateManager;
-    this.logger.debug('GateSystemManager synchronized with GateManager');
+    this.logger.debug('GateStateStore synchronized with GateManager');
   }
 
   /**
@@ -175,7 +175,7 @@ export class GateManager
       };
     }
 
-    const selectedGuides: IGateGuide[] = [];
+    const selectedGuides: GateGuide[] = [];
     const selectedIds: string[] = [];
     const skippedIds: string[] = [];
 
@@ -242,14 +242,14 @@ export class GateManager
    * @param context - Activation context
    * @returns Array of active gate guides
    */
-  getActiveGates(gateIds: string[], context: GateActivationContext): IGateGuide[] {
+  getActiveGates(gateIds: string[], context: GateActivationContext): GateGuide[] {
     this.ensureInitialized();
 
     if (!this.isSystemEnabled()) {
       return [];
     }
 
-    const activeGuides: IGateGuide[] = [];
+    const activeGuides: GateGuide[] = [];
 
     for (const gateId of gateIds) {
       const guide = this.registry!.getGuide(gateId);

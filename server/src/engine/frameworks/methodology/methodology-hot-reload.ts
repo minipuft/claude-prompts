@@ -50,7 +50,7 @@ export interface MethodologyHotReloadStats {
 export interface MethodologyHotReloadRegistration {
   /** Directories that should be watched for methodology changes */
   directories: string[];
-  /** Bound handler for use with HotReloadManager.setMethodologyReloadCallback */
+  /** Bound handler for use with HotReloadObserver.setMethodologyReloadCallback */
   handler: (event: HotReloadEvent) => Promise<void>;
   /** Coordinator instance handling cache clear + re-register */
   coordinator: MethodologyHotReloadCoordinator;
@@ -67,7 +67,7 @@ export interface MethodologyHotReloadRegistration {
  * const coordinator = new MethodologyHotReloadCoordinator(logger, registry, loader);
  *
  * // Register with hot reload manager
- * hotReloadManager.setMethodologyReloadCallback(
+ * hotReloadObserver.setMethodologyReloadCallback(
  *   (event) => coordinator.handleMethodologyChange(event)
  * );
  * ```
@@ -255,7 +255,7 @@ export class MethodologyHotReloadCoordinator {
 
 /**
  * Create a registration bundle for methodology hot reload.
- * Keeps HotReloadManager generic by returning only the callback + watch paths.
+ * Keeps HotReloadObserver generic by returning only the callback + watch paths.
  */
 export function createMethodologyHotReloadRegistration(
   logger: Logger,

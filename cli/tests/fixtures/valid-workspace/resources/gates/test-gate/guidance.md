@@ -1,0 +1,1 @@
+Test gate guidance content.

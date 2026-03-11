@@ -1,6 +1,5 @@
 # Prompt YAML Schema
 
-> Status: canonical
 
 The definitive reference for `prompt.yaml` configuration fields.
 
@@ -29,6 +28,8 @@ Top-level properties for `prompt.yaml`.
 | `registerWithMcp` | `boolean` | No | Show in client lists? Default `true`. |
 | `tools` | `string[]` | No | Script tools to attach (auto-trigger). |
 | `gateConfiguration` | `object` | No | Quality gate settings. |
+| `subagentModel` | `enum` | No | Model tier hint for delegation: `heavy`, `standard`, `fast`. |
+| `chainSteps` | `object[]` | No | Multi-step chain definition. See [Chain Schema](chain-schema.md). |
 
 ### Example
 
@@ -39,6 +40,7 @@ description: Analyzes CSV data using Python
 userMessageTemplateFile: user-message.md
 registerWithMcp: true
 tools: [csv_validator]
+subagentModel: fast  # delegated steps use a lightweight model
 ```
 
 ---

@@ -89,6 +89,8 @@ export interface PendingShellVerification {
   gateId: string;
   /** Original user goal/request for context-isolated loops */
   originalGoal?: string;
+  /** Gate IDs that triggered this shell verification (from gate.yaml shell_verify criteria) */
+  sourceGateIds?: string[];
 }
 
 /**
@@ -117,7 +119,7 @@ export const SHELL_OUTPUT_MAX_CHARS = 5000;
 export const SHELL_VERIFY_DEFAULT_MAX_ITERATIONS = 10;
 
 /**
- * State persisted to runtime-state/verify-active.json for Stop hook integration.
+ * State persisted to runtime-state/verify-state.db for Stop hook integration.
  *
  * This enables the Stop hook to read verification config set by prompt_engine
  * and run verification when Claude tries to stop, creating autonomous loops.

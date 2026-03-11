@@ -214,6 +214,11 @@ processingSteps:
     methodologyBasis: CAGEERF Context phase
     order: 1
     required: true
+    marker: '## Context'
+    assertions:
+      required: true
+      min_length: 50
+      contains_any: ['situation', 'background', 'environment', 'context', 'stakeholder']
 
   - id: systematic_analysis
     name: Systematic Analysis
@@ -221,6 +226,12 @@ processingSteps:
     methodologyBasis: CAGEERF Analysis phase
     order: 2
     required: true
+    marker: '## Analysis'
+    assertions:
+      required: true
+      min_length: 100
+      contains_any: ['analyze', 'examine', 'investigate', 'assess', 'evaluate']
+      forbids: ['TODO', 'TBD', 'placeholder']
 
 executionSteps:
   - id: context_analysis
@@ -311,6 +322,29 @@ qualityIndicators:
 | `execution_flow`        | object | pre/post processing hooks                      |
 | `quality_indicators`    | object | Keywords/patterns for compliance detection     |
 
+### Processing Step Assertion Fields (Optional)
+
+Processing steps can include `marker` + `assertions` for deterministic output verification. When present, Stage 09b evaluates the LLM's response against these rules after execution — no LLM cost, instant feedback.
+
+| Field        | Type   | Description                                          |
+| ------------ | ------ | ---------------------------------------------------- |
+| `marker`     | string | Markdown header to detect (e.g., `"## Context"`)     |
+| `assertions` | object | Validation rules applied to the section under marker |
+
+**Assertion rules** (all optional, combine as needed):
+
+| Rule              | Type     | Description                                      |
+| ----------------- | -------- | ------------------------------------------------ |
+| `required`        | boolean  | Section must exist in the response               |
+| `min_length`      | number   | Minimum character count for section content      |
+| `max_length`      | number   | Maximum character count for section content      |
+| `contains_any`    | string[] | Section must include at least one of these terms |
+| `contains_all`    | string[] | Section must include all of these terms          |
+| `matches_pattern` | string   | Regex pattern the section content must match     |
+| `forbids`         | string[] | Terms that must NOT appear in the section        |
+
+**Rules**: `marker` is required when `assertions` is present. `marker` without `assertions` generates a validation warning.
+
 ---
 
 ## Your Task
@@ -320,8 +354,9 @@ Based on **{{name}}** with concept "{{concept}}":
 1. **Design phases** ({% if phase_count %}{{phase_count}}{% else %}5-7{% endif %} phases) forming a coherent methodology
 2. **Write system_prompt_guidance** with `**PhaseName**: description` format
 3. **Define methodology_gates** with validationCriteria for each phase
-4. **Create processing_steps** with order, required, methodologyBasis
+4. **Create processing_steps** with order, required, methodologyBasis, marker, and assertions
 5. **Create execution_steps** with dependencies and expected_output
+6. **Add assertions** to required processing steps: `marker` for section detection + `assertions` for deterministic checks (required, min_length, contains_any, forbids)
 
 ---
 
@@ -382,10 +417,11 @@ Methodology creation requires 100% score. All 5 tiers must be complete.
 
 ### Tier 4: Execution (15%)
 
-| Field              | Type  | Requirement                                        |
-| ------------------ | ----- | -------------------------------------------------- |
-| `processing_steps` | array | ≥3 steps with `order` and `methodologyBasis`       |
-| `execution_steps`  | array | ≥3 steps with `dependencies` and `expected_output` |
+| Field              | Type  | Requirement                                                          |
+| ------------------ | ----- | -------------------------------------------------------------------- |
+| `processing_steps` | array | ≥3 steps with `order` and `methodologyBasis`                         |
+| `processing_steps` | —     | Required steps should include `marker` + `assertions` for validation |
+| `execution_steps`  | array | ≥3 steps with `dependencies` and `expected_output`                   |
 
 ### Tier 5: Advanced (10%)
 
@@ -428,7 +464,13 @@ Methodology creation requires 100% score. All 5 tiers must be complete.
       "description": "Process phase 1 requirements",
       "methodologyBasis": "<NAME> Phase 1",
       "order": 1,
-      "required": true
+      "required": true,
+      "marker": "## Phase 1",
+      "assertions": {
+        "required": true,
+        "min_length": 50,
+        "contains_any": ["keyword1", "keyword2"]
+      }
     }
   ],
   "execution_steps": [
@@ -512,6 +554,7 @@ Methodology creation requires 100% score. All 5 tiers must be complete.
 - System prompt guidance: Use `**PhaseName**: description` format
 - methodology_gates: One per major phase with `validationCriteria` array
 - processing_steps: Ordered with `methodologyBasis` linking to phase
+- processing_steps: Include `marker` + `assertions` for deterministic phase verification (at least on required phases)
 - execution_steps: With `dependencies` array (empty for first step)
 
 {% endif %}

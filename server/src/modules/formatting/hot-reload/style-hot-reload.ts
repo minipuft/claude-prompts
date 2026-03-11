@@ -18,7 +18,7 @@ export type FileChangeOperation = 'added' | 'modified' | 'removed';
 
 /**
  * Hot reload event for styles
- * Compatible with HotReloadManager's event structure
+ * Compatible with HotReloadObserver's event structure
  */
 export interface StyleHotReloadEvent {
   type: 'style_changed';
@@ -60,7 +60,7 @@ export interface StyleHotReloadStats {
 export interface StyleHotReloadRegistration {
   /** Directories that should be watched for style changes */
   directories: string[];
-  /** Bound handler for use with HotReloadManager */
+  /** Bound handler for use with HotReloadObserver */
   handler: (event: StyleHotReloadEvent) => Promise<void>;
   /** Coordinator instance handling cache clear + reload */
   coordinator: StyleHotReloadCoordinator;
@@ -77,7 +77,7 @@ export interface StyleHotReloadRegistration {
  * const coordinator = new StyleHotReloadCoordinator(logger, loader);
  *
  * // Register with hot reload manager
- * hotReloadManager.registerAuxiliaryHandler({
+ * hotReloadObserver.registerAuxiliaryHandler({
  *   id: 'style',
  *   directories: [loader.getStylesDir()],
  *   handler: (event) => coordinator.handleStyleChange(event),
@@ -237,7 +237,7 @@ export class StyleHotReloadCoordinator {
 
 /**
  * Create a registration bundle for style hot reload.
- * Keeps HotReloadManager generic by returning only the callback + watch paths.
+ * Keeps HotReloadObserver generic by returning only the callback + watch paths.
  */
 export function createStyleHotReloadRegistration(
   logger: Logger,

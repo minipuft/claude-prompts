@@ -61,6 +61,7 @@ export interface ConvertedPrompt {
     include?: string[];
     exclude?: string[];
     framework_gates?: boolean;
+    inline_gate_definitions?: TemporaryGateDefinition[];
   };
   // Enhanced gate configuration with temporary gates
   enhancedGateConfiguration?: EnhancedGateConfiguration;
@@ -73,6 +74,12 @@ export interface ConvertedPrompt {
   tools?: string[];
   /** Directory path for prompt-local script resolution (populated during conversion) */
   promptDir?: string;
+  /** When true, all chain steps for this prompt are delegated to sub-agents */
+  delegation?: boolean;
+  /** Default agent type for delegation (overridden by step-level agentType) */
+  delegationAgent?: string;
+  /** Client-agnostic capability hint for delegation model selection */
+  subagentModel?: 'heavy' | 'standard' | 'fast';
 }
 
 /**

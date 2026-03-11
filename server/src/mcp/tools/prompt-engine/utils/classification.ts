@@ -2,7 +2,7 @@
 /**
  * Prompt Classifier - Handles prompt classification and analysis
  *
- * Extracted from PromptExecutionService to provide focused
+ * Extracted from PromptExecutor to provide focused
  * classification capabilities with clear separation of concerns.
  */
 

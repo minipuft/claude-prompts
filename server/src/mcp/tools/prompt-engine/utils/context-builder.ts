@@ -2,13 +2,13 @@
 /**
  * Context Builder - Handles execution context building
  *
- * Extracted from PromptExecutionService to provide focused
+ * Extracted from PromptExecutor to provide focused
  * context building capabilities with clear separation of concerns.
  */
 
 import { ExecutionContext } from '../../../../engine/execution/parsers/index.js';
 import { FrameworkManager } from '../../../../engine/frameworks/framework-manager.js';
-import { FrameworkStateManager } from '../../../../engine/frameworks/framework-state-manager.js';
+import { FrameworkStateStore } from '../../../../engine/frameworks/framework-state-store.js';
 import { FrameworkExecutionContext } from '../../../../engine/frameworks/types/index.js';
 
 import type { ConvertedPrompt } from '../../../../engine/execution/types.js';
@@ -48,16 +48,16 @@ export interface EnhancedExecutionContext extends ExecutionContext {
  */
 export class ContextBuilder {
   private frameworkManager: FrameworkManager | undefined;
-  private frameworkStateManager: FrameworkStateManager | undefined;
+  private frameworkStateStore: FrameworkStateStore | undefined;
   private logger: Logger;
 
   constructor(
     frameworkManager?: FrameworkManager,
-    frameworkStateManager?: FrameworkStateManager,
+    frameworkStateStore?: FrameworkStateStore,
     logger?: Logger
   ) {
     this.frameworkManager = frameworkManager;
-    this.frameworkStateManager = frameworkStateManager;
+    this.frameworkStateStore = frameworkStateStore;
     this.logger = logger ?? noopLogger;
   }
 
@@ -107,7 +107,7 @@ export class ContextBuilder {
       };
 
       // Add framework context if available
-      if (this.frameworkManager && this.frameworkStateManager) {
+      if (this.frameworkManager && this.frameworkStateStore) {
         const frameworkContext = this.buildFrameworkContext(convertedPrompt, promptArgs, options);
         if (frameworkContext) {
           enhancedContext.frameworkContext = frameworkContext;
@@ -150,13 +150,13 @@ export class ContextBuilder {
     options: Record<string, any>
   ): FrameworkExecutionContext | undefined {
     try {
-      if (!this.frameworkManager || !this.frameworkStateManager) {
+      if (!this.frameworkManager || !this.frameworkStateStore) {
         return undefined;
       }
 
       this.logger.debug('🎯 [ContextBuilder] Building framework context');
 
-      const activeFramework = this.frameworkStateManager.getActiveFramework();
+      const activeFramework = this.frameworkStateStore.getActiveFramework();
       const frameworkId = options['frameworkId'] || activeFramework;
 
       if (!frameworkId) {

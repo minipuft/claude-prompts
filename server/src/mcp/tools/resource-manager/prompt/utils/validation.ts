@@ -108,16 +108,31 @@ export function validateOperationArgs(
 }
 
 /**
- * Validate prompt ID format
+ * Normalize a prompt ID to canonical form: lowercase, hyphens/spaces → underscores.
+ * All prompt IDs are stored in this form. Users may type hyphens (e.g., "my-prompt")
+ * but the canonical ID uses underscores ("my_prompt"). This means "my-prompt" and
+ * "my_prompt" refer to the same prompt — duplicates are not allowed.
+ */
+export function normalizePromptId(id: string): string {
+  return id
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+/**
+ * Validate prompt ID format (operates on raw input, before normalization)
  */
 export function validatePromptId(id: string): void {
   if (!id || typeof id !== 'string') {
     throw new ValidationError('Prompt ID must be a non-empty string');
   }
 
-  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+  if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id)) {
     throw new ValidationError(
-      'Prompt ID must contain only alphanumeric characters, underscores, and hyphens'
+      'Prompt ID must start with a letter and contain only alphanumeric characters, underscores, and hyphens'
     );
   }
 

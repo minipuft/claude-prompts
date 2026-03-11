@@ -1,29 +1,30 @@
-// @lifecycle canonical - Framework manager MCP tool for methodology CRUD operations.
+// @lifecycle canonical - Framework tool handler MCP entrypoint for methodology CRUD operations.
 /**
- * Framework Manager MCP Tool
+ * Framework Tool Handler MCP Tool
  *
- * Provides lifecycle management for execution methodologies:
- * - create: Generate new methodology YAML + files
- * - update: Modify existing methodology configuration
- * - delete: Remove methodology directory
- * - list: List all available methodologies
- * - inspect: View methodology details
- * - reload: Hot-reload specific methodology
- * - switch: Change active framework
+ * Thin routing layer for methodology lifecycle management.
+ * Domain logic delegated to services:
+ * - FrameworkLifecycleProcessor: create, update, delete, reload, switch
+ * - FrameworkDiscoveryProcessor: list, inspect
+ * - FrameworkVersioningProcessor: history, rollback, compare
+ * - MethodologyValidator: scoring, error/success formatting
+ * - MethodologyFileWriter: file I/O with merge support
  */
 
-export {
-  ConsolidatedFrameworkManager,
-  createConsolidatedFrameworkManager,
-} from './core/manager.js';
+export { FrameworkToolHandler, createFrameworkToolHandler } from './core/manager.js';
+export type { FrameworkResourceContext } from './core/context.js';
 export type {
   FrameworkManagerActionId,
   FrameworkManagerInput,
   FrameworkManagerDependencies,
 } from './core/types.js';
 export {
-  MethodologyFileService,
-  type MethodologyFileServiceDependencies,
+  MethodologyFileWriter,
+  MethodologyValidator,
+  FrameworkLifecycleProcessor,
+  FrameworkDiscoveryProcessor,
+  FrameworkVersioningProcessor,
+  type MethodologyFileWriterDependencies,
   type ExistingMethodologyData,
   type MethodologyFileResult,
 } from './services/index.js';

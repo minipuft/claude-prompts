@@ -46,6 +46,8 @@ export interface FileChangeEvent {
   isPromptFile: boolean;
   isConfigFile: boolean;
   isMethodologyFile: boolean;
+  /** True when the file is in a registered auxiliary directory (gates, scripts, etc.) */
+  isAuxiliaryFile?: boolean;
   /** Extracted methodology ID for methodology file changes */
   methodologyId?: string;
   category?: string;
@@ -165,6 +167,7 @@ export class FileObserver extends EventEmitter {
   private startTime: number = 0;
   private retryCount: number = 0;
   private configManager: ConfigManager | undefined;
+  private auxiliaryDirectories: string[] = [];
   private sigintHandler: (() => void) | undefined;
   private sigtermHandler: (() => void) | undefined;
   private shouldUsePolling: boolean = false;
@@ -195,6 +198,15 @@ export class FileObserver extends EventEmitter {
 
     // Set max listeners to prevent warning for multiple prompt directories
     this.setMaxListeners(50);
+  }
+
+  /**
+   * Register directories used by auxiliary reload handlers (gates, scripts, etc.).
+   * Files in these directories bypass prompt/config/methodology classification
+   * so they can reach auxiliary reload handlers downstream.
+   */
+  registerAuxiliaryDirectories(directories: string[]): void {
+    this.auxiliaryDirectories = directories.map((d) => path.normalize(d));
   }
 
   /**
@@ -439,8 +451,11 @@ export class FileObserver extends EventEmitter {
     const methodologyInfo = this.isMethodologyFile(filename, filePath);
     const isMethodologyFile = methodologyInfo.isMethodology;
 
+    // Check if file is in a registered auxiliary directory (gates, scripts, etc.)
+    const isAuxiliaryFile = this.isInAuxiliaryDirectory(filePath);
+
     // Skip if we're not watching any applicable type
-    if (!isPromptFile && !isConfigFile && !isMethodologyFile) {
+    if (!isPromptFile && !isConfigFile && !isMethodologyFile && !isAuxiliaryFile) {
       return;
     }
 
@@ -465,6 +480,7 @@ export class FileObserver extends EventEmitter {
       isPromptFile,
       isConfigFile,
       isMethodologyFile,
+      ...(isAuxiliaryFile ? { isAuxiliaryFile } : {}),
     };
 
     if (methodologyInfo.methodologyId) {
@@ -610,11 +626,20 @@ export class FileObserver extends EventEmitter {
   }
 
   /**
-   * Check if file is a prompt file
+   * Check if file is in a registered auxiliary directory
+   */
+  private isInAuxiliaryDirectory(filePath: string): boolean {
+    if (this.auxiliaryDirectories.length === 0) return false;
+    const normalized = path.normalize(filePath);
+    return this.auxiliaryDirectories.some((dir) => normalized.startsWith(dir));
+  }
+
+  /**
+   * Check if file is a prompt file (Markdown or YAML prompt format)
    */
   private isPromptFile(filename: string): boolean {
     const ext = path.extname(filename).toLowerCase();
-    return ext === '.md' || ext === '.markdown';
+    return ext === '.md' || ext === '.markdown' || ext === '.yaml' || ext === '.yml';
   }
 
   /**

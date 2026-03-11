@@ -72,9 +72,10 @@ if [ -d "$SOURCE_DIR/server" ]; then
     if [ -d "$SOURCE_DIR/server/dist" ]; then
         cp -r "$SOURCE_DIR/server/dist" "$CACHE_DIR/server/"
     fi
-    # Sync cache (prompt metadata for hooks)
-    if [ -d "$SOURCE_DIR/server/cache" ]; then
-        cp -r "$SOURCE_DIR/server/cache" "$CACHE_DIR/server/"
+    # Sync runtime-state (SQLite databases for hooks)
+    if [ -d "$SOURCE_DIR/server/runtime-state" ]; then
+        mkdir -p "$CACHE_DIR/server/runtime-state"
+        cp "$SOURCE_DIR/server/runtime-state/"*.db "$CACHE_DIR/server/runtime-state/" 2>/dev/null || true
     fi
     # Sync resources (prompts, gates, methodologies)
     if [ -d "$SOURCE_DIR/server/resources" ]; then

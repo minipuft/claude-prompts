@@ -1,11 +1,11 @@
-// @lifecycle canonical - Checkpoint manager barrel export.
+// @lifecycle canonical - Checkpoint tool handler barrel export.
 /**
- * Checkpoint Manager Module
+ * Checkpoint Tool Handler Module
  *
  * Git-based checkpoint/rollback functionality for resource_manager.
  */
 
-export { ConsolidatedCheckpointManager, createConsolidatedCheckpointManager } from './manager.js';
+export { CheckpointToolHandler, createCheckpointToolHandler } from './manager.js';
 export type {
   CheckpointAction,
   CheckpointRef,

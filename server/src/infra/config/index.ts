@@ -41,7 +41,7 @@ import {
   type ConfigManager,
   type GatesConfig,
 } from '../../shared/types/index.js';
-// Removed: ToolDescriptionManager import to break circular dependency
+// Removed: ToolDescriptionLoader import to break circular dependency
 // Now injected via dependency injection pattern
 
 /**
@@ -63,8 +63,9 @@ const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
 const DEFAULT_FRAMEWORKS_CONFIG: FrameworksConfig = {
   dynamicToolDescriptions: true,
   injection: {
-    systemPrompt: { enabled: true, frequency: 2 },
-    styleGuidance: true,
+    systemPrompt: { enabled: true, frequency: 2, target: 'steps' },
+    gateGuidance: { frequency: 0, target: 'both' },
+    styleGuidance: { enabled: true, frequency: 0, target: 'steps' },
   },
 };
 
@@ -126,10 +127,10 @@ const DEFAULT_CONFIG: Config = {
 /**
  * Configuration manager class
  */
-export class EventEmittingConfigManager extends EventEmitter implements ConfigManager {
+export class ConfigLoader extends EventEmitter implements ConfigManager {
   private config: Config;
   private configPath: string;
-  // Removed: private toolDescriptionManager - now injected via dependency injection
+  // Removed: private toolDescriptionLoader - now injected via dependency injection
   private fileWatcher: FSWatcher | undefined;
   private watching: boolean = false;
   private reloadDebounceTimer: NodeJS.Timeout | undefined;
@@ -259,16 +260,26 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
    * Reads from methodologies config section
    */
   getFrameworksConfig(): FrameworksConfig {
-    const methodologies = this.config.methodologies;
+    const m = this.config.methodologies;
+    const def = DEFAULT_FRAMEWORKS_CONFIG.injection!;
     return {
       dynamicToolDescriptions:
-        methodologies?.dynamicToolDescriptions ?? DEFAULT_FRAMEWORKS_CONFIG.dynamicToolDescriptions,
+        m?.dynamicToolDescriptions ?? DEFAULT_FRAMEWORKS_CONFIG.dynamicToolDescriptions,
       injection: {
         systemPrompt: {
-          enabled: methodologies?.enabled ?? true,
-          frequency: methodologies?.systemPromptFrequency ?? 2,
+          enabled: m?.enabled ?? true,
+          frequency: m?.systemPromptFrequency ?? def.systemPrompt!.frequency!,
+          target: m?.systemPromptTarget ?? def.systemPrompt!.target,
         },
-        styleGuidance: methodologies?.styleGuidance ?? true,
+        gateGuidance: {
+          frequency: m?.gateGuidanceFrequency ?? def.gateGuidance!.frequency!,
+          target: m?.gateGuidanceTarget ?? def.gateGuidance!.target,
+        },
+        styleGuidance: {
+          enabled: m?.styleGuidance ?? def.styleGuidance!.enabled!,
+          frequency: m?.styleGuidanceFrequency ?? def.styleGuidance!.frequency!,
+          target: m?.styleGuidanceTarget ?? def.styleGuidance!.target,
+        },
       },
     };
   }
@@ -369,37 +380,49 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
    */
   getInjectionConfig(): InjectionConfig {
     const frameworksConfig = this.getFrameworksConfig();
-    const injection = frameworksConfig.injection;
+    const inj = frameworksConfig.injection;
 
-    // Build internal InjectionConfig from user-facing config
+    // Translate frequency number to InjectionFrequency:
+    // 0 → first-only, N>0 → every N steps
+    const toFrequency = (
+      n: number | undefined,
+      fallbackMode: 'first-only' | 'every',
+      fallbackInterval?: number
+    ): { mode: 'every' | 'first-only'; interval?: number } => {
+      if (n === undefined)
+        return fallbackInterval
+          ? { mode: fallbackMode, interval: fallbackInterval }
+          : { mode: fallbackMode };
+      if (n === 0) return { mode: 'first-only' as const };
+      return { mode: 'every' as const, interval: n };
+    };
+
+    const systemPromptEnabled = inj?.systemPrompt?.enabled ?? true;
+    const styleEnabled = inj?.styleGuidance?.enabled ?? true;
+    const gatesEnabled = this.getGatesConfig().enabled;
+
     return {
       defaults: {
-        'system-prompt': injection?.systemPrompt?.enabled ?? true,
-        'gate-guidance': this.getGatesConfig().enabled, // Follows gates.enabled
-        'style-guidance': injection?.styleGuidance ?? true,
+        'system-prompt': systemPromptEnabled,
+        'gate-guidance': gatesEnabled,
+        'style-guidance': styleEnabled,
       },
       'system-prompt': {
-        enabled: injection?.systemPrompt?.enabled ?? true,
-        frequency: {
-          mode: 'every' as const,
-          interval: injection?.systemPrompt?.frequency ?? 2,
-        },
-        // Safer default: inject framework system prompts on steps only
-        target: 'steps' as const,
+        enabled: systemPromptEnabled,
+        frequency: toFrequency(inj?.systemPrompt?.frequency, 'every', 2),
+        target: (inj?.systemPrompt?.target ?? 'steps') as 'steps' | 'gates' | 'both',
       },
       'gate-guidance': {
         ...DEFAULT_INJECTION_CONFIG['gate-guidance'],
-        enabled: this.getGatesConfig().enabled,
-        // Inject gates on first step (to set expectations) and all gate reviews (for guidance)
-        // Frequency 'first-only' limits step injection; gate reviews bypass frequency check
-        frequency: { mode: 'first-only' as const },
-        target: 'both' as const,
+        enabled: gatesEnabled,
+        frequency: toFrequency(inj?.gateGuidance?.frequency, 'first-only'),
+        target: (inj?.gateGuidance?.target ?? 'both') as 'steps' | 'gates' | 'both',
       },
       'style-guidance': {
         ...DEFAULT_INJECTION_CONFIG['style-guidance'],
-        enabled: injection?.styleGuidance ?? true,
-        // Keep style guidance on normal steps by default
-        target: 'steps' as const,
+        enabled: styleEnabled,
+        frequency: toFrequency(inj?.styleGuidance?.frequency, 'first-only'),
+        target: (inj?.styleGuidance?.target ?? 'steps') as 'steps' | 'gates' | 'both',
       },
     };
   }
@@ -476,7 +499,7 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
     return path.join(configDir, 'resources', 'gates');
   }
 
-  // Removed: ToolDescriptionManager methods - now handled via dependency injection in runtime/application.ts
+  // Removed: ToolDescriptionLoader methods - now handled via dependency injection in runtime/application.ts
 
   /**
    * Validate configuration and set defaults for missing properties
@@ -520,7 +543,7 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
         enabled: true,
         dynamicToolDescriptions: DEFAULT_FRAMEWORKS_CONFIG.dynamicToolDescriptions,
         systemPromptFrequency: DEFAULT_FRAMEWORKS_CONFIG.injection?.systemPrompt?.frequency ?? 2,
-        styleGuidance: DEFAULT_FRAMEWORKS_CONFIG.injection?.styleGuidance ?? true,
+        styleGuidance: DEFAULT_FRAMEWORKS_CONFIG.injection?.styleGuidance?.enabled ?? true,
       };
     }
 
@@ -679,7 +702,12 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
       a.dynamicToolDescriptions !== b.dynamicToolDescriptions ||
       a.injection?.systemPrompt?.enabled !== b.injection?.systemPrompt?.enabled ||
       a.injection?.systemPrompt?.frequency !== b.injection?.systemPrompt?.frequency ||
-      a.injection?.styleGuidance !== b.injection?.styleGuidance
+      a.injection?.systemPrompt?.target !== b.injection?.systemPrompt?.target ||
+      a.injection?.gateGuidance?.frequency !== b.injection?.gateGuidance?.frequency ||
+      a.injection?.gateGuidance?.target !== b.injection?.gateGuidance?.target ||
+      a.injection?.styleGuidance?.enabled !== b.injection?.styleGuidance?.enabled ||
+      a.injection?.styleGuidance?.frequency !== b.injection?.styleGuidance?.frequency ||
+      a.injection?.styleGuidance?.target !== b.injection?.styleGuidance?.target
     );
   }
 }
@@ -687,8 +715,8 @@ export class EventEmittingConfigManager extends EventEmitter implements ConfigMa
 /**
  * Create and initialize a configuration manager
  */
-export async function createConfigManager(configPath: string): Promise<EventEmittingConfigManager> {
-  const configManager = new EventEmittingConfigManager(configPath);
+export async function createConfigLoader(configPath: string): Promise<ConfigLoader> {
+  const configManager = new ConfigLoader(configPath);
   await configManager.loadConfig();
   return configManager;
 }

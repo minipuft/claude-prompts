@@ -1,7 +1,17 @@
 // @lifecycle canonical - Helpers for gate confirmation parsing and normalization.
 import { parseLLMReview } from './llm-review-parser.js';
+import {
+  resolveJudgeConfig,
+  isJudgeMode,
+  buildJudgeEnvelope,
+  renderJudgePrompt,
+} from '../judge/judge-prompt-builder.js';
 
+import type { GateDefinitionProvider } from './gate-loader.js';
 import type { GateReviewPrompt } from '../../execution/types.js';
+import type { JudgeEvaluationDefaults } from '../judge/types.js';
+import type { GatePassCriteria } from '../types/gate-primitives.js';
+import type { LightweightGateDefinition } from '../types.js';
 
 export interface ReviewPromptTimestamps {
   createdAt?: number;
@@ -100,13 +110,22 @@ export function composeReviewPrompt(
   const executionContext = prompts[0]?.executionContext;
 
   if (executionContext && Object.keys(executionContext.originalArgs).length > 0) {
-    contextSections.push('Original Arguments:');
+    contextSections.push('## Original Request & Delivery Context');
+    contextSections.push('');
+    contextSections.push('Verify that the output satisfies the original request intent:');
+    contextSections.push('');
     Object.entries(executionContext.originalArgs).forEach(([key, value]) => {
       // Truncate long values to prevent overwhelming the review prompt
       const truncatedValue =
         String(value).length > 200 ? String(value).substring(0, 200) + '...' : String(value);
-      contextSections.push(`- ${key}: ${truncatedValue}`);
+      contextSections.push(`- **${key}**: ${truncatedValue}`);
     });
+    contextSections.push('');
+    contextSections.push('After evaluating quality gates, assess delivery:');
+    contextSections.push('- Does the output address what was originally asked for?');
+    contextSections.push(
+      '- Are there aspects of the request that were missed or partially addressed?'
+    );
   }
 
   if (executionContext && Object.keys(executionContext.previousResults).length > 0) {
@@ -160,6 +179,121 @@ export function composeReviewPrompt(
     createdAt,
     metadata,
   };
+}
+
+// ============================================================================
+// Judge Gate Resolution & Composition
+// ============================================================================
+
+/**
+ * Convert structured GatePassCriteria into human-readable gate criteria strings.
+ */
+function formatCriteria(criteria: GatePassCriteria): string[] {
+  const lines: string[] = [];
+  if (criteria.min_length !== undefined) {
+    lines.push(`Content must be at least ${criteria.min_length} characters`);
+  }
+  if (criteria.max_length !== undefined) {
+    lines.push(`Content must not exceed ${criteria.max_length} characters`);
+  }
+  if (criteria.required_patterns?.length) {
+    lines.push(`Must include: ${criteria.required_patterns.join(', ')}`);
+  }
+  if (criteria.forbidden_patterns?.length) {
+    lines.push(`Must not include: ${criteria.forbidden_patterns.join(', ')}`);
+  }
+  return lines;
+}
+
+/**
+ * Collect all criteria strings from a gate definition.
+ * Formats pass_criteria into readable text and includes guidance.
+ */
+function collectGateCriteria(gate: LightweightGateDefinition): string[] {
+  const criteria: string[] = [];
+  if (gate.pass_criteria) {
+    for (const pc of gate.pass_criteria) {
+      criteria.push(...formatCriteria(pc));
+    }
+  }
+  if (gate.guidance) {
+    criteria.push(gate.guidance);
+  }
+  return criteria;
+}
+
+/**
+ * Categorize gate IDs into judge and self gates based on evaluation config.
+ * Gates that cannot be loaded are silently skipped.
+ */
+export async function resolveJudgeGates(
+  gateIds: string[],
+  loader: GateDefinitionProvider,
+  globalDefaults?: Partial<JudgeEvaluationDefaults>
+): Promise<{ judgeGates: LightweightGateDefinition[]; selfGates: LightweightGateDefinition[] }> {
+  const gates = await loader.loadGates(gateIds);
+  const judgeGates: LightweightGateDefinition[] = [];
+  const selfGates: LightweightGateDefinition[] = [];
+
+  for (const gate of gates) {
+    const resolved = resolveJudgeConfig(gate.evaluation, globalDefaults);
+    if (isJudgeMode(resolved)) {
+      judgeGates.push(gate);
+    } else {
+      selfGates.push(gate);
+    }
+  }
+
+  return { judgeGates, selfGates };
+}
+
+export interface ComposedJudgeReviewPrompt {
+  hasJudgeGates: boolean;
+  judgePrompt: string;
+  judgeGateIds: string[];
+  modelHint?: string;
+}
+
+/**
+ * Compose a context-isolated judge review prompt from judge-mode gates.
+ * Delegates to judge-prompt-builder primitives for envelope construction and rendering.
+ * Strips all generation context — judge sees only output + criteria.
+ */
+export function composeJudgeReviewPrompt(
+  judgeGates: LightweightGateDefinition[],
+  output: string
+): ComposedJudgeReviewPrompt {
+  if (judgeGates.length === 0) {
+    return { hasJudgeGates: false, judgePrompt: '', judgeGateIds: [] };
+  }
+
+  const judgeGateIds = judgeGates.map((g) => g.id);
+  const modelHint = judgeGates.find((g) => g.evaluation?.model)?.evaluation?.model;
+
+  const firstResolved = resolveJudgeConfig(judgeGates[0]!.evaluation);
+  const strict = firstResolved.strict;
+
+  if (judgeGates.length === 1) {
+    const gate = judgeGates[0]!;
+    const criteria = collectGateCriteria(gate);
+    const envelope = buildJudgeEnvelope(output, gate.name, gate.id, criteria, strict);
+    return {
+      hasJudgeGates: true,
+      judgePrompt: renderJudgePrompt(envelope),
+      judgeGateIds,
+      modelHint,
+    };
+  }
+
+  // Multiple gates: merge criteria under "Combined Review" heading
+  const allCriteria: string[] = [];
+  for (const gate of judgeGates) {
+    allCriteria.push(...collectGateCriteria(gate));
+  }
+
+  const combinedId = judgeGateIds.join(',');
+  const envelope = buildJudgeEnvelope(output, 'Combined Review', combinedId, allCriteria, strict);
+  return { hasJudgeGates: true, judgePrompt: renderJudgePrompt(envelope), judgeGateIds, modelHint };
 }
 
 export { parseLLMReview };

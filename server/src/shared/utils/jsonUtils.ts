@@ -250,7 +250,7 @@ export interface ProcessTemplateWithRefsResult {
  * Interface for script reference resolver.
  * Resolves {{script:id}} patterns in templates.
  */
-export interface IScriptReferenceResolver {
+export interface ScriptReferenceResolverPort {
   preResolve: (
     template: string,
     context: Record<string, unknown>,
@@ -283,7 +283,7 @@ export interface ProcessTemplateOptions {
     }>;
   };
   /** Script reference resolver for {{script:...}} patterns */
-  scriptResolver?: IScriptReferenceResolver;
+  scriptResolver?: ScriptReferenceResolverPort;
   /** Prompt directory for prompt-local script lookup */
   promptDir?: string;
 }

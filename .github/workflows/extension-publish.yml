@@ -167,7 +167,6 @@ jobs:
           cp -r server/dist "$STAGING_DIR/server/"
           cp -r server/resources "$STAGING_DIR/server/"
           cp server/config.json "$STAGING_DIR/server/"
-          cp -r server/cache "$STAGING_DIR/server/" 2>/dev/null || true
           tar -czf "$RUNNER_TEMP/dist-runtime.tar.gz" -C "$STAGING_DIR" .
 
       - name: Validate dist artifact
@@ -331,7 +330,6 @@ jobs:
           cp -r server/dist .plugin-staging/server/
           cp -r server/resources .plugin-staging/server/
           cp server/config.json .plugin-staging/server/
-          cp -r server/cache .plugin-staging/server/ 2>/dev/null || true
 
           # Validate staged runtime
           test -f .plugin-staging/server/dist/index.js

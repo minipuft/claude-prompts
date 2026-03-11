@@ -1,0 +1,15 @@
+# Skills Sync Configuration
+# Used by: npm run skills:export|sync|diff|patch|pull|import
+#
+# Client knowledge (adapters, output dirs, capabilities) is built into the CLI.
+# This file controls WHAT to export. The CLI handles HOW.
+
+registrations:
+  claude-code:
+    user:
+      - prompt:development/review
+      - prompt:development/validate_work
+      - prompt:development/dev_workflow
+      - prompt:general/diagnose
+    project:
+      - prompt:examples/reference_demo

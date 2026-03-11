@@ -103,7 +103,8 @@ See [Ralph Loops Guide](./ralph-loops.md) for comprehensive shell verification d
 
 Pre-defined gates stored in `resources/gates/` for reusable quality patterns.
 
-### Available Gates
+<details>
+<summary><strong>Available Gates</strong></summary>
 
 | Gate ID | Severity | Purpose |
 |---------|----------|---------|
@@ -116,6 +117,8 @@ Pre-defined gates stored in `resources/gates/` for reusable quality patterns.
 | `pr-performance` | medium | Memoization, no console.log |
 | `plan-quality` | high | Files, risks, assumptions |
 
+</details>
+
 ### Usage
 
 ```bash
@@ -126,7 +129,8 @@ Pre-defined gates stored in `resources/gates/` for reusable quality patterns.
 >>implement :: code-quality :: "under 500 lines"
 ```
 
-## User Gates (Workspace Overlays)
+<details>
+<summary><strong>User Gates (Workspace Overlays)</strong></summary>
 
 When `MCP_WORKSPACE` points to a directory outside the package root, the server automatically discovers additional gates from the workspace. This allows users to define custom gates alongside shipped defaults.
 
@@ -175,7 +179,12 @@ These gates appear in `system_control(action:"gates", operation:"list")` alongsi
 
 User gates are hot-reloaded. Editing `gate.yaml` or `guidance.md` in workspace gates directories updates the gate without server restart.
 
+</details>
+
 ## Gate Responses
+
+> [!WARNING]
+> The response format is strict: `GATE_REVIEW: PASS - reason` or `GATE_REVIEW: FAIL - reason`. Omitting the prefix or using a different format causes the gate to hang waiting for a verdict.
 
 ### Pass Response
 
@@ -221,19 +230,54 @@ Gates can be combined with other operators:
 >>implement :: verify:"npm test" :: code-quality :: "follows DRY principle"
 ```
 
+## Assertion + Gate Composition
+
+Gates validate **content quality** (subjective, LLM-evaluated). Assertions validate **structure** (deterministic, zero-cost). They compose orthogonally:
+
+| Layer | Validates | Cost | Method |
+|-------|-----------|------|--------|
+| Assertions | Structure (sections, length, terms) | Zero | Deterministic checks |
+| Gates (self) | Content quality | LLM cost | Self-review |
+| Gates (judge) | Content quality | LLM cost | Context-isolated review |
+
+When assertions pass, the gate reviewer is told: "Structure is verified — focus on content quality." When assertions fail, the LLM must fix structural issues before content quality is evaluated.
+
+See [Assertions Guide](./assertions.md) for full details.
+
+## Judge Mode
+
+By default, the same LLM evaluates its own gate criteria (self mode). Judge mode sends output + criteria to a context-isolated sub-agent that cannot see generation reasoning:
+
+```yaml
+# In gate.yaml
+evaluation:
+  mode: judge          # Context-isolated evaluation
+  strict: true         # Evidence-based: list failures first
+```
+
+See [Judge Mode Guide](./judge-mode.md) for configuration and usage.
+
 ## Best Practices
 
 1. **Use shell verification for objective criteria** (tests, linting, builds)
 2. **Use criteria gates for subjective quality** (style, completeness)
-3. **Combine both for comprehensive validation**:
+3. **Use assertions for structural compliance** (methodology phases, required sections)
+4. **Use judge mode for high-stakes evaluation** (prevents self-confirmation bias)
+5. **Combine layers for comprehensive validation**:
    ```bash
    >>implement :: verify:"npm test" :: "readable code" :: "documented functions"
    ```
-4. **Use presets** for consistent verification across projects
-5. **Reference canonical gates** for team-wide standards
+6. **Use presets** for consistent verification across projects
+7. **Reference canonical gates** for team-wide standards
+
+> [!TIP]
+> **Too many gates firing?** [Injection Control](./injection-control.md) lets you tune how often gate guidance injects — from every step to first-step-only.
+> For the full `gate.yaml` schema, see [Gate Configuration Reference](../reference/gate-configuration.md).
 
 ## See Also
 
+- [Assertions Guide](./assertions.md) - Deterministic structural validation
+- [Judge Mode Guide](./judge-mode.md) - Context-isolated gate evaluation
 - [Ralph Loops Guide](./ralph-loops.md) - Detailed shell verification documentation
 - [Chains Lifecycle](../concepts/chains-lifecycle.md) - Multi-step execution
 - [MCP Tools Reference](../reference/mcp-tools.md) - Full parameter documentation

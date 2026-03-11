@@ -8,7 +8,7 @@
 
 import * as path from 'node:path';
 
-import { EventEmittingConfigManager } from '../infra/config/index.js';
+import { ConfigLoader } from '../infra/config/index.js';
 import {
   createResourceChangeTracker,
   ResourceChangeTracker,
@@ -19,7 +19,7 @@ import type { Logger } from '../infra/logging/index.js';
 import type {
   AuxiliaryReloadConfig,
   HotReloadEvent,
-} from '../modules/hot-reload/hot-reload-manager.js';
+} from '../modules/hot-reload/hot-reload-observer.js';
 
 /**
  * Singleton tracker instance for the application
@@ -40,10 +40,8 @@ export async function initializeResourceChangeTracker(
     return trackerInstance;
   }
 
-  const runtimeStateDir = path.join(serverRoot, 'runtime-state');
-
   trackerInstance = createResourceChangeTracker(logger, {
-    runtimeStateDir,
+    serverRoot,
     maxEntries: 1000,
     trackPrompts: true,
     trackGates: true,
@@ -67,7 +65,7 @@ export function getResourceChangeTracker(): ResourceChangeTracker | undefined {
  */
 export async function compareResourceBaseline(
   tracker: ResourceChangeTracker,
-  configManager: EventEmittingConfigManager,
+  configManager: ConfigLoader,
   logger: Logger
 ): Promise<{ added: number; modified: number; removed: number }> {
   // Collect all current prompts and gates for baseline comparison
@@ -170,11 +168,11 @@ export async function compareResourceBaseline(
 
 /**
  * Build auxiliary reload config for resource change tracking
- * Hooks into HotReloadManager to track filesystem changes
+ * Hooks into HotReloadObserver to track filesystem changes
  */
 export function buildResourceChangeTrackerAuxiliaryReloadConfig(
   logger: Logger,
-  configManager: EventEmittingConfigManager
+  configManager: ConfigLoader
 ): AuxiliaryReloadConfig | undefined {
   const tracker = getResourceChangeTracker();
   if (tracker === undefined) {

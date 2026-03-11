@@ -104,6 +104,14 @@ export interface ToolDescriptionsOptions {
 }
 
 /**
+ * Injection target: where content is injected during chain execution.
+ * - 'steps': Normal step execution only
+ * - 'gates': Gate review steps only
+ * - 'both': Both step execution and gate reviews
+ */
+export type InjectionTargetConfig = 'steps' | 'gates' | 'both';
+
+/**
  * Injection configuration for framework-driven content
  */
 export interface FrameworkInjectionConfig {
@@ -112,9 +120,24 @@ export interface FrameworkInjectionConfig {
     enabled: boolean;
     /** Inject every N steps (default: 2) */
     frequency?: number;
+    /** Where to inject: 'steps', 'gates', or 'both' (default: 'steps') */
+    target?: InjectionTargetConfig;
   };
-  /** Style guidance injection (enabled/disabled only, injected per-step as needed) */
-  styleGuidance?: boolean;
+  /** Gate guidance injection settings */
+  gateGuidance?: {
+    /** Inject gate criteria every N steps. 0 = first-only (default: 0) */
+    frequency?: number;
+    /** Where to inject: 'steps', 'gates', or 'both' (default: 'both') */
+    target?: InjectionTargetConfig;
+  };
+  /** Style guidance injection settings */
+  styleGuidance?: {
+    enabled?: boolean;
+    /** Inject style guidance every N steps. 0 = first-only (default: 0) */
+    frequency?: number;
+    /** Where to inject: 'steps', 'gates', or 'both' (default: 'steps') */
+    target?: InjectionTargetConfig;
+  };
 }
 
 /**
@@ -174,6 +197,23 @@ export interface GatesConfig {
   enableMethodologyGates?: boolean;
   /** New-style: methodology gates */
   methodologyGates?: boolean;
+  /** Judge evaluation defaults — gates with `evaluation.mode: 'judge'` use context-isolated review */
+  evaluation?: {
+    defaultMode?: 'self' | 'judge';
+    defaultModel?: string;
+    strict?: boolean;
+  };
+}
+
+/**
+ * Configuration for phase guard enforcement.
+ * Controls deterministic structural validation of LLM output against methodology phase markers.
+ */
+export interface PhaseGuardsConfig {
+  /** Enforcement mode: 'enforce' creates pending gate review, 'warn' logs warning, 'off' disables */
+  mode: 'enforce' | 'warn' | 'off';
+  /** Maximum retry attempts before falling back to warn (enforce mode only) */
+  maxRetries: number;
 }
 
 /**
@@ -184,10 +224,20 @@ export interface MethodologiesConfig {
   enabled?: boolean;
   /** Adapt MCP tool descriptions based on active methodology */
   dynamicToolDescriptions?: boolean;
-  /** Inject methodology guidance every N chain steps */
+  /** Inject methodology guidance every N chain steps (default: 2) */
   systemPromptFrequency?: number;
-  /** Include response formatting guidance */
+  /** Where to inject system prompt: 'steps', 'gates', or 'both' (default: 'steps') */
+  systemPromptTarget?: InjectionTargetConfig;
+  /** Inject gate criteria every N steps. 0 = first-only (default: 0) */
+  gateGuidanceFrequency?: number;
+  /** Where to inject gate guidance: 'steps', 'gates', or 'both' (default: 'both') */
+  gateGuidanceTarget?: InjectionTargetConfig;
+  /** Include response formatting guidance (true/false, or object for granular control) */
   styleGuidance?: boolean;
+  /** Inject style guidance every N steps. 0 = first-only (default: 0) */
+  styleGuidanceFrequency?: number;
+  /** Where to inject style guidance: 'steps', 'gates', or 'both' (default: 'steps') */
+  styleGuidanceTarget?: InjectionTargetConfig;
 }
 
 /**
@@ -258,6 +308,48 @@ export const DEFAULT_VERSIONING_CONFIG: VersioningConfig = {
   auto_version: true,
 };
 
+// ===== Identity & Scope Types =====
+
+/**
+ * Identity policy mode for request scoping.
+ * - 'permissive': Accept per-request identity overrides from tokens/headers
+ * - 'locked': Enforce launch defaults, reject overrides
+ */
+export type IdentityPolicyMode = 'permissive' | 'locked';
+
+/**
+ * Client family classification used for delegation strategy routing.
+ */
+export type ClientFamily = 'claude-code' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'unknown';
+
+/**
+ * Delegation rendering profile resolved from client identity.
+ */
+export type DelegationProfile =
+  | 'task_tool_v1'
+  | 'spawn_agent_v1'
+  | 'gemini_subagent_v1'
+  | 'opencode_agent_v1'
+  | 'cursor_agent_v1'
+  | 'neutral_v1';
+
+/**
+ * Launch-time identity defaults for workspace/organization scoping.
+ * Set via CLI flags or config; used as fallback when request lacks identity claims.
+ */
+export interface IdentityLaunchDefaults {
+  organizationId?: string;
+  workspaceId?: string;
+  /** Optional launch-level client routing hint. */
+  clientFamily?: ClientFamily;
+  /** Optional launch-level client identifier override (e.g., 'claude-code'). */
+  clientId?: string;
+  /** Optional launch-level client version hint. */
+  clientVersion?: string;
+  /** Optional launch-level delegation profile override. */
+  delegationProfile?: DelegationProfile;
+}
+
 export interface Config {
   /** Server configuration */
   server: ServerConfig;
@@ -267,6 +359,8 @@ export interface Config {
   analysis?: AnalysisConfig;
   /** Gates system configuration (quality validation) */
   gates?: GatesConfig;
+  /** Phase guard enforcement for methodology structural validation */
+  phaseGuards?: PhaseGuardsConfig;
   /** Execution strategy configuration (judge mode, etc.) */
   execution?: ExecutionConfig;
   /** Framework feature configuration (injection, tool descriptions) - LEGACY */
@@ -292,6 +386,16 @@ export interface Config {
   advanced?: AdvancedConfig;
   /** MCP Resources configuration */
   resources?: ResourcesConfig;
+
+  /** Identity and workspace scoping configuration */
+  identity?: {
+    /** Policy mode: 'permissive' (accept overrides) or 'locked' (enforce defaults) */
+    mode?: IdentityPolicyMode;
+    /** Allow per-request identity overrides from tokens/headers (default: true) */
+    allowPerRequestOverride?: boolean;
+    /** Launch-time identity defaults for workspace/organization scoping */
+    launchDefaults?: IdentityLaunchDefaults;
+  };
 }
 
 // ===== Message Types =====

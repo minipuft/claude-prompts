@@ -226,8 +226,8 @@ export class UnifiedCommandParser {
               result.metadata.modifierToken = modifierToken;
             }
 
-            // Validate that the prompt ID exists
-            await this.validatePromptExists(result.promptId, availablePrompts);
+            // Validate that the prompt ID exists and resolve to canonical ID
+            result.promptId = await this.validatePromptExists(result.promptId, availablePrompts);
 
             // Update statistics
             this.stats.successfulParses++;
@@ -320,6 +320,12 @@ export class UnifiedCommandParser {
         // - Anonymous unquoted: :: criteria (canonical refs or plain text)
         cleanCommand = cleanCommand.replace(
           /\s+(::|=)\s*(?:[a-z][a-z0-9_-]*:["'][^"']+["']|[a-z][a-z0-9_-]*\([^)]+\)|["'][^"']+["']|[^\s"']+)/gi,
+          ''
+        );
+        // Strip trailing verify options that follow gate operators:
+        // :fast, :full, :extended (presets), loop:true/false, max:N, timeout:N
+        cleanCommand = cleanCommand.replace(
+          /\s+(?::(fast|full|extended)\b|loop:(true|false)\b|max:\d+\b|timeout:\d+\b)/gi,
           ''
         );
         // Strip style selector to avoid polluting base args
@@ -539,10 +545,10 @@ export class UnifiedCommandParser {
   private async validatePromptExists(
     promptId: string,
     availablePrompts: ConvertedPrompt[]
-  ): Promise<void> {
+  ): Promise<string> {
     // Check if this is a built-in command that should be routed (handled by prompt engine)
     if (this.isBuiltinCommand(promptId)) {
-      return; // Built-in commands are valid and will be routed by the prompt engine
+      return promptId;
     }
 
     // Use case-insensitive matching to find the prompt
@@ -551,14 +557,29 @@ export class UnifiedCommandParser {
         p.id.toLowerCase() === promptId.toLowerCase() ||
         p.name?.toLowerCase() === promptId.toLowerCase()
     );
-    if (!found) {
-      const suggestions = this.generatePromptSuggestions(promptId, availablePrompts);
-      const msg =
-        suggestions !== ''
-          ? `Unknown prompt "${promptId}". ${suggestions}`
-          : `Unknown prompt "${promptId}"`;
-      throw new PromptError(msg);
+    if (found) {
+      return found.id;
     }
+
+    // Hyphen-agnostic fallback: normalize hyphens/underscores before comparing
+    // Handles mismatch between parser normalization (hyphens→underscores) and stored IDs
+    const normalizeDelimiters = (s: string): string => s.toLowerCase().replace(/[-_]+/g, '_');
+    const normalizedQuery = normalizeDelimiters(promptId);
+    const normalizedFound = availablePrompts.find(
+      (p) =>
+        normalizeDelimiters(p.id) === normalizedQuery ||
+        (p.name != null && normalizeDelimiters(p.name) === normalizedQuery)
+    );
+    if (normalizedFound) {
+      return normalizedFound.id;
+    }
+
+    const suggestions = this.generatePromptSuggestions(promptId, availablePrompts);
+    const msg =
+      suggestions !== ''
+        ? `Unknown prompt "${promptId}". ${suggestions}`
+        : `Unknown prompt "${promptId}"`;
+    throw new PromptError(msg);
   }
 
   /**

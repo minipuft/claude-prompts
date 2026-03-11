@@ -1,6 +1,6 @@
 // @lifecycle canonical - Aggregates gate evaluations across configured services.
 import type {
-  IGateService,
+  GateService,
   GateEnhancementResult,
   GateServiceConfig,
 } from './gate-service-interface.js';
@@ -19,7 +19,7 @@ const DEFAULT_CONFIG: GateServiceConfig = {
  * Simplified to use GateGuidanceRenderer directly, removing the unnecessary
  * GateInstructionInjector abstraction layer.
  */
-export class CompositionalGateService implements IGateService {
+export class CompositionalGateService implements GateService {
   readonly serviceType = 'compositional' as const;
   private readonly logger: Logger;
   private readonly gateGuidanceRenderer: GateGuidanceRenderer;

@@ -1,5 +1,5 @@
 /**
- * Unit tests for VersionHistoryService
+ * Unit tests for VersionHistoryService (SQLite-backed)
  *
  * Tests the core versioning functionality:
  * - saveVersion: Auto-versioning, FIFO pruning, disabled mode
@@ -11,16 +11,13 @@
  * - formatHistoryForDisplay: Display formatting
  */
 
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import os from 'node:os';
-
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 
-import { MockLogger } from '../../helpers/test-helpers.js';
+import { createTestDatabaseManager } from '../../helpers/test-database.js';
 import { VersionHistoryService } from '../../../src/modules/versioning/version-history-service.js';
 
-import type { VersioningConfig } from '../../../src/modules/versioning/types.js';
+import type { TestDatabaseContext } from '../../helpers/test-database.js';
+import type { VersioningConfig } from '../../../src/shared/types/index.js';
 import type { VersioningConfigProvider } from '../../../src/modules/versioning/version-history-service.js';
 
 /**
@@ -29,16 +26,21 @@ import type { VersioningConfigProvider } from '../../../src/modules/versioning/v
  */
 class MockVersioningConfigProvider implements VersioningConfigProvider {
   private config: VersioningConfig;
+  private serverRoot: string;
 
-  constructor(config: VersioningConfig) {
+  constructor(config: VersioningConfig, serverRoot: string) {
     this.config = config;
+    this.serverRoot = serverRoot;
   }
 
   getVersioningConfig(): VersioningConfig {
     return this.config;
   }
 
-  // Test helper to update config
+  getServerRoot(): string {
+    return this.serverRoot;
+  }
+
   setConfig(config: Partial<VersioningConfig>): void {
     this.config = { ...this.config, ...config };
   }
@@ -46,33 +48,27 @@ class MockVersioningConfigProvider implements VersioningConfigProvider {
 
 describe('VersionHistoryService', () => {
   let service: VersionHistoryService;
-  let mockLogger: MockLogger;
   let mockConfigProvider: MockVersioningConfigProvider;
-  let tempDir: string;
+  let dbCtx: TestDatabaseContext;
 
   beforeEach(async () => {
-    mockLogger = new MockLogger();
-    mockConfigProvider = new MockVersioningConfigProvider({
-      enabled: true,
-      max_versions: 5,
-      auto_version: true,
-    });
+    dbCtx = await createTestDatabaseManager('version-history');
+    mockConfigProvider = new MockVersioningConfigProvider(
+      {
+        enabled: true,
+        max_versions: 5,
+        auto_version: true,
+      },
+      dbCtx.testDir
+    );
     service = new VersionHistoryService({
-      logger: mockLogger as unknown as import('../../../src/infra/logging/index.js').Logger,
+      logger: dbCtx.logger,
       configManager: mockConfigProvider,
     });
-
-    // Create temp directory for test files
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'version-history-test-'));
   });
 
   afterEach(async () => {
-    // Cleanup temp directory
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    await dbCtx.cleanup();
   });
 
   // ==========================================================================
@@ -86,7 +82,6 @@ describe('VersionHistoryService', () => {
     });
 
     it('should reflect config changes from ConfigManager', () => {
-      // Simulate config change via ConfigManager
       mockConfigProvider.setConfig({ enabled: false });
       expect(service.isEnabled()).toBe(false);
       expect(service.isAutoVersionEnabled()).toBe(false);
@@ -94,7 +89,7 @@ describe('VersionHistoryService', () => {
 
     it('should reflect partial config updates', () => {
       mockConfigProvider.setConfig({ max_versions: 100 });
-      expect(service.isEnabled()).toBe(true); // unchanged
+      expect(service.isEnabled()).toBe(true);
     });
   });
 
@@ -106,15 +101,14 @@ describe('VersionHistoryService', () => {
     it('should save first version successfully', async () => {
       const snapshot = { name: 'test', content: 'hello' };
 
-      const result = await service.saveVersion(tempDir, 'prompt', 'test-prompt', snapshot, {
+      const result = await service.saveVersion('prompt', 'test-prompt', snapshot, {
         description: 'Initial version',
       });
 
       expect(result.success).toBe(true);
       expect(result.version).toBe(1);
 
-      // Verify history file was created
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test-prompt');
       expect(history).not.toBeNull();
       expect(history!.current_version).toBe(1);
       expect(history!.versions).toHaveLength(1);
@@ -122,39 +116,33 @@ describe('VersionHistoryService', () => {
     });
 
     it('should increment version on subsequent saves', async () => {
-      // Save first version
-      await service.saveVersion(tempDir, 'prompt', 'test-prompt', { v: 1 });
-
-      // Save second version
-      const result = await service.saveVersion(tempDir, 'prompt', 'test-prompt', { v: 2 });
+      await service.saveVersion('prompt', 'test-prompt', { v: 1 });
+      const result = await service.saveVersion('prompt', 'test-prompt', { v: 2 });
 
       expect(result.success).toBe(true);
       expect(result.version).toBe(2);
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test-prompt');
       expect(history!.versions).toHaveLength(2);
       expect(history!.versions[0].version).toBe(2); // newest first
       expect(history!.versions[1].version).toBe(1);
     });
 
     it('should prune old versions when exceeding max_versions', async () => {
-      // Save 6 versions (max is 5)
       for (let i = 1; i <= 6; i++) {
-        await service.saveVersion(tempDir, 'prompt', 'test-prompt', { version: i });
+        await service.saveVersion('prompt', 'test-prompt', { version: i });
       }
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test-prompt');
       expect(history!.versions).toHaveLength(5);
       expect(history!.current_version).toBe(6);
 
-      // Oldest version (1) should be pruned
       const versions = history!.versions.map((v) => v.version);
       expect(versions).toEqual([6, 5, 4, 3, 2]);
     });
 
     it('should include diff_summary and description in entry', async () => {
       await service.saveVersion(
-        tempDir,
         'gate',
         'test-gate',
         { criteria: 'x' },
@@ -164,7 +152,7 @@ describe('VersionHistoryService', () => {
         }
       );
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('gate', 'test-gate');
       expect(history!.versions[0].description).toBe('Added criteria field');
       expect(history!.versions[0].diff_summary).toBe('+1/-0');
     });
@@ -172,24 +160,13 @@ describe('VersionHistoryService', () => {
     it('should return version 0 when disabled', async () => {
       mockConfigProvider.setConfig({ enabled: false });
 
-      const result = await service.saveVersion(tempDir, 'prompt', 'test', { x: 1 });
+      const result = await service.saveVersion('prompt', 'test', { x: 1 });
 
       expect(result.success).toBe(true);
       expect(result.version).toBe(0);
 
-      // No history file should be created
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test');
       expect(history).toBeNull();
-    });
-
-    it('should handle file write errors gracefully', async () => {
-      // Point to non-existent nested directory
-      const badDir = path.join(tempDir, 'nested', 'deep', 'path');
-
-      const result = await service.saveVersion(badDir, 'prompt', 'test', { x: 1 });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
     });
   });
 
@@ -199,31 +176,17 @@ describe('VersionHistoryService', () => {
 
   describe('loadHistory', () => {
     it('should return null for non-existent history', async () => {
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'nonexistent');
       expect(history).toBeNull();
     });
 
-    it('should load existing history file', async () => {
-      // Create history first
-      await service.saveVersion(tempDir, 'methodology', 'test-method', { phases: [] });
+    it('should load existing history', async () => {
+      await service.saveVersion('methodology', 'test-method', { phases: [] });
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('methodology', 'test-method');
       expect(history).not.toBeNull();
       expect(history!.resource_type).toBe('methodology');
       expect(history!.resource_id).toBe('test-method');
-    });
-
-    it('should handle corrupted history file gracefully', async () => {
-      // Write invalid JSON to history file
-      const historyPath = path.join(tempDir, '.history.json');
-      await fs.writeFile(historyPath, 'not valid json', 'utf8');
-
-      const history = await service.loadHistory(tempDir);
-      expect(history).toBeNull();
-
-      // Should log error
-      const errors = mockLogger.getLogsByLevel('error');
-      expect(errors.length).toBeGreaterThan(0);
     });
   });
 
@@ -233,14 +196,13 @@ describe('VersionHistoryService', () => {
 
   describe('getVersion', () => {
     beforeEach(async () => {
-      // Create history with multiple versions
-      await service.saveVersion(tempDir, 'prompt', 'test', { state: 'v1' });
-      await service.saveVersion(tempDir, 'prompt', 'test', { state: 'v2' });
-      await service.saveVersion(tempDir, 'prompt', 'test', { state: 'v3' });
+      await service.saveVersion('prompt', 'test', { state: 'v1' });
+      await service.saveVersion('prompt', 'test', { state: 'v2' });
+      await service.saveVersion('prompt', 'test', { state: 'v3' });
     });
 
     it('should retrieve specific version', async () => {
-      const entry = await service.getVersion(tempDir, 2);
+      const entry = await service.getVersion('prompt', 'test', 2);
 
       expect(entry).not.toBeNull();
       expect(entry!.version).toBe(2);
@@ -248,18 +210,8 @@ describe('VersionHistoryService', () => {
     });
 
     it('should return null for non-existent version', async () => {
-      const entry = await service.getVersion(tempDir, 99);
+      const entry = await service.getVersion('prompt', 'test', 99);
       expect(entry).toBeNull();
-    });
-
-    it('should return null when no history exists', async () => {
-      const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), 'no-history-'));
-      try {
-        const entry = await service.getVersion(otherDir, 1);
-        expect(entry).toBeNull();
-      } finally {
-        await fs.rm(otherDir, { recursive: true, force: true });
-      }
     });
   });
 
@@ -269,15 +221,15 @@ describe('VersionHistoryService', () => {
 
   describe('getLatestVersion', () => {
     it('should return 0 when no history exists', async () => {
-      const version = await service.getLatestVersion(tempDir);
+      const version = await service.getLatestVersion('prompt', 'nonexistent');
       expect(version).toBe(0);
     });
 
     it('should return current version number', async () => {
-      await service.saveVersion(tempDir, 'prompt', 'test', { x: 1 });
-      await service.saveVersion(tempDir, 'prompt', 'test', { x: 2 });
+      await service.saveVersion('prompt', 'test', { x: 1 });
+      await service.saveVersion('prompt', 'test', { x: 2 });
 
-      const version = await service.getLatestVersion(tempDir);
+      const version = await service.getLatestVersion('prompt', 'test');
       expect(version).toBe(2);
     });
   });
@@ -288,35 +240,27 @@ describe('VersionHistoryService', () => {
 
   describe('rollback', () => {
     beforeEach(async () => {
-      // Create history: v1 -> v2 -> v3
-      await service.saveVersion(tempDir, 'gate', 'test-gate', { criteria: 'original' });
-      await service.saveVersion(tempDir, 'gate', 'test-gate', { criteria: 'modified' });
-      await service.saveVersion(tempDir, 'gate', 'test-gate', { criteria: 'latest' });
+      await service.saveVersion('gate', 'test-gate', { criteria: 'original' });
+      await service.saveVersion('gate', 'test-gate', { criteria: 'modified' });
+      await service.saveVersion('gate', 'test-gate', { criteria: 'latest' });
     });
 
     it('should rollback to previous version successfully', async () => {
       const currentSnapshot = { criteria: 'current-state' };
 
-      const result = await service.rollback(
-        tempDir,
-        'gate',
-        'test-gate',
-        1, // rollback to v1
-        currentSnapshot
-      );
+      const result = await service.rollback('gate', 'test-gate', 1, currentSnapshot);
 
       expect(result.success).toBe(true);
       expect(result.restored_version).toBe(1);
       expect(result.saved_version).toBe(4); // v4 = pre-rollback snapshot
       expect(result.snapshot).toEqual({ criteria: 'original' });
 
-      // Verify history now has v4
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('gate', 'test-gate');
       expect(history!.current_version).toBe(4);
     });
 
     it('should fail when target version does not exist', async () => {
-      const result = await service.rollback(tempDir, 'gate', 'test-gate', 99, { x: 1 });
+      const result = await service.rollback('gate', 'test-gate', 99, { x: 1 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Version 99 not found');
@@ -325,7 +269,7 @@ describe('VersionHistoryService', () => {
     it('should fail when versioning is disabled', async () => {
       mockConfigProvider.setConfig({ enabled: false });
 
-      const result = await service.rollback(tempDir, 'gate', 'test-gate', 1, { x: 1 });
+      const result = await service.rollback('gate', 'test-gate', 1, { x: 1 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('disabled');
@@ -338,12 +282,12 @@ describe('VersionHistoryService', () => {
 
   describe('compareVersions', () => {
     beforeEach(async () => {
-      await service.saveVersion(tempDir, 'prompt', 'test', { content: 'version 1' });
-      await service.saveVersion(tempDir, 'prompt', 'test', { content: 'version 2' });
+      await service.saveVersion('prompt', 'test', { content: 'version 1' });
+      await service.saveVersion('prompt', 'test', { content: 'version 2' });
     });
 
     it('should compare two existing versions', async () => {
-      const result = await service.compareVersions(tempDir, 1, 2);
+      const result = await service.compareVersions('prompt', 'test', 1, 2);
 
       expect(result.success).toBe(true);
       expect(result.from).toBeDefined();
@@ -355,14 +299,14 @@ describe('VersionHistoryService', () => {
     });
 
     it('should fail when from_version does not exist', async () => {
-      const result = await service.compareVersions(tempDir, 99, 2);
+      const result = await service.compareVersions('prompt', 'test', 99, 2);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Version 99 not found');
     });
 
     it('should fail when to_version does not exist', async () => {
-      const result = await service.compareVersions(tempDir, 1, 99);
+      const result = await service.compareVersions('prompt', 'test', 1, 99);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Version 99 not found');
@@ -374,25 +318,21 @@ describe('VersionHistoryService', () => {
   // ==========================================================================
 
   describe('deleteHistory', () => {
-    it('should delete existing history file', async () => {
-      // Create history
-      await service.saveVersion(tempDir, 'prompt', 'test', { x: 1 });
+    it('should delete existing history', async () => {
+      await service.saveVersion('prompt', 'test', { x: 1 });
 
-      // Verify it exists
-      let history = await service.loadHistory(tempDir);
+      let history = await service.loadHistory('prompt', 'test');
       expect(history).not.toBeNull();
 
-      // Delete
-      const result = await service.deleteHistory(tempDir);
+      const result = await service.deleteHistory('prompt', 'test');
       expect(result).toBe(true);
 
-      // Verify it's gone
-      history = await service.loadHistory(tempDir);
+      history = await service.loadHistory('prompt', 'test');
       expect(history).toBeNull();
     });
 
     it('should return true when no history exists', async () => {
-      const result = await service.deleteHistory(tempDir);
+      const result = await service.deleteHistory('prompt', 'nonexistent');
       expect(result).toBe(true);
     });
   });
@@ -403,42 +343,33 @@ describe('VersionHistoryService', () => {
 
   describe('formatHistoryForDisplay', () => {
     it('should format history with table headers', async () => {
-      await service.saveVersion(
-        tempDir,
-        'prompt',
-        'test-prompt',
-        { x: 1 },
-        {
-          description: 'Initial',
-        }
-      );
+      await service.saveVersion('prompt', 'test-prompt', { x: 1 }, { description: 'Initial' });
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test-prompt');
       const formatted = service.formatHistoryForDisplay(history!, 10);
 
-      expect(formatted).toContain('📜 **Version History**');
+      expect(formatted).toContain('**Version History**');
       expect(formatted).toContain('test-prompt');
       expect(formatted).toContain('| Version | Date | Changes | Description |');
       expect(formatted).toContain('Initial');
     });
 
     it('should mark current version', async () => {
-      await service.saveVersion(tempDir, 'prompt', 'test', { x: 1 });
-      await service.saveVersion(tempDir, 'prompt', 'test', { x: 2 });
+      await service.saveVersion('prompt', 'test', { x: 1 });
+      await service.saveVersion('prompt', 'test', { x: 2 });
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test');
       const formatted = service.formatHistoryForDisplay(history!, 10);
 
-      expect(formatted).toContain('(current)');
+      expect(formatted).toContain('(latest)');
     });
 
     it('should respect limit parameter', async () => {
-      // Create 5 versions
       for (let i = 1; i <= 5; i++) {
-        await service.saveVersion(tempDir, 'prompt', 'test', { v: i });
+        await service.saveVersion('prompt', 'test', { v: i });
       }
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test');
       const formatted = service.formatHistoryForDisplay(history!, 2);
 
       expect(formatted).toContain('and 3 more versions');
@@ -446,17 +377,13 @@ describe('VersionHistoryService', () => {
 
     it('should show diff_summary when present', async () => {
       await service.saveVersion(
-        tempDir,
         'prompt',
         'test',
         { x: 1 },
-        {
-          description: 'Test',
-          diff_summary: '+5/-2',
-        }
+        { description: 'Test', diff_summary: '+5/-2' }
       );
 
-      const history = await service.loadHistory(tempDir);
+      const history = await service.loadHistory('prompt', 'test');
       const formatted = service.formatHistoryForDisplay(history!, 10);
 
       expect(formatted).toContain('+5/-2');
@@ -464,32 +391,40 @@ describe('VersionHistoryService', () => {
   });
 
   // ==========================================================================
-  // Resource Type Tests
+  // Resource Type Isolation Tests
   // ==========================================================================
 
-  describe('resource types', () => {
-    it('should handle prompt resource type', async () => {
-      await service.saveVersion(tempDir, 'prompt', 'my-prompt', { template: 'x' });
+  describe('resource type isolation', () => {
+    it('should isolate history by resource type and id', async () => {
+      await service.saveVersion('prompt', 'my-prompt', { template: 'x' });
+      await service.saveVersion('gate', 'code-quality', { criteria: 'y' });
+      await service.saveVersion('methodology', 'CAGEERF', { phases: [] });
 
-      const history = await service.loadHistory(tempDir);
-      expect(history!.resource_type).toBe('prompt');
-      expect(history!.resource_id).toBe('my-prompt');
+      const promptHistory = await service.loadHistory('prompt', 'my-prompt');
+      expect(promptHistory!.resource_type).toBe('prompt');
+      expect(promptHistory!.resource_id).toBe('my-prompt');
+      expect(promptHistory!.versions).toHaveLength(1);
+
+      const gateHistory = await service.loadHistory('gate', 'code-quality');
+      expect(gateHistory!.resource_type).toBe('gate');
+      expect(gateHistory!.resource_id).toBe('code-quality');
+
+      const methodHistory = await service.loadHistory('methodology', 'CAGEERF');
+      expect(methodHistory!.resource_type).toBe('methodology');
+      expect(methodHistory!.resource_id).toBe('CAGEERF');
     });
 
-    it('should handle gate resource type', async () => {
-      await service.saveVersion(tempDir, 'gate', 'code-quality', { criteria: 'y' });
+    it('should not cross-contaminate between resource ids', async () => {
+      await service.saveVersion('prompt', 'prompt-a', { x: 1 });
+      await service.saveVersion('prompt', 'prompt-b', { y: 2 });
 
-      const history = await service.loadHistory(tempDir);
-      expect(history!.resource_type).toBe('gate');
-      expect(history!.resource_id).toBe('code-quality');
-    });
+      const historyA = await service.loadHistory('prompt', 'prompt-a');
+      expect(historyA!.versions).toHaveLength(1);
+      expect(historyA!.versions[0].snapshot).toEqual({ x: 1 });
 
-    it('should handle methodology resource type', async () => {
-      await service.saveVersion(tempDir, 'methodology', 'CAGEERF', { phases: [] });
-
-      const history = await service.loadHistory(tempDir);
-      expect(history!.resource_type).toBe('methodology');
-      expect(history!.resource_id).toBe('CAGEERF');
+      const historyB = await service.loadHistory('prompt', 'prompt-b');
+      expect(historyB!.versions).toHaveLength(1);
+      expect(historyB!.versions[0].snapshot).toEqual({ y: 2 });
     });
   });
 });

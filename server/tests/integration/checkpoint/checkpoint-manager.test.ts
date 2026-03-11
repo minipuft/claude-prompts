@@ -1,5 +1,5 @@
 /**
- * Integration tests for ConsolidatedCheckpointManager.
+ * Integration tests for CheckpointToolHandler.
  *
  * Tests checkpoint operations (create, rollback, list, delete, clear)
  * through the checkpoint manager interface.
@@ -13,15 +13,15 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 import {
-  ConsolidatedCheckpointManager,
-  createConsolidatedCheckpointManager,
+  CheckpointToolHandler,
+  createCheckpointToolHandler,
 } from '../../../src/mcp/tools/resource-manager/checkpoint/index.js';
 import type { CheckpointManagerInput } from '../../../src/mcp/tools/resource-manager/checkpoint/types.js';
 import type { Logger } from '../../../src/infra/logging/index.js';
 import type { ConfigManager } from '../../../src/infra/config/index.js';
 
-describe('ConsolidatedCheckpointManager Integration', () => {
-  let manager: ConsolidatedCheckpointManager;
+describe('CheckpointToolHandler Integration', () => {
+  let manager: CheckpointToolHandler;
   let mockLogger: Logger;
   let mockConfigManager: ConfigManager;
   let tempDir: string;
@@ -55,7 +55,7 @@ describe('ConsolidatedCheckpointManager Integration', () => {
       getServerRoot: jest.fn(() => tempDir),
     } as unknown as ConfigManager;
 
-    manager = createConsolidatedCheckpointManager({
+    manager = createCheckpointToolHandler({
       logger: mockLogger,
       configManager: mockConfigManager,
     });
@@ -304,7 +304,7 @@ describe('ConsolidatedCheckpointManager Integration', () => {
       await manager.handleAction({ action: 'create', name: 'persist-test' }, {});
 
       // Create new manager instance
-      const manager2 = createConsolidatedCheckpointManager({
+      const manager2 = createCheckpointToolHandler({
         logger: mockLogger,
         configManager: mockConfigManager,
       });

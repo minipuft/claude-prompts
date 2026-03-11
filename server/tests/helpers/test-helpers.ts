@@ -239,10 +239,10 @@ export class MockConfigManager {
 }
 
 /**
- * Mock FrameworkStateManager with proper cleanup
+ * Mock FrameworkStateStore with proper cleanup
  * Includes jest.fn() methods for testing framework switching
  */
-export class MockFrameworkStateManager {
+export class MockFrameworkStateStore {
   switchFramework: any;
   getActiveFramework: any;
   isFrameworkSystemEnabled: any;
@@ -263,10 +263,10 @@ export class MockFrameworkStateManager {
 }
 
 /**
- * Cleanup helper for PromptExecutionService instances
+ * Cleanup helper for PromptExecutor instances
  * Safely cleans up prompt execution services to prevent async handle leaks
  */
-export async function cleanupPromptExecutionService(engine) {
+export async function cleanupPromptExecutor(engine) {
   if (!engine) return;
 
   if (typeof engine.cleanup === 'function') {
@@ -292,17 +292,16 @@ export async function cleanupPromptExecutionService(engine) {
  * Mock PromptGuidanceService for testing
  *
  * Simulates PromptGuidanceService behavior without creating real infrastructure:
- * - NO MethodologyTracker with 30-second interval timers
- * - NO file system state persistence
+ * - NO file system or database state persistence
  * - NO heavy framework operations
  *
- * This mock prevents Jest hanging issues caused by setInterval timers
+ * This mock prevents Jest hanging issues caused by open handles
  * that keep the event loop alive after tests complete.
  *
  * Usage:
  * ```typescript
  * const mockGuidance = new MockPromptGuidanceService(logger);
- * const engine = createPromptExecutionService(
+ * const engine = createPromptExecutor(
  *   // ... other params,
  *   mockGuidance  // Inject mock instead of creating real service
  * );
@@ -311,9 +310,6 @@ export async function cleanupPromptExecutionService(engine) {
 export class MockPromptGuidanceService {
   // Jest spy functions for verification
   applyGuidance: any;
-  switchMethodology: any;
-  getCurrentMethodologyState: any;
-  getSystemHealth: any;
   setGuidanceEnabled: any;
   updateConfig: any;
   getConfig: any;
@@ -369,42 +365,6 @@ export class MockPromptGuidanceService {
       };
     });
 
-    this.switchMethodology = jest.fn(async (request: any) => {
-      this.currentMethodology = request.targetMethodology;
-      if (this.logger) {
-        this.logger.debug(`MockPromptGuidanceService switched to ${this.currentMethodology}`);
-      }
-      return true;
-    });
-
-    this.getCurrentMethodologyState = jest.fn(() => ({
-      activeMethodology: this.currentMethodology,
-      previousMethodology: null,
-      switchedAt: new Date(),
-      switchReason: 'Test initialization',
-      isHealthy: true,
-      methodologySystemEnabled: true,
-      switchingMetrics: {
-        switchCount: 0,
-        averageResponseTime: 0,
-        errorCount: 0,
-      },
-    }));
-
-    this.getSystemHealth = jest.fn(() => ({
-      status: 'healthy',
-      activeMethodology: this.currentMethodology,
-      methodologySystemEnabled: true,
-      lastSwitchTime: new Date(),
-      switchingMetrics: {
-        totalSwitches: 0,
-        successfulSwitches: 0,
-        failedSwitches: 0,
-        averageResponseTime: 0,
-      },
-      issues: [],
-    }));
-
     this.setGuidanceEnabled = jest.fn((enabled: boolean) => {
       // State update without side effects
       if (this.logger) {
@@ -422,9 +382,6 @@ export class MockPromptGuidanceService {
     this.getConfig = jest.fn(() => ({
       systemPromptInjection: {
         enabled: true,
-        injectionMethod: 'smart',
-        enableTemplateVariables: true,
-        enableContextualEnhancement: true,
       },
       templateEnhancement: {
         enabled: true,
@@ -432,15 +389,10 @@ export class MockPromptGuidanceService {
         enableArgumentSuggestions: true,
         enableStructureOptimization: true,
       },
-      methodologyTracking: {
-        enabled: true,
-        enableHealthMonitoring: false, // KEY: Disabled in tests
-        persistStateToDisk: false, // KEY: Disabled in tests
-      },
     }));
 
     this.setFrameworkManager = jest.fn((frameworkManager: any) => {
-      // Accept framework manager without triggering MethodologyTracker creation
+      // Accept framework manager
       if (this.logger) {
         this.logger.debug('MockPromptGuidanceService framework manager set');
       }

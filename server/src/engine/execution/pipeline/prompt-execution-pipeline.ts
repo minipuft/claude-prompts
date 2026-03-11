@@ -28,6 +28,7 @@ export class PromptExecutionPipeline {
     private readonly requestStage: PipelineStage,
     private readonly dependencyStage: PipelineStage,
     private readonly lifecycleStage: PipelineStage,
+    private readonly identityResolutionStage: PipelineStage,
     private readonly parsingStage: PipelineStage,
     private readonly inlineGateStage: PipelineStage,
     private readonly operatorValidationStage: PipelineStage,
@@ -43,8 +44,8 @@ export class PromptExecutionPipeline {
     private readonly responseCaptureStage: PipelineStage,
     private readonly shellVerificationStage: PipelineStage | null, // 08b - Shell verification (Ralph Wiggum)
     private readonly executionStage: PipelineStage,
+    private readonly phaseGuardVerificationStage: PipelineStage | null, // 09b - Phase guard verification
     private readonly gateReviewStage: PipelineStage,
-    private readonly callToActionStage: PipelineStage,
     private readonly formattingStage: PipelineStage,
     private readonly postFormattingStage: PipelineStage,
     logger: Logger,
@@ -203,6 +204,7 @@ export class PromptExecutionPipeline {
       this.requestStage,
       this.dependencyStage,
       this.lifecycleStage,
+      this.identityResolutionStage,
       this.parsingStage,
       this.inlineGateStage,
       this.operatorValidationStage,
@@ -222,8 +224,9 @@ export class PromptExecutionPipeline {
       // Enables Ralph Wiggum loops where shell commands validate Claude's work
       ...(this.shellVerificationStage ? [this.shellVerificationStage] : []),
       this.executionStage,
+      // 09b: Phase guard verification (optional) - structural checks before gate review
+      ...(this.phaseGuardVerificationStage ? [this.phaseGuardVerificationStage] : []),
       this.gateReviewStage,
-      this.callToActionStage,
       this.formattingStage,
       this.postFormattingStage,
     ];

@@ -3,7 +3,7 @@
  * GateManagerProvider
  *
  * Bridges GateManager/registry-backed guides to the legacy gate loader contract.
- * Converts IGateGuide definitions into the LightweightGateDefinition shape used
+ * Converts GateGuide definitions into the LightweightGateDefinition shape used
  * by existing pipeline stages without duplicating loading logic.
  *
  * Temporary gates can be merged via TemporaryGateRegistry when provided.

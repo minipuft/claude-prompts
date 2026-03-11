@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { EventEmittingConfigManager } from './infra/config/index.js';
+import { ConfigLoader } from './infra/config/index.js';
 import { startApplication } from './runtime/application.js';
 import { parseServerCliArgs, type ServerCliArgs } from './runtime/cli.js';
 import { RuntimeLaunchOptions, resolveRuntimeLaunchOptions } from './runtime/options.js';
@@ -335,6 +335,7 @@ RUNTIME OPTIONS:
   --verbose               Detailed diagnostics and strategy information
   --debug-startup         Alias for --verbose with extra debugging
   --startup-test          Validate startup and exit (for testing)
+  --client=VALUE          Client preset (claude-code, codex, gemini, opencode, cursor, unknown)
   --help                  Show this help message
 
 ENVIRONMENT VARIABLES:
@@ -364,6 +365,9 @@ EXAMPLES:
 
   # Via environment variables
   MCP_WORKSPACE=/home/user/my-prompts npx claude-prompts
+
+  # Client-aware launch routing (e.g., Codex preset)
+  npx claude-prompts --client codex
 
   # Claude Desktop configuration (recommended)
   # Add to ~/.config/claude/claude_desktop_config.json:
@@ -660,7 +664,7 @@ async function main(): Promise<void> {
 
         // Use ConfigManager for consistent path resolution
         try {
-          const tempConfigManager = new EventEmittingConfigManager(configPath);
+          const tempConfigManager = new ConfigLoader(configPath);
           await tempConfigManager.loadConfig();
           const promptsConfigPath = tempConfigManager.getPromptsFilePath();
           debugLog(`DEBUG: Prompts config path: ${promptsConfigPath}`);

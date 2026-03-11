@@ -13,80 +13,16 @@
 
 import { describe, expect, test, jest, beforeEach } from '@jest/globals';
 
-import type { Logger } from '../../../../src/infra/logging/index.js';
-import type { ConfigManager } from '../../../../src/infra/config/index.js';
-import type { FrameworkManager } from '../../../../src/engine/frameworks/framework-manager.js';
-import type {
-  MethodologyCreationData,
-  MethodologyValidationResult,
-} from '../../../../src/mcp/tools/framework-manager/core/types.js';
+import type { MethodologyCreationData } from '../../../../src/mcp/tools/framework-manager/core/types.js';
 
-import { ConsolidatedFrameworkManager } from '../../../../src/mcp/tools/framework-manager/core/manager.js';
-
-// Create minimal mocks - we're testing validation logic, not integration
-const createLogger = (): Logger => ({
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  debug: jest.fn(),
-});
-
-const createMockConfigManager = (): ConfigManager =>
-  ({
-    getServerRoot: jest.fn().mockReturnValue('/test/server'),
-    getConfigPath: jest.fn().mockReturnValue('/test/server/config.json'),
-    getConfig: jest.fn().mockReturnValue({}),
-    getFrameworksConfig: jest.fn().mockReturnValue({ enabled: true }),
-    getGatesConfig: jest.fn().mockReturnValue({}),
-    getChainSessionConfig: jest.fn().mockReturnValue(null),
-    getInjectionConfig: jest.fn().mockReturnValue(null),
-    getVersioningConfig: jest.fn().mockReturnValue({
-      enabled: true,
-      max_versions: 50,
-      auto_version: true,
-    }),
-    shutdown: jest.fn(),
-  }) as unknown as ConfigManager;
-
-const createMockFrameworkManager = (): FrameworkManager =>
-  ({
-    getFramework: jest.fn(() => undefined),
-    listFrameworks: jest.fn(() => []),
-    registerFramework: jest.fn(async () => true),
-    unregister: jest.fn(() => true),
-    getMethodologyGuide: jest.fn(() => null),
-    getMethodologyRegistry: jest.fn(() => ({
-      hasGuide: jest.fn(() => false),
-    })),
-  }) as unknown as FrameworkManager;
-
-/**
- * Helper to validate methodology via the manager's private method.
- * This gives us direct access to test the validation logic in isolation.
- */
-function validateMethodology(
-  manager: ConsolidatedFrameworkManager,
-  data: MethodologyCreationData
-): MethodologyValidationResult {
-  return (
-    manager as unknown as {
-      validateMethodology: (d: MethodologyCreationData) => MethodologyValidationResult;
-    }
-  ).validateMethodology(data);
-}
+import { MethodologyValidator } from '../../../../src/mcp/tools/framework-manager/services/methodology-validator.js';
 
 describe('Methodology Validation', () => {
-  let logger: Logger;
-  let manager: ConsolidatedFrameworkManager;
+  let validationService: MethodologyValidator;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    logger = createLogger();
-    manager = new ConsolidatedFrameworkManager({
-      logger,
-      frameworkManager: createMockFrameworkManager(),
-      configManager: createMockConfigManager(),
-    });
+    validationService = new MethodologyValidator();
   });
 
   describe('Required Fields - Blocking Validation', () => {
@@ -98,7 +34,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: '', // Empty - invalid
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
@@ -115,7 +51,7 @@ describe('Methodology Validation', () => {
         phases: [], // Empty - invalid
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
@@ -133,7 +69,7 @@ describe('Methodology Validation', () => {
         methodology_gates: [], // Empty - invalid
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
@@ -160,7 +96,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
@@ -177,7 +113,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: '', // Invalid
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.score).toBe(0);
     });
 
@@ -189,7 +125,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: 'Valid guidance',
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.score).toBe(30);
     });
 
@@ -202,7 +138,7 @@ describe('Methodology Validation', () => {
         phases: [{ id: 'p1', name: 'Phase 1', description: 'Desc' }],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.score).toBe(60);
     });
 
@@ -225,7 +161,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.score).toBe(80);
     });
 
@@ -263,7 +199,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.score).toBe(100);
     });
   });
@@ -277,7 +213,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: 'Valid guidance', // 30%
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.level).toBe('incomplete');
     });
 
@@ -290,7 +226,7 @@ describe('Methodology Validation', () => {
         phases: [{ id: 'p1', name: 'Phase 1', description: 'Desc' }], // 60%
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.level).toBe('standard');
     });
 
@@ -313,7 +249,7 @@ describe('Methodology Validation', () => {
         ], // 80%
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
       expect(result.level).toBe('full');
     });
   });
@@ -327,7 +263,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: '', // Invalid - will have error
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.warnings).toHaveLength(0); // No warnings when errors present
@@ -353,7 +289,7 @@ describe('Methodology Validation', () => {
         // Missing: methodology_elements, template_suggestions, description
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(true);
       expect(result.warnings.length).toBeGreaterThan(0);
@@ -396,7 +332,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(true);
       expect(result.warnings).toHaveLength(0);
@@ -412,7 +348,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: '',
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.nextStep).toBeDefined();
       expect(result.nextStep).toContain('system_prompt_guidance');
@@ -437,7 +373,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(true);
       expect(result.nextStep).toBeDefined();
@@ -478,7 +414,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.nextStep).toBeUndefined();
     });
@@ -493,7 +429,7 @@ describe('Methodology Validation', () => {
         system_prompt_guidance: '   \n\t  ',
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain('system_prompt_guidance');
@@ -519,7 +455,7 @@ describe('Methodology Validation', () => {
         ],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       // Still valid (description is recommended, not required)
       expect(result.valid).toBe(true);
@@ -536,7 +472,7 @@ describe('Methodology Validation', () => {
         // phases undefined
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain('phases');
@@ -551,7 +487,7 @@ describe('Methodology Validation', () => {
         phases: [],
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain('phases');
@@ -569,7 +505,7 @@ describe('Methodology Validation', () => {
         methodology_gates: [], // Missing 3
       };
 
-      const result = validateMethodology(manager, data);
+      const result = validationService.validate(data);
 
       // Should only report one error for focused user guidance
       expect(result.errors).toHaveLength(1);
@@ -585,17 +521,17 @@ describe('Methodology Validation', () => {
         methodology: 'TEST',
         system_prompt_guidance: '',
       };
-      let result = validateMethodology(manager, data);
+      let result = validationService.validate(data);
       expect(result.errors[0]).toContain('system_prompt_guidance');
 
       // Step 2: Fix system_prompt_guidance, now missing phases
       data = { ...data, system_prompt_guidance: 'Valid' };
-      result = validateMethodology(manager, data);
+      result = validationService.validate(data);
       expect(result.errors[0]).toContain('phases');
 
       // Step 3: Fix phases, now missing methodology_gates
       data = { ...data, phases: [{ id: 'p1', name: 'P1', description: 'D' }] };
-      result = validateMethodology(manager, data);
+      result = validationService.validate(data);
       expect(result.errors[0]).toContain('methodology_gates');
 
       // Step 4: Fix methodology_gates, now valid
@@ -612,7 +548,7 @@ describe('Methodology Validation', () => {
           },
         ],
       };
-      result = validateMethodology(manager, data);
+      result = validationService.validate(data);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });

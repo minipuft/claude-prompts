@@ -8,7 +8,7 @@
  *
  * First match wins (prompt-local scripts take priority over workspace scripts).
  *
- * Implements `IScriptLoader` interface for use with `ScriptReferenceResolver`.
+ * Implements `ScriptLoader` interface for use with `ScriptReferenceResolver`.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
@@ -19,7 +19,7 @@ import { validateScriptToolSchema, type ScriptToolYaml } from './script-schema.j
 import { loadYamlFileSync } from '../../../shared/utils/yaml/index.js';
 import { DEFAULT_EXECUTION_CONFIG } from '../types.js';
 
-import type { IScriptLoader } from '../../../engine/execution/reference/script-reference-resolver.js';
+import type { ScriptLoader } from '../../../engine/execution/reference/script-reference-resolver.js';
 import type { LoadedScriptTool, ScriptToolLoaderConfig, JSONSchemaDefinition } from '../types.js';
 
 /**
@@ -34,7 +34,7 @@ export interface WorkspaceScriptLoaderConfig extends ScriptToolLoaderConfig {
  * Workspace Script Loader
  *
  * Unified loader for both prompt-local and workspace-level scripts.
- * Implements `IScriptLoader` for integration with `ScriptReferenceResolver`.
+ * Implements `ScriptLoader` for integration with `ScriptReferenceResolver`.
  *
  * @example
  * ```typescript
@@ -48,7 +48,7 @@ export interface WorkspaceScriptLoaderConfig extends ScriptToolLoaderConfig {
  * }
  * ```
  */
-export class WorkspaceScriptLoader implements IScriptLoader {
+export class WorkspaceScriptLoader implements ScriptLoader {
   private readonly promptLocalLoader: ScriptToolDefinitionLoader;
   private readonly workspaceScriptsPath: string;
   private readonly workspaceCache = new Map<string, LoadedScriptTool>();

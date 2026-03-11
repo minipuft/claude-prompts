@@ -141,6 +141,10 @@ export class PromptConverter {
           registerWithMcp: resolveRegisterWithMcp(promptData, this.globalRegisterWithMcp),
         };
 
+        if (promptData.subagentModel != null) {
+          convertedPrompt.subagentModel = promptData.subagentModel;
+        }
+
         if (promptFile.gateConfiguration) {
           convertedPrompt.gateConfiguration = promptFile.gateConfiguration;
         }
@@ -340,7 +344,7 @@ export class PromptConverter {
    */
   private isSpecialPlaceholder(placeholder: string): boolean {
     const specialPlaceholders = [
-      'previous_message', // Last non-template user message (ConversationManager)
+      'previous_message', // Last non-template user message (ConversationStore)
       // Chain step variables (ChainSessionManager.getChainContext)
       'chain_id',
       'input', // Current step's arguments object

@@ -69,9 +69,6 @@ server/package.json
 # Server runtime state (generated at runtime)
 server/runtime-state/
 
-# Server cache (regenerated at runtime)
-server/cache/
-
 # Server temp files
 server/temp/
 

@@ -73,9 +73,9 @@ export {
 
 // Session override management
 export {
-  SessionOverrideManager,
-  initSessionOverrideManager,
-  getSessionOverrideManager,
-  isSessionOverrideManagerInitialized,
-  resetSessionOverrideManager,
+  SessionOverrideResolver,
+  initSessionOverrideResolver,
+  getSessionOverrideResolver,
+  isSessionOverrideResolverInitialized,
+  resetSessionOverrideResolver,
 } from './session-overrides.js';

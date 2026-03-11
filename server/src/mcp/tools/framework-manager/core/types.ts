@@ -4,7 +4,7 @@
  */
 
 import type { FrameworkManager } from '../../../../engine/frameworks/framework-manager.js';
-import type { FrameworkStateManager } from '../../../../engine/frameworks/framework-state-manager.js';
+import type { FrameworkStateStore } from '../../../../engine/frameworks/framework-state-store.js';
 import type { ConfigManager, Logger } from '../../../../shared/types/index.js';
 
 /**
@@ -58,6 +58,10 @@ export interface ProcessingStep {
   methodologyBasis: string;
   order: number;
   required: boolean;
+  /** Header marker for section detection (e.g., "## Context") */
+  marker?: string;
+  /** Deterministic phase guards evaluated against the section under this marker */
+  guards?: Record<string, unknown>;
 }
 
 /**
@@ -206,7 +210,7 @@ export interface FrameworkManagerInput {
 export interface FrameworkManagerDependencies {
   logger: Logger;
   frameworkManager: FrameworkManager;
-  frameworkStateManager?: FrameworkStateManager;
+  frameworkStateStore?: FrameworkStateStore;
   configManager: ConfigManager;
   onRefresh?: () => Promise<void>;
   onToolsUpdate?: () => Promise<void>;

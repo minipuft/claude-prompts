@@ -1,13 +1,13 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 
-import { PromptExecutionService } from '../../../../src/mcp/tools/prompt-engine/core/prompt-execution-service.js';
+import { PromptExecutor } from '../../../../src/mcp/tools/prompt-engine/core/prompt-executor.js';
 
 import type { ConfigManager } from '../../../../src/infra/config/index.js';
 import type { Logger } from '../../../../src/infra/logging/index.js';
 import type { PromptAssetManager } from '../../../../src/modules/prompts/index.js';
 import type { ContentAnalyzer as SemanticAnalyzer } from '../../../../src/modules/semantic/configurable-semantic-analyzer.js';
-import type { ConversationManager } from '../../../../src/modules/text-refs/conversation.js';
-import type { TextReferenceManager } from '../../../../src/modules/text-refs/index.js';
+import type { ConversationStore } from '../../../../src/modules/text-refs/conversation.js';
+import type { TextReferenceStore } from '../../../../src/modules/text-refs/index.js';
 
 const mockLogger: Logger = {
   debug: jest.fn(),
@@ -47,7 +47,7 @@ const mockSemanticAnalyzer: SemanticAnalyzer = {
   }),
 } as any;
 
-const mockTextReferenceManager: TextReferenceManager = {
+const mockTextReferenceStore: TextReferenceStore = {
   storeChainStepResult: jest.fn(),
   getChainStepResults: jest.fn().mockReturnValue({}),
   getChainStepResult: jest.fn().mockReturnValue(null),
@@ -58,7 +58,7 @@ const mockTextReferenceManager: TextReferenceManager = {
   getStats: jest.fn().mockReturnValue({ totalChains: 0, totalSteps: 0, chainsWithSteps: [] }),
 } as any;
 
-const mockConversationManager: ConversationManager = {
+const mockConversationStore: ConversationStore = {
   addToConversationHistory: jest.fn(),
   getConversationHistory: jest.fn().mockReturnValue([]),
   getPreviousMessage: jest.fn().mockReturnValue(''),
@@ -86,7 +86,7 @@ const mockFrameworkManager = {
   listFrameworks: jest.fn().mockReturnValue([]),
 } as any;
 
-const mockFrameworkStateManager = {
+const mockFrameworkStateStore = {
   isFrameworkSystemEnabled: jest.fn().mockReturnValue(false),
   getActiveFramework: jest.fn().mockReturnValue({
     methodology: 'CAGEERF',
@@ -96,18 +96,18 @@ const mockFrameworkStateManager = {
 } as any;
 
 describe('PromptEngine Validation', () => {
-  let engine: PromptExecutionService;
+  let engine: PromptExecutor;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    engine = new PromptExecutionService(
+    engine = new PromptExecutor(
       mockLogger,
       mockMcpServer,
       mockPromptAssetManager,
       mockConfigManager,
       mockSemanticAnalyzer,
-      mockConversationManager,
-      mockTextReferenceManager,
+      mockConversationStore,
+      mockTextReferenceStore,
       undefined // mcpToolsManager
     );
   });

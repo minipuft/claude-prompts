@@ -13,8 +13,14 @@
 
 import { StepState } from './chain-execution.js';
 
-import type { ChainState, PendingGateReview, StepMetadata } from './chain-execution.js';
+import type {
+  ChainState,
+  PendingGateReview,
+  PendingShellVerificationSnapshot,
+  StepMetadata,
+} from './chain-execution.js';
 import type { ExecutionModifiers, ExecutionPlan } from './core-config.js';
+import type { StateStoreOptions } from './persistence.js';
 
 // Re-export StepState for consumers that previously imported it via modules/chains/types.ts
 export { StepState };
@@ -61,12 +67,16 @@ export interface ChainSession {
   startTime: number;
   lastActivity: number;
   originalArgs: Record<string, unknown>;
+  /** Continuity scope ID for tenant isolation. Sessions with matching scope are visible to each other. */
+  continuityScopeId?: string;
   /**
    * Pending gate review awaiting user verdict.
    * @remarks Infrastructure for pause/resume validation. APIs implemented but not yet auto-triggered.
    * Planned for future semantic layer gate enforcement.
    */
   pendingGateReview?: PendingGateReview;
+  /** Pending shell verification state for bounce-back resume across MCP requests. */
+  pendingShellVerification?: PendingShellVerificationSnapshot;
   blueprint?: SessionBlueprint;
   lifecycle?: ChainSessionLifecycle;
 }
@@ -103,7 +113,7 @@ export interface PersistedChainRunRegistry {
   runChainToBase?: Record<string, string>;
 }
 
-export interface ChainSessionLookupOptions {
+export interface ChainSessionLookupOptions extends StateStoreOptions {
   includeDormant?: boolean;
 }
 
@@ -113,9 +123,9 @@ export interface ChainSessionService {
     chainId: string,
     totalSteps: number,
     originalArgs?: Record<string, unknown>,
-    options?: { blueprint?: SessionBlueprint }
+    options?: StateStoreOptions & { blueprint?: SessionBlueprint }
   ): Promise<ChainSession>;
-  getSession(sessionId: string): ChainSession | undefined;
+  getSession(sessionId: string, scope?: StateStoreOptions): ChainSession | undefined;
   hasActiveSession(sessionId: string): boolean;
   hasActiveSessionForChain(chainId: string): boolean;
   getActiveSessionForChain(chainId: string): ChainSession | undefined;
@@ -125,14 +135,20 @@ export interface ChainSessionService {
   ): ChainSession | undefined;
   getLatestSessionForBaseChain(chainId: string): ChainSession | undefined;
   getRunHistory(baseChainId: string): string[];
-  getChainContext(sessionId: string): Record<string, unknown>;
+  getChainContext(sessionId: string, scope?: StateStoreOptions): Record<string, unknown>;
   getOriginalArgs(sessionId: string): Record<string, unknown>;
-  getSessionBlueprint(sessionId: string): SessionBlueprint | undefined;
-  updateSessionBlueprint(sessionId: string, blueprint: SessionBlueprint): void;
-  getInlineGateIds(sessionId: string): string[] | undefined;
+  getSessionBlueprint(sessionId: string, scope?: StateStoreOptions): SessionBlueprint | undefined;
+  updateSessionBlueprint(sessionId: string, blueprint: SessionBlueprint): Promise<void>;
+  getInlineGateIds(sessionId: string, scope?: StateStoreOptions): string[] | undefined;
   setPendingGateReview(sessionId: string, review: PendingGateReview): Promise<void>;
   getPendingGateReview(sessionId: string): PendingGateReview | undefined;
   clearPendingGateReview(sessionId: string): Promise<void>;
+  setPendingShellVerification(
+    sessionId: string,
+    state: PendingShellVerificationSnapshot
+  ): Promise<void>;
+  getPendingShellVerification(sessionId: string): PendingShellVerificationSnapshot | undefined;
+  clearPendingShellVerification(sessionId: string): Promise<void>;
   isRetryLimitExceeded(sessionId: string): boolean;
   resetRetryCount(sessionId: string): Promise<void>;
   recordGateReviewOutcome(
@@ -140,8 +156,8 @@ export interface ChainSessionService {
     outcome: GateReviewOutcomeUpdate
   ): Promise<'cleared' | 'pending'>;
   clearSession(sessionId: string): Promise<boolean>;
-  clearSessionsForChain(chainId: string): Promise<void>;
-  listActiveSessions(limit?: number): ChainSessionSummary[];
+  clearSessionsForChain(chainId: string, scope?: StateStoreOptions): Promise<void>;
+  listActiveSessions(limit?: number, scope?: StateStoreOptions): ChainSessionSummary[];
   updateSessionState(
     sessionId: string,
     stepNumber: number,
@@ -169,11 +185,21 @@ export interface ChainSessionService {
   ): Promise<boolean>;
   /**
    * Advance to the next step after gate validation passes.
+   * Returns the new step number on success, or false if session not found.
+   *
+   * Callers MUST use the returned step number to sync pipeline context:
+   *   const newStep = await mgr.advanceStep(id, step);
+   *   if (newStep !== false) sessionContext.currentStep = newStep;
+   *
    * Should be called ONLY when:
    * - Gate review passes (PASS verdict)
    * - No gates are configured for this step
    * - Enforcement mode is advisory/informational (non-blocking)
    */
-  advanceStep(sessionId: string, stepNumber: number): Promise<boolean>;
+  advanceStep(sessionId: string, stepNumber: number): Promise<number | false>;
+  /** Register a callback invoked when any session is cleared (explicit or stale cleanup). */
+  onSessionCleared(
+    callback: (sessionId: string, session: ChainSession) => void | Promise<void>
+  ): void;
   cleanup(): Promise<void>;
 }

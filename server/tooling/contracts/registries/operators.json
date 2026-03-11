@@ -20,6 +20,22 @@
       "detectInHooks": true
     },
     {
+      "id": "delegation",
+      "symbol": "==>",
+      "description": "Delegated chain step (sub-agent execution)",
+      "purpose": "Execute step via Task tool sub-agent for context isolation",
+      "pattern": {
+        "typescript": "==>",
+        "flags": "g"
+      },
+      "examples": [
+        ">>step1 ==> >>step2",
+        ">>research --> >>summarize ==> >>review"
+      ],
+      "status": "implemented",
+      "detectInHooks": true
+    },
+    {
       "id": "gate",
       "symbol": "::",
       "description": "Quality gate for validation",

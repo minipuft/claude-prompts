@@ -1,4 +1,4 @@
-// @lifecycle canonical - Shared types for BaseResourceManager and subclasses
+// @lifecycle canonical - Shared types for BaseResourceHandler and subclasses
 /**
  * Resource Manager Types
  *
@@ -12,7 +12,7 @@ import type { RegistryEntry, BaseRegistryStats } from '../../utils/resource-load
 export type { RegistryEntry, BaseRegistryStats };
 
 /**
- * Extended statistics for resource managers
+ * Extended statistics for resource handlers
  */
 export interface ResourceManagerStats extends BaseRegistryStats {
   /** Cache hit count */
@@ -26,7 +26,7 @@ export interface ResourceManagerStats extends BaseRegistryStats {
 }
 
 /**
- * Status object returned by manager.getStatus()
+ * Status object returned by handler.getStatus()
  */
 export interface ResourceManagerStatus {
   /** Whether the manager has been initialized */
@@ -38,9 +38,9 @@ export interface ResourceManagerStatus {
 }
 
 /**
- * Base configuration shared by all resource managers
+ * Base configuration shared by all resource handlers
  */
-export interface BaseResourceManagerConfig {
+export interface BaseResourceHandlerConfig {
   /** Enable debug logging */
   debug?: boolean;
 }

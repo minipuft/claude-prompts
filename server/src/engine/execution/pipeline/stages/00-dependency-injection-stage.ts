@@ -5,10 +5,11 @@ import { BasePipelineStage } from '../stage.js';
 import type { Logger } from '../../../../infra/logging/index.js';
 import type {
   ChainSessionService,
-  IHookRegistry,
-  IMcpNotificationEmitter,
+  HookRegistryPort,
+  McpNotificationEmitterPort,
   MetricsCollector,
 } from '../../../../shared/types/index.js';
+import type { GateDefinitionProvider } from '../../../gates/core/gate-loader.js';
 import type { TemporaryGateRegistry } from '../../../gates/core/temporary-gate-registry.js';
 import type { ExecutionContext } from '../../context/index.js';
 
@@ -21,7 +22,7 @@ type FrameworkEnabledProvider = () => boolean;
  * Records execution dependencies (framework state, gate registry, analytics,
  * hook registry, notification emitter) directly on the ExecutionContext so
  * downstream stages can access a single source of truth without recreating
- * wiring from PromptExecutionService.
+ * wiring from PromptExecutor.
  */
 export class DependencyInjectionStage extends BasePipelineStage {
   readonly name = 'DependencyInjection';
@@ -33,8 +34,9 @@ export class DependencyInjectionStage extends BasePipelineStage {
     private readonly metricsProvider: MetricsProvider | null,
     private readonly pipelineVersion: string,
     logger: Logger,
-    private readonly hookRegistry?: IHookRegistry,
-    private readonly notificationEmitter?: IMcpNotificationEmitter
+    private readonly hookRegistry?: HookRegistryPort,
+    private readonly notificationEmitter?: McpNotificationEmitterPort,
+    private readonly gateLoader?: GateDefinitionProvider
   ) {
     super(logger);
   }
@@ -46,7 +48,11 @@ export class DependencyInjectionStage extends BasePipelineStage {
     const analyticsService = this.metricsProvider?.();
 
     // Initialize gate enforcement authority for downstream stages
-    context.gateEnforcement = new GateEnforcementAuthority(this.chainSessionManager, this.logger);
+    context.gateEnforcement = new GateEnforcementAuthority(
+      this.chainSessionManager,
+      this.logger,
+      this.gateLoader
+    );
 
     context.metadata['pipelineDependencies'] = {
       frameworkEnabled,

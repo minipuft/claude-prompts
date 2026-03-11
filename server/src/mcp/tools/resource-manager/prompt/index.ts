@@ -1,6 +1,6 @@
 // @lifecycle canonical - Prompt resource services for resource_manager.
 
-export { PromptResourceService, createPromptResourceService } from './prompt-resource-service.js';
+export { PromptResourceHandler, createPromptResourceHandler } from './prompt-resource-handler.js';
 export type {
   PromptClassification,
   AnalysisResult,

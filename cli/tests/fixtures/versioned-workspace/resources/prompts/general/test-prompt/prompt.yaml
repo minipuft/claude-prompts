@@ -1,0 +1,6 @@
+id: test-prompt
+name: Test Prompt
+category: general
+description: >-
+  A test prompt for CLI integration tests.
+userMessageTemplateFile: user-message.md

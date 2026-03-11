@@ -8,6 +8,11 @@ processingSteps:
     methodologyBasis: SCAMPER Substitute technique
     order: 1
     required: true
+    section_header: '## Substitute'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: combination_analysis
     name: Combination Analysis
@@ -15,6 +20,11 @@ processingSteps:
     methodologyBasis: SCAMPER Combine technique
     order: 2
     required: true
+    section_header: '## Combine'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: adaptation_research
     name: Adaptation Research
@@ -22,6 +32,11 @@ processingSteps:
     methodologyBasis: SCAMPER Adapt technique
     order: 3
     required: true
+    section_header: '## Adapt'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: modification_planning
     name: Modification Planning
@@ -29,6 +44,11 @@ processingSteps:
     methodologyBasis: SCAMPER Modify technique
     order: 4
     required: true
+    section_header: '## Modify'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: alternative_use_exploration
     name: Alternative Use Exploration
@@ -36,6 +56,11 @@ processingSteps:
     methodologyBasis: SCAMPER Put to other uses technique
     order: 5
     required: true
+    section_header: '## Put to Other Uses'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: elimination_simplification
     name: Elimination & Simplification
@@ -43,6 +68,11 @@ processingSteps:
     methodologyBasis: SCAMPER Eliminate technique
     order: 6
     required: true
+    section_header: '## Eliminate'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
   - id: reversal_rearrangement
     name: Reversal & Rearrangement
@@ -50,6 +80,11 @@ processingSteps:
     methodologyBasis: SCAMPER Reverse technique
     order: 7
     required: true
+    section_header: '## Reverse'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 
 executionSteps:
   - id: substitute_analysis

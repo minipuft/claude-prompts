@@ -2,7 +2,7 @@
 import { CategoryExtractor, type CategoryExtractionResult } from './category-extractor.js';
 
 import type { Logger } from '../../../infra/logging/index.js';
-import type { ContentAnalysisResult, IContentAnalyzer } from '../../../shared/types/index.js';
+import type { ContentAnalysisResult, ContentAnalyzerPort } from '../../../shared/types/index.js';
 import type { FrameworkManager } from '../../frameworks/framework-manager.js';
 import type { GateDefinitionProvider } from '../../gates/core/gate-loader.js';
 import type { GateManager } from '../../gates/gate-manager.js';
@@ -40,7 +40,7 @@ export interface ChainExecutionPlanResult {
   stepPlans: ExecutionPlan[];
 }
 
-type SemanticAnalyzerLike = IContentAnalyzer;
+type SemanticAnalyzerLike = ContentAnalyzerPort;
 
 type StrategyResolution = {
   strategy: ExecutionStrategyType;
@@ -48,7 +48,7 @@ type StrategyResolution = {
 
 /**
  * Determines execution strategy, complexity, and gate requirements for a command.
- * Extracted from PromptExecutionService to make planning reusable across the pipeline.
+ * Extracted from PromptExecutor to make planning reusable across the pipeline.
  */
 export class ExecutionPlanner {
   private frameworkManager: FrameworkManager | undefined;
@@ -181,7 +181,12 @@ export class ExecutionPlanner {
       strategy: strategyInfo.strategy,
       gates: Array.from(adjusted.gates),
       requiresFramework,
-      requiresSession: this.requiresSession(parsedCommand, convertedPrompt, strategyInfo.strategy),
+      requiresSession: this.requiresSession(
+        parsedCommand,
+        convertedPrompt,
+        strategyInfo.strategy,
+        adjusted.gates
+      ),
     };
     if (categoryInfo.category !== undefined) {
       plan.category = categoryInfo.category;
@@ -591,13 +596,20 @@ export class ExecutionPlanner {
   private requiresSession(
     parsedCommand: ParsedCommand | undefined,
     prompt: ConvertedPrompt,
-    strategy: ExecutionStrategyType
+    strategy: ExecutionStrategyType,
+    gates: Set<string>
   ): boolean {
     if (strategy === 'chain') {
       return true;
     }
 
     if (prompt.chainSteps?.length) {
+      return true;
+    }
+
+    // Explicit gates (from MCP gates parameter or prompt config) require a session
+    // for gate verdict tracking and review submission
+    if (gates.size > 0) {
       return true;
     }
 

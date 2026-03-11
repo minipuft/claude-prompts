@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
-import { createPromptResourceService } from '../../../../../src/mcp/tools/resource-manager/prompt/index.js';
+import { createPromptResourceHandler } from '../../../../../src/mcp/tools/resource-manager/prompt/index.js';
 
 import type { Logger } from '../../../../../src/infra/logging/index.js';
 
@@ -33,7 +33,7 @@ function createTestService() {
     isLLMEnabled: jest.fn().mockReturnValue(false),
   } as any;
 
-  const service = createPromptResourceService(
+  const service = createPromptResourceHandler(
     logger as any,
     configManager,
     semanticAnalyzer,

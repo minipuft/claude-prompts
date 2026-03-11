@@ -8,6 +8,7 @@ export { BasePipelineStage, type PipelineStage } from './stage.js';
 export { RequestNormalizationStage } from './stages/00-request-normalization-stage.js';
 export { DependencyInjectionStage } from './stages/00-dependency-injection-stage.js';
 export { ExecutionLifecycleStage } from './stages/00-execution-lifecycle-stage.js';
+export { IdentityResolutionStage } from './stages/00-identity-resolution-stage.js';
 
 // Stage 01-04: Parsing and Planning
 export { CommandParsingStage } from './stages/01-parsing-stage.js';
@@ -29,7 +30,10 @@ export { InjectionControlStage } from './stages/07b-injection-control-stage.js';
 export { StepResponseCaptureStage } from './stages/08-response-capture-stage.js';
 export { createShellVerificationStage } from './stages/08b-shell-verification-stage.js';
 export { StepExecutionStage } from './stages/09-execution-stage.js';
+export {
+  createPhaseGuardVerificationStage,
+  PHASE_GUARD_GATE_ID,
+} from './stages/09b-phase-guard-verification-stage.js';
 export { GateReviewStage } from './stages/10-gate-review-stage.js';
 export { ResponseFormattingStage } from './stages/10-formatting-stage.js';
-export { CallToActionStage } from './stages/11-call-to-action-stage.js';
 export { PostFormattingCleanupStage } from './stages/12-post-formatting-cleanup-stage.js';

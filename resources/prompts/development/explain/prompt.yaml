@@ -1,0 +1,10 @@
+id: explain
+name: explain
+category: development
+description: >-
+  Clear explanation of how code works.
+userMessageTemplateFile: user-message.md
+arguments:
+  - name: code
+    type: string
+    description: Code to explain.

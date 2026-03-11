@@ -19,7 +19,6 @@ import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { CategoryManager, createCategoryManager } from './category-manager.js';
-import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 import {
   type LoadedPromptFile,
   normalizeInlineGateDefinitions,
@@ -29,6 +28,7 @@ import {
   loadAllYamlPrompts as loadAllYamlPromptsFn,
 } from './yaml-prompt-loader.js';
 import { type Logger } from '../../shared/types/index.js';
+import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 import { loadYamlFileSync } from '../../shared/utils/yaml/index.js';
 
 import type { Category, CategoryPromptsResult, PromptData, PromptsConfigFile } from './types.js';

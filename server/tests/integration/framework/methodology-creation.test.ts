@@ -2,8 +2,8 @@
  * Methodology Creation Integration Test
  *
  * Tests the complete methodology creation workflow with real modules:
- * - ConsolidatedFrameworkManager (real validation logic)
- * - MethodologyFileService (mocked filesystem)
+ * - FrameworkToolHandler (real validation logic)
+ * - MethodologyFileWriter (mocked filesystem)
  * - FrameworkManager (real registration)
  *
  * Mocks:
@@ -28,7 +28,7 @@ import type {
 } from '../../../src/mcp/tools/framework-manager/core/types.js';
 
 // Import the real manager for integration testing
-import { ConsolidatedFrameworkManager } from '../../../src/mcp/tools/framework-manager/core/manager.js';
+import { FrameworkToolHandler } from '../../../src/mcp/tools/framework-manager/core/manager.js';
 
 const createLogger = (): Logger => ({
   info: jest.fn(),
@@ -165,7 +165,7 @@ describe('Methodology Creation Integration', () => {
   let configManager: ConfigManager;
   let frameworkManager: FrameworkManager;
   let mockFileService: ReturnType<typeof createMockFileService>;
-  let manager: ConsolidatedFrameworkManager;
+  let manager: FrameworkToolHandler;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -175,7 +175,7 @@ describe('Methodology Creation Integration', () => {
     mockFileService = createMockFileService();
 
     // Create manager with mocked file service
-    manager = new ConsolidatedFrameworkManager({
+    manager = new FrameworkToolHandler({
       logger,
       frameworkManager,
       configManager,

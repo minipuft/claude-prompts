@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+
+import { execSync } from 'node:child_process';
+
+const PATTERN = [
+  'verify-active\\.json',
+  '\\.history\\.json',
+  'runtime-state/sessions/.+\\.json',
+  'ralph-sessions/.+/session\\.json',
+  'session_state_file',
+  'legacy_state_file',
+].join('|');
+const TARGETS = ['src', '../cli/src', '../hooks', '../docs/guides', '../docs/reference'];
+
+function runCheck() {
+  try {
+    const output = execSync(`rg -n "${PATTERN}" ${TARGETS.join(' ')}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (output.trim() !== '') {
+      console.error('Legacy sidecar references found:');
+      console.error(output.trim());
+      process.exit(1);
+    }
+    console.log('No legacy sidecar references found.');
+  } catch (error) {
+    if (error.status === 1) {
+      // rg exit 1 means no matches
+      console.log('No legacy sidecar references found.');
+      process.exit(0);
+    }
+    const stderr = typeof error.stderr === 'string' ? error.stderr.trim() : '';
+    console.error(stderr !== '' ? stderr : String(error));
+    process.exit(1);
+  }
+}
+
+runCheck();

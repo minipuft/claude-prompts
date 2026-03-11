@@ -28,7 +28,7 @@ export type FileChangeOperation = 'added' | 'modified' | 'removed';
 
 /**
  * Hot reload event for gates
- * Compatible with HotReloadManager's event structure
+ * Compatible with HotReloadObserver's event structure
  */
 export interface GateHotReloadEvent {
   type: 'gate_changed';
@@ -70,7 +70,7 @@ export interface GateHotReloadStats {
 export interface GateHotReloadRegistration {
   /** Directories that should be watched for gate changes */
   directories: string[];
-  /** Bound handler for use with HotReloadManager */
+  /** Bound handler for use with HotReloadObserver */
   handler: (event: GateHotReloadEvent) => Promise<void>;
   /** Coordinator instance handling cache clear + re-register */
   coordinator: GateHotReloadCoordinator;
@@ -87,7 +87,7 @@ export interface GateHotReloadRegistration {
  * const coordinator = new GateHotReloadCoordinator(logger, registry, loader);
  *
  * // Register with hot reload manager
- * hotReloadManager.setGateReloadCallback(
+ * hotReloadObserver.setGateReloadCallback(
  *   (event) => coordinator.handleGateChange(event)
  * );
  * ```
@@ -366,7 +366,7 @@ export class GateHotReloadCoordinator {
 
 /**
  * Create a registration bundle for gate hot reload.
- * Keeps HotReloadManager generic by returning only the callback + watch paths.
+ * Keeps HotReloadObserver generic by returning only the callback + watch paths.
  */
 export function createGateHotReloadRegistration(
   logger: Logger,

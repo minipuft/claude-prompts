@@ -8,7 +8,7 @@
 
 // Core interface and types
 export type {
-  IGateGuide,
+  GateGuide,
   GateActivationRules,
   GateActivationContext,
   GateDefinitionYaml,

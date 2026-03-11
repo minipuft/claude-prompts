@@ -32,36 +32,66 @@ processingSteps:
     methodologyBasis: LIQUESCENT Dissolve phase
     order: 1
     required: true
+    section_header: '## Dissolve'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: flow_processing
     name: Flow Processing
     description: Follow loose conceptual connections without forcing structure
     methodologyBasis: LIQUESCENT Flow phase
     order: 2
     required: true
+    section_header: '## Flow'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: crystallize_processing
     name: Crystallize Processing
     description: Capture and name emerging patterns
     methodologyBasis: LIQUESCENT Crystallize phase
     order: 3
     required: true
+    section_header: '## Crystallize'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: scout_processing
     name: Scout Processing
     description: Research modern tools and boundary-pushing patterns
     methodologyBasis: LIQUESCENT Scout phase
     order: 4
     required: true
+    section_header: '## Scout'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: iterate_processing
     name: Iterate Processing
     description: Refine through rapid cycles while preserving energy
     methodologyBasis: LIQUESCENT Iterate phase
     order: 5
     required: true
+    section_header: '## Iterate'
+    guards:
+      required: true
+      min_length: 60
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: manifest_processing
     name: Manifest Processing
     description: Implement with boundary-pushing techniques
     methodologyBasis: LIQUESCENT Manifest phase
     order: 6
     required: true
+    section_header: '## Manifest'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 executionSteps:
   - id: dissolve_execution
     name: Dissolve Execution

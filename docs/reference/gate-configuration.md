@@ -1,6 +1,5 @@
 # Gate Configuration Reference
 
-> Status: canonical
 
 Full schema for defining reusable quality gates in `resources/gates/{id}/gate.yaml`.
 

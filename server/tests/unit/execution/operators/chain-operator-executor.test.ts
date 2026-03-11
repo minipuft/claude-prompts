@@ -257,7 +257,7 @@ describe('ChainOperatorExecutor', () => {
         },
       ],
       createdAt: Date.now(),
-      attemptCount: 1,
+      attemptCount: 0,
       maxAttempts: 3,
     };
 
@@ -289,8 +289,79 @@ describe('ChainOperatorExecutor', () => {
         promptId: 'analyze',
       })
     );
-    // Top-of-template gate banner removed in favor of concise review header
-    expect(result.content).toContain('[Gate Review] Quality Gate Self-Review');
+    // Original task template used as review body (gate guidance comes from GateGuidanceRenderer)
+    expect(result.content).toContain('Analyze this code: alpha');
+  });
+
+  test('renders original intent section when chainContext has original_args', async () => {
+    const result = await executor.renderStep({
+      executionType: 'normal',
+      stepPrompts: [
+        { stepNumber: 1, promptId: 'analyze', args: { code: 'intent test' } },
+        { stepNumber: 2, promptId: 'summarize', args: {} },
+      ],
+      currentStepIndex: 0,
+      chainContext: {
+        original_args: { command: '>>analyze', code: 'intent test' },
+      },
+    });
+
+    expect(result.content).toContain('### Original Request Intent');
+    expect(result.content).toContain('Your work must satisfy this intent');
+    expect(result.content).toContain('- **command**: >>analyze');
+    expect(result.content).toContain('- **code**: intent test');
+  });
+
+  test('omits original intent section when original_args is empty', async () => {
+    const result = await executor.renderStep({
+      executionType: 'normal',
+      stepPrompts: [{ stepNumber: 1, promptId: 'analyze', args: { code: 'no intent' } }],
+      currentStepIndex: 0,
+      chainContext: {
+        original_args: {},
+      },
+    });
+
+    expect(result.content).not.toContain('### Original Request Intent');
+  });
+
+  test('renders response format section with gate coverage when gates enabled', async () => {
+    const gateRenderer = {
+      renderGuidance: jest.fn().mockResolvedValue('## Gate Guidance'),
+    };
+    const gatedExecutor = new ChainOperatorExecutor(mockLogger, mockConvertedPrompts, gateRenderer);
+
+    const result = await gatedExecutor.renderStep({
+      executionType: 'normal',
+      stepPrompts: [
+        {
+          stepNumber: 1,
+          promptId: 'analyze',
+          args: { code: 'format test' },
+          inlineGateIds: ['code-quality'],
+        },
+      ],
+      currentStepIndex: 0,
+      chainContext: {
+        chain_metadata: { inlineGateIds: ['code-quality'] },
+      },
+    });
+
+    expect(result.content).toContain('### Required Response Format');
+    expect(result.content).toContain('**Summary**: What was implemented');
+    expect(result.content).toContain('**Gate Coverage**:');
+    expect(result.content).toContain('[1] PASS|FAIL: rationale');
+  });
+
+  test('renders GATE_REVIEW line in response format on final step', async () => {
+    const result = await executor.renderStep({
+      executionType: 'normal',
+      stepPrompts: [{ stepNumber: 1, promptId: 'analyze', args: { code: 'final step' } }],
+      currentStepIndex: 0,
+    });
+
+    expect(result.content).toContain('### Required Response Format');
+    expect(result.content).toContain('**GATE_REVIEW: PASS|FAIL - overall assessment**');
   });
 
   test('prefers current_step metadata when selecting review step context', async () => {

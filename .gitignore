@@ -50,8 +50,7 @@ Thumbs.db
 *:Zone.Identifier
 *.Zone.Identifier
 
-# Runtime and Cache Files
-server/cache/
+# Runtime Files
 server/.npm-cache/
 .npm-cache/
 tmp/
@@ -69,9 +68,13 @@ pids/
 
 # MCP Server Specific
 admin-ui/
+server/cache/
 # Track graph sources (.dot) but ignore generated assets
 server/graphs/*
 !server/graphs/*.dot
+
+# Version history sidecar files (now stored in SQLite)
+**/.history.json
 
 # Runtime State Files
 # server/config/framework-state.json
@@ -98,6 +101,7 @@ CLAUDE.md
 .claude/settings.json
 server/.claude/
 server/.opencode/
+.claude/
 
 .agent/
 # Temporary test files
@@ -134,6 +138,9 @@ scripts/dev-link.sh
 # IDE workspace files
 plans/claude-prompts.code-workspace
 
+# Act event payloads (local CD testing)
+.github/events/
+
 # Claude Desktop Extension artifacts
 *.mcpb
 .mcpb-staging/
@@ -146,4 +153,4 @@ assets/moodboard.png
 
 # CLI config files (user-specific)
 opencode.json
-
+state.db

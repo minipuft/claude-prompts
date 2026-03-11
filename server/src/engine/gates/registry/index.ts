@@ -9,7 +9,7 @@
 // Gate Registry - Lifecycle management
 export { GateRegistry, createGateRegistry, type GateRegistryConfig } from './gate-registry.js';
 
-// Generic Gate Guide - Data-driven IGateGuide implementation
+// Generic Gate Guide - Data-driven GateGuide implementation
 export { GenericGateGuide, createGenericGateGuide } from './generic-gate-guide.js';
 
 // GateManager adapter for legacy loader contract

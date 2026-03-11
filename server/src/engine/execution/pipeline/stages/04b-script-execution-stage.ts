@@ -26,9 +26,9 @@ import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
 import type {
-  IExecutionModeService,
-  IScriptExecutor,
-  IToolDetectionService,
+  ExecutionModeServicePort,
+  ScriptExecutorPort,
+  ToolDetectionServicePort,
   LoadedScriptTool,
   ScriptExecutionRequest,
   ScriptExecutionResult,
@@ -51,9 +51,9 @@ export class ScriptExecutionStage extends BasePipelineStage {
   readonly name = 'ScriptExecution';
 
   constructor(
-    private readonly scriptExecutor: IScriptExecutor,
-    private readonly toolDetectionService: IToolDetectionService,
-    private readonly executionModeService: IExecutionModeService,
+    private readonly scriptExecutor: ScriptExecutorPort,
+    private readonly toolDetectionService: ToolDetectionServicePort,
+    private readonly executionModeService: ExecutionModeServicePort,
     logger: Logger
   ) {
     super(logger);
@@ -324,9 +324,9 @@ export class ScriptExecutionStage extends BasePipelineStage {
  * Factory function for creating the stage with dependencies.
  */
 export function createScriptExecutionStage(
-  scriptExecutor: IScriptExecutor,
-  toolDetectionService: IToolDetectionService,
-  executionModeService: IExecutionModeService,
+  scriptExecutor: ScriptExecutorPort,
+  toolDetectionService: ToolDetectionServicePort,
+  executionModeService: ExecutionModeServicePort,
   logger: Logger
 ): ScriptExecutionStage {
   return new ScriptExecutionStage(

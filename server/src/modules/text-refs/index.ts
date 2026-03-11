@@ -14,7 +14,7 @@ type StoredStepResult = {
   metadata?: Record<string, any>;
 };
 
-export class TextReferenceManager {
+export class TextReferenceStore {
   private readonly logger: Logger;
   private readonly chainStepResults: Record<string, Record<number, StoredStepResult>> = {};
   // Named outputs from outputMapping (e.g., { "chainId": { "findings": "content" } })
@@ -51,7 +51,7 @@ export class TextReferenceManager {
     this.chainStepResults[chainId][stepNumber] = stepResult;
 
     this.logger.debug(
-      `[TextReferenceManager] Stored step ${stepNumber} result for chain ${chainId} (${content.length} chars)`
+      `[TextReferenceStore] Stored step ${stepNumber} result for chain ${chainId} (${content.length} chars)`
     );
 
     // Store under named outputs if outputMapping is provided
@@ -63,7 +63,7 @@ export class TextReferenceManager {
       for (const outputName of Object.keys(outputMapping)) {
         this.namedOutputs[chainId][outputName] = content;
         this.logger.debug(
-          `[TextReferenceManager] Stored named output '${outputName}' for chain ${chainId}`
+          `[TextReferenceStore] Stored named output '${outputName}' for chain ${chainId}`
         );
       }
     }
@@ -129,7 +129,7 @@ export class TextReferenceManager {
   clearChainStepResults(chainId: string): void {
     delete this.chainStepResults[chainId];
     delete this.namedOutputs[chainId];
-    this.logger.debug(`[TextReferenceManager] Cleared all step results for chain ${chainId}`);
+    this.logger.debug(`[TextReferenceStore] Cleared all step results for chain ${chainId}`);
   }
 
   /**
@@ -160,7 +160,7 @@ export class TextReferenceManager {
   /**
    * Canonical stats accessor used by diagnostics.
    */
-  getStats(): ReturnType<TextReferenceManager['getChainStats']> {
+  getStats(): ReturnType<TextReferenceStore['getChainStats']> {
     return this.getChainStats();
   }
 }

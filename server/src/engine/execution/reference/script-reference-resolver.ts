@@ -33,7 +33,11 @@ import type {
   ScriptResolutionOptions,
 } from './script-reference-types.js';
 import type { Logger } from '../../../infra/logging/index.js';
-import type { LoadedScriptTool, ScriptExecutionResult } from '../../../shared/types/index.js';
+import type {
+  ScriptExecutorPort,
+  LoadedScriptTool,
+  ScriptExecutionResult,
+} from '../../../shared/types/index.js';
 
 /**
  * Regex pattern to match {{script:id}}, {{script:id.field}}, {{script:id args}} references.
@@ -50,7 +54,7 @@ const SCRIPT_REFERENCE_PATTERN =
  * Interface for script loader (injected dependency).
  * Abstracts the script discovery mechanism.
  */
-export interface IScriptLoader {
+export interface ScriptLoader {
   /**
    * Check if a script exists and is loadable.
    */
@@ -68,21 +72,6 @@ export interface IScriptLoader {
 }
 
 /**
- * Interface for script executor (injected dependency).
- */
-export interface IScriptExecutorService {
-  execute(
-    request: {
-      toolId: string;
-      promptId: string;
-      inputs: Record<string, unknown>;
-      timeout?: number;
-    },
-    tool: LoadedScriptTool
-  ): Promise<ScriptExecutionResult>;
-}
-
-/**
  * Resolves {{script:id}} references in templates.
  */
 export class ScriptReferenceResolver {
@@ -90,8 +79,8 @@ export class ScriptReferenceResolver {
 
   constructor(
     private readonly logger: Logger,
-    private readonly scriptLoader: IScriptLoader,
-    private readonly scriptExecutor: IScriptExecutorService,
+    private readonly scriptLoader: ScriptLoader,
+    private readonly scriptExecutor: ScriptExecutorPort,
     options?: ScriptResolutionOptions
   ) {
     this.options = { ...DEFAULT_SCRIPT_RESOLUTION_OPTIONS, ...options };

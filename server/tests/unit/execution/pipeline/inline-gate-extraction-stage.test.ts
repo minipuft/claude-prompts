@@ -2,6 +2,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import { ExecutionContext } from '../../../../src/engine/execution/context/execution-context.js';
 import { InlineGateExtractionStage } from '../../../../src/engine/execution/pipeline/stages/02-inline-gate-stage.js';
+import { InlineGateProcessor } from '../../../../src/engine/gates/services/inline-gate-processor.js';
 
 import type { TemporaryGateRegistry } from '../../../../src/engine/gates/core/temporary-gate-registry.js';
 import type { GateReferenceResolver } from '../../../../src/engine/gates/services/gate-reference-resolver.js';
@@ -44,11 +45,20 @@ const createResolver = (
   };
 };
 
+const createStage = (
+  registry: TemporaryGateRegistry,
+  resolver: GateReferenceResolver
+): InlineGateExtractionStage => {
+  const logger = createLogger();
+  const inlineGateProcessor = new InlineGateProcessor(registry, resolver, logger);
+  return new InlineGateExtractionStage(inlineGateProcessor, logger);
+};
+
 describe('InlineGateExtractionStage', () => {
   test('creates temporary inline gate for single prompt criteria', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo :: "Be concise"' });
     context.parsedCommand = {
@@ -86,7 +96,7 @@ describe('InlineGateExtractionStage', () => {
       }
       return { referenceType: 'inline', criteria: ref };
     });
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>chain' });
     context.parsedCommand = {
@@ -142,7 +152,7 @@ describe('InlineGateExtractionStage', () => {
       getTemporaryGate: jest.fn().mockReturnValue(gateDefinition),
     });
     const { resolver, resolve } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo :: custom_quality_gate' });
     context.parsedCommand = {
@@ -170,7 +180,7 @@ describe('InlineGateExtractionStage', () => {
   test('skips string gate IDs from unified gates parameter (handled in gate-enhancement stage)', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.state.gates.requestedOverrides = {
@@ -199,7 +209,7 @@ describe('InlineGateExtractionStage', () => {
   test('skips CustomCheck objects from unified gates parameter (converted in gate-enhancement stage)', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.state.gates.requestedOverrides = {
@@ -228,7 +238,7 @@ describe('InlineGateExtractionStage', () => {
   test('skips TemporaryGateInput objects from unified gates parameter (now handled in gate-enhancement stage)', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.state.gates.requestedOverrides = {
@@ -258,7 +268,7 @@ describe('InlineGateExtractionStage', () => {
   test('skips all gate types from unified gates parameter (all handled in gate-enhancement stage)', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.state.gates.requestedOverrides = {
@@ -298,7 +308,7 @@ describe('InlineGateExtractionStage', () => {
   test('creates named inline gates with explicit IDs from symbolic syntax', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo :: security:"no secrets"' });
     context.parsedCommand = {
@@ -336,7 +346,7 @@ describe('InlineGateExtractionStage', () => {
   test('sets up shell verification state for verify gates (Ralph Wiggum loops)', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo :: verify:"npm test"' });
     context.parsedCommand = {
@@ -381,7 +391,7 @@ describe('InlineGateExtractionStage', () => {
   test('skips shell verification setup when shellVerify is missing', async () => {
     const { registry, createTemporaryGate } = createRegistry();
     const { resolver } = createResolver();
-    const stage = new InlineGateExtractionStage(registry, resolver, createLogger());
+    const stage = createStage(registry, resolver);
 
     const context = new ExecutionContext({ command: '>>demo :: verify:"test"' });
     context.parsedCommand = {

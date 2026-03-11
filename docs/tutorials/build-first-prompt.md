@@ -1,6 +1,5 @@
 # Tutorial: Build Your First Prompt
 
-> Status: canonical
 
 Stop copy-pasting the same instructions into Claude. Define them once, invoke them anywhere.
 
@@ -49,6 +48,12 @@ prompt_engine(command: ">>hello name='Developer'")
 Hello Developer! Welcome to the system.
 Current time: ...
 ```
+
+> [!NOTE]
+> Single-file prompts are great for getting started. Once your template grows past ~20 lines, switch to the directory pattern below.
+
+> [!TIP]
+> **Prompt ID convention**: Use `snake_case` (lowercase with underscores). Hyphens are accepted as input but automatically normalized to underscores — `my-prompt` and `my_prompt` resolve to the same prompt.
 
 ---
 
@@ -101,6 +106,10 @@ Check for:
 ```bash
 prompt_engine(command: ">>code_review code='function x() {}'")
 ```
+
+> [!TIP]
+> **Ready for multi-step workflows?** Chains connect prompts into pipelines where each step feeds the next.
+> [Chains Lifecycle](../concepts/chains-lifecycle.md) · [Chain Authoring Example](../guides/chain-authoring-example.md)
 
 ---
 
@@ -179,10 +188,19 @@ You don't need to restart the server to see changes.
 
 This works for template content too—update your conditionals and see changes immediately.
 
+> [!NOTE]
+> Hot reload watches all files in your prompts directory. Changes to `prompt.yaml`, `user-message.md`, and `system-message.md` are picked up automatically — no server restart needed.
+
 ---
 
 ## Next Steps
 
+> [!TIP]
+> **Add quality checks to your prompts.** Gates validate output before it reaches the user — from simple word-count checks to full test suites.
+> [Gates Guide](../guides/gates.md) · [Gate Configuration Reference](../reference/gate-configuration.md)
+
 - **[Add Validation](../how-to/add-validation.md)**: Ensure arguments match patterns (e.g., valid URLs).
 - **[Template Syntax](../reference/template-syntax.md)**: Use loops, conditionals, and script calls.
 - **[Configuration](../reference/prompt-yaml-schema.md)**: Full reference for `prompt.yaml` options.
+- **[Chains Lifecycle](../concepts/chains-lifecycle.md)**: Connect prompts into multi-step workflows.
+- **[Skills Sync](../guides/skills-sync.md)**: Export prompts as native skills for Claude Code, Cursor, and more.

@@ -1,10 +1,10 @@
 # Skills Sync CLI
 
-Compiles canonical YAML prompt resources into client-native skill packages for Claude Code, Cursor, Codex, and OpenCode.
+Define prompts once as YAML. Export as native skills to Claude Code, Cursor, Codex, and OpenCode.
 
 ## Why
 
-Prompts authored as YAML in `server/resources/` are the single source of truth. But each AI coding tool expects a different skill format. Skills Sync bridges this gap — export once, distribute to all clients.
+Each AI coding tool expects a different skill format. Your prompts live as YAML in `server/resources/` — the single source of truth. Skills Sync compiles them into each client's native format so you author once and distribute everywhere.
 
 | Problem | Solution | Result |
 |---------|----------|--------|
@@ -32,7 +32,10 @@ npm run skills:pull
 
 ## Configuration
 
-`skills-sync.yaml` is your personal config (git-ignored). Copy from `skills-sync.example.yaml` to get started. Client knowledge (adapters, output directories, capabilities) is built into the CLI — you only configure **what** to export:
+`skills-sync.yaml` is your personal config. Copy from `skills-sync.example.yaml` to get started. Client knowledge (adapters, output directories, capabilities) is built into the CLI — you only configure **what** to export:
+
+> [!NOTE]
+> `skills-sync.yaml` is git-ignored by default — it contains user-specific output paths and export selections. Commit `skills-sync.example.yaml` as a team template instead.
 
 ```yaml
 # Opt-in allow-list. Only listed resources are exported.
@@ -49,7 +52,7 @@ exports:
 
 ### Export Format
 
-Format is `{resourceType}:{category}/{id}`. Currently only prompts are supported:
+Only prompts are exported as standalone skills. Format is `prompt:{category}/{id}`:
 
 ```yaml
 exports:
@@ -57,7 +60,14 @@ exports:
   - prompt:development/review          # → resources/prompts/development/review/
 ```
 
-### Built-in Client Defaults
+**Gate bundling**: Prompts that declare `gateConfiguration.include` in their `prompt.yaml` get referenced gates bundled into the skill directory as `gates/{id}/gate.yaml` + `guidance.md`, with an inline `## Quality Gates` criteria table in the SKILL.md.
+
+**Doc bundling**: Prompts with a `docs/` subdirectory get all `.md` files bundled into `docs/` in the exported skill directory. Use this for templates, reference material, and supporting documentation that supplements the main SKILL.md. Doc files are included in the content hash for drift detection.
+
+**Methodologies and styles** are MCP pipeline-injected context — they are not exported as skills. They operate at runtime through the prompt engine and framework system.
+
+<details>
+<summary><strong>Built-in Client Defaults</strong></summary>
 
 The CLI knows how to target each client without configuration:
 
@@ -69,6 +79,8 @@ The CLI knows how to target each client without configuration:
 | opencode | `~/.opencode/skills/` | `.opencode/skills/` | Agent Skills (strict subset) |
 
 Override any output directory via the `overrides` key in `skills-sync.yaml`.
+
+</details>
 
 ## Auto-Deregistration
 
@@ -115,6 +127,12 @@ Comprehensive code review...
 
 Client variants control minor format differences (e.g., Cursor's `alwaysApply` frontmatter).
 
+> [!NOTE]
+> Skills Sync exports **prompt content** only. Runtime features like chain tracking, gate enforcement, and session hooks require a **client plugin** installed separately — e.g., [opencode-prompts](https://github.com/minipuft/opencode-prompts) for OpenCode, [gemini-prompts](https://github.com/minipuft/gemini-prompts) for Gemini. Each plugin layers on top of the base installation to add client-specific hooks.
+
+> [!TIP]
+> For per-client setup and MCP configuration, see the [Client Integration Guide](./client-integration.md).
+
 ## Drift Detection
 
 Each export generates a manifest at `server/cache/skills-sync.{clientId}.json` containing SHA-256 hashes per resource. The `diff` command compares current source against the manifest to detect:
@@ -131,7 +149,9 @@ Each export generates a manifest at `server/cache/skills-sync.{clientId}.json` c
 | `diff` | `npm run skills:diff` | Compare source against exported skills |
 | `pull` | `npm run skills:pull` | Generate `.patch` files for out-of-sync skills |
 
-## Related
+## See Also
 
-- [Prompt Authoring](../tutorials/build-first-prompt.md) — How to create YAML prompts
-- [Architecture](../architecture/overview.md) — System design and registration flow
+- **[Build Your First Prompt](../tutorials/build-first-prompt.md)** — Create YAML prompts that Skills Sync can export
+- **[Client Integration Guide](./client-integration.md)** — Per-client MCP setup and configuration
+- **[Architecture Overview](../architecture/overview.md)** — System design, registration flow, and auto-deregistration
+- **[MCP Tools Reference](../reference/mcp-tools.md)** — `resource_manager inspect` for checking exported prompts

@@ -1,9 +1,5 @@
 // @lifecycle canonical - Core service for managing resource version history
 
-import { existsSync } from 'node:fs';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-
 import type {
   VersionEntry,
   HistoryFile,
@@ -11,21 +7,35 @@ import type {
   RollbackResult,
   SaveVersionOptions,
 } from './types.js';
-import type { VersioningConfig, ConfigManager, Logger } from '../../shared/types/index.js';
+import type { VersioningConfig, Logger } from '../../shared/types/index.js';
+import type { DatabasePort } from '../../shared/types/persistence.js';
 
-const HISTORY_FILENAME = '.history.json';
+type ResourceType = 'prompt' | 'gate' | 'methodology';
+
+interface VersionRow {
+  id: number;
+  version: number;
+  snapshot: string;
+  diff_summary: string;
+  description: string;
+  created_at: string;
+  resource_type: string;
+  resource_id: string;
+}
 
 /**
- * Interface for config provider - allows ConfigManager or test doubles
+ * Interface for config provider - allows ConfigManager or test doubles.
+ * Requires both versioning config and serverRoot for SQLite access.
  */
 export interface VersioningConfigProvider {
   getVersioningConfig(): VersioningConfig;
+  getServerRoot(): string;
 }
 
 /**
  * Service for managing version history of resources (prompts, gates, methodologies).
  *
- * Stores version snapshots in sidecar `.history.json` files alongside each resource.
+ * Persists version snapshots in the SQLite `version_history` table via SqliteEngine.
  * Supports automatic versioning on updates, rollback, and version comparison.
  *
  * Config is read from ConfigManager on each operation to support hot-reload.
@@ -33,6 +43,7 @@ export interface VersioningConfigProvider {
 export class VersionHistoryService {
   private logger: Logger;
   private configProvider: VersioningConfigProvider;
+  private dbManager: DatabasePort | null = null;
 
   constructor(deps: { logger: Logger; configManager: VersioningConfigProvider }) {
     this.logger = deps.logger;
@@ -40,22 +51,27 @@ export class VersionHistoryService {
   }
 
   /**
-   * Get current versioning config from ConfigManager
+   * Get database instance (lazy initialization via dynamic import).
+   * Dynamic import is architecturally acceptable: module types against DatabasePort
+   * from shared/types and only resolves the concrete implementation at runtime.
    */
+  private async getDb(): Promise<DatabasePort> {
+    if (!this.dbManager) {
+      const serverRoot = this.configProvider.getServerRoot();
+      const { SqliteEngine: Engine } = await import('../../infra/database/sqlite-engine.js');
+      this.dbManager = await Engine.getInstance(serverRoot, this.logger);
+    }
+    return this.dbManager;
+  }
+
   private getConfig(): VersioningConfig {
     return this.configProvider.getVersioningConfig();
   }
 
-  /**
-   * Check if versioning is enabled
-   */
   isEnabled(): boolean {
     return this.getConfig().enabled;
   }
 
-  /**
-   * Check if auto-versioning is enabled
-   */
   isAutoVersionEnabled(): boolean {
     const config = this.getConfig();
     return config.enabled && config.auto_version;
@@ -63,16 +79,9 @@ export class VersionHistoryService {
 
   /**
    * Save a version snapshot before an update.
-   *
-   * @param resourceDir - Directory containing the resource
-   * @param resourceType - Type of resource (prompt, gate, methodology)
-   * @param resourceId - ID of the resource
-   * @param snapshot - Current state to save as a version
-   * @param options - Optional description and diff summary
    */
   async saveVersion(
-    resourceDir: string,
-    resourceType: 'prompt' | 'gate' | 'methodology',
+    resourceType: ResourceType,
     resourceId: string,
     snapshot: Record<string, unknown>,
     options?: SaveVersionOptions
@@ -84,29 +93,50 @@ export class VersionHistoryService {
     }
 
     try {
-      const historyPath = path.join(resourceDir, HISTORY_FILENAME);
-      const history = await this.loadHistoryFile(historyPath, resourceType, resourceId);
+      const db = await this.getDb();
 
-      const newVersion = history.current_version + 1;
-      const entry: VersionEntry = {
-        version: newVersion,
-        date: new Date().toISOString(),
-        snapshot,
-        diff_summary: options?.diff_summary ?? '',
-        description: options?.description ?? `Version ${newVersion}`,
-      };
+      // Get current max version
+      const row = db.queryOne<{ max_version: number | null }>(
+        `SELECT MAX(version) as max_version FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?`,
+        [resourceType, resourceId]
+      );
+      const currentVersion = row?.max_version ?? 0;
+      const newVersion = currentVersion + 1;
 
-      // Add new version at the beginning (newest first)
-      history.versions.unshift(entry);
-      history.current_version = newVersion;
+      // Insert new version
+      db.run(
+        `INSERT INTO version_history (tenant_id, resource_type, resource_id, version, snapshot, diff_summary, description, created_at)
+         VALUES ('default', ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          resourceType,
+          resourceId,
+          newVersion,
+          JSON.stringify(snapshot),
+          options?.diff_summary ?? '',
+          options?.description ?? `Version ${newVersion}`,
+          new Date().toISOString(),
+        ]
+      );
 
       // Prune old versions if exceeding max
-      if (history.versions.length > config.max_versions) {
-        history.versions = history.versions.slice(0, config.max_versions);
+      const count = db.queryOne<{ cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?`,
+        [resourceType, resourceId]
+      );
+
+      if (count && count.cnt > config.max_versions) {
+        db.run(
+          `DELETE FROM version_history WHERE id NOT IN (
+            SELECT id FROM version_history
+            WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?
+            ORDER BY version DESC LIMIT ?
+          ) AND tenant_id = 'default' AND resource_type = ? AND resource_id = ?`,
+          [resourceType, resourceId, config.max_versions, resourceType, resourceId]
+        );
         this.logger.debug(`Pruned history for ${resourceId} to ${config.max_versions} versions`);
       }
-
-      await this.saveHistoryFile(historyPath, history);
 
       this.logger.debug(`Saved version ${newVersion} for ${resourceType}/${resourceId}`);
       return { success: true, version: newVersion };
@@ -119,67 +149,109 @@ export class VersionHistoryService {
 
   /**
    * Load version history for a resource.
-   *
-   * @param resourceDir - Directory containing the resource
    */
-  async loadHistory(resourceDir: string): Promise<HistoryFile | null> {
-    const historyPath = path.join(resourceDir, HISTORY_FILENAME);
-
-    if (!existsSync(historyPath)) {
-      return null;
-    }
-
+  async loadHistory(resourceType: ResourceType, resourceId: string): Promise<HistoryFile | null> {
     try {
-      const content = await fs.readFile(historyPath, 'utf8');
-      return JSON.parse(content) as HistoryFile;
+      const db = await this.getDb();
+
+      const rows = db.query<VersionRow>(
+        `SELECT version, snapshot, diff_summary, description, created_at
+         FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?
+         ORDER BY version DESC`,
+        [resourceType, resourceId]
+      );
+
+      if (rows.length === 0) {
+        return null;
+      }
+
+      const versions: VersionEntry[] = rows.map((row) => ({
+        version: row.version,
+        date: row.created_at,
+        snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+        diff_summary: row.diff_summary,
+        description: row.description,
+      }));
+
+      const currentVersion = versions[0]?.version ?? 0;
+
+      return {
+        resource_type: resourceType,
+        resource_id: resourceId,
+        current_version: currentVersion,
+        versions,
+      };
     } catch (error) {
-      this.logger.error(`Failed to load history from ${historyPath}: ${error}`);
+      this.logger.error(`Failed to load history for ${resourceType}/${resourceId}: ${error}`);
       return null;
     }
   }
 
   /**
    * Get a specific version snapshot.
-   *
-   * @param resourceDir - Directory containing the resource
-   * @param version - Version number to retrieve
    */
-  async getVersion(resourceDir: string, version: number): Promise<VersionEntry | null> {
-    const history = await this.loadHistory(resourceDir);
+  async getVersion(
+    resourceType: ResourceType,
+    resourceId: string,
+    version: number
+  ): Promise<VersionEntry | null> {
+    try {
+      const db = await this.getDb();
 
-    if (history === null) {
+      const row = db.queryOne<VersionRow>(
+        `SELECT version, snapshot, diff_summary, description, created_at
+         FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ? AND version = ?`,
+        [resourceType, resourceId, version]
+      );
+
+      if (!row) {
+        return null;
+      }
+
+      return {
+        version: row.version,
+        date: row.created_at,
+        snapshot: JSON.parse(row.snapshot) as Record<string, unknown>,
+        diff_summary: row.diff_summary,
+        description: row.description,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get version ${version} for ${resourceType}/${resourceId}: ${error}`
+      );
       return null;
     }
-
-    const entry = history.versions.find((v) => v.version === version);
-    return entry ?? null;
   }
 
   /**
    * Get the latest version number for a resource.
-   *
-   * @param resourceDir - Directory containing the resource
    */
-  async getLatestVersion(resourceDir: string): Promise<number> {
-    const history = await this.loadHistory(resourceDir);
-    return history?.current_version ?? 0;
+  async getLatestVersion(resourceType: ResourceType, resourceId: string): Promise<number> {
+    try {
+      const db = await this.getDb();
+
+      const row = db.queryOne<{ max_version: number | null }>(
+        `SELECT MAX(version) as max_version FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?`,
+        [resourceType, resourceId]
+      );
+
+      return row?.max_version ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
    * Rollback to a previous version.
    *
-   * This saves the current state as a new version, then returns the snapshot
+   * Saves the current state as a new version, then returns the snapshot
    * of the requested version for the caller to restore.
-   *
-   * @param resourceDir - Directory containing the resource
-   * @param resourceType - Type of resource
-   * @param resourceId - ID of the resource
-   * @param targetVersion - Version to rollback to
-   * @param currentSnapshot - Current state (to save before rollback)
    */
   async rollback(
-    resourceDir: string,
-    resourceType: 'prompt' | 'gate' | 'methodology',
+    resourceType: ResourceType,
     resourceId: string,
     targetVersion: number,
     currentSnapshot: Record<string, unknown>
@@ -189,23 +261,16 @@ export class VersionHistoryService {
     }
 
     try {
-      // Get the target version
-      const targetEntry = await this.getVersion(resourceDir, targetVersion);
+      const targetEntry = await this.getVersion(resourceType, resourceId, targetVersion);
       if (targetEntry === null) {
         return { success: false, error: `Version ${targetVersion} not found` };
       }
 
       // Save current state as new version before rollback
-      const saveResult = await this.saveVersion(
-        resourceDir,
-        resourceType,
-        resourceId,
-        currentSnapshot,
-        {
-          description: `Pre-rollback snapshot (before reverting to v${targetVersion})`,
-          diff_summary: '',
-        }
-      );
+      const saveResult = await this.saveVersion(resourceType, resourceId, currentSnapshot, {
+        description: `Pre-rollback snapshot (before reverting to v${targetVersion})`,
+        diff_summary: '',
+      });
 
       if (!saveResult.success) {
         return { success: false, error: `Failed to save current state: ${saveResult.error}` };
@@ -230,13 +295,10 @@ export class VersionHistoryService {
 
   /**
    * Compare two versions and return their snapshots for diffing.
-   *
-   * @param resourceDir - Directory containing the resource
-   * @param fromVersion - First version to compare
-   * @param toVersion - Second version to compare
    */
   async compareVersions(
-    resourceDir: string,
+    resourceType: ResourceType,
+    resourceId: string,
     fromVersion: number,
     toVersion: number
   ): Promise<{
@@ -245,8 +307,8 @@ export class VersionHistoryService {
     to?: VersionEntry;
     error?: string;
   }> {
-    const fromEntry = await this.getVersion(resourceDir, fromVersion);
-    const toEntry = await this.getVersion(resourceDir, toVersion);
+    const fromEntry = await this.getVersion(resourceType, resourceId, fromVersion);
+    const toEntry = await this.getVersion(resourceType, resourceId, toVersion);
 
     if (fromEntry === null) {
       return { success: false, error: `Version ${fromVersion} not found` };
@@ -261,38 +323,32 @@ export class VersionHistoryService {
   /**
    * Delete version history for a resource.
    * Called when a resource is deleted.
-   *
-   * @param resourceDir - Directory containing the resource
    */
-  async deleteHistory(resourceDir: string): Promise<boolean> {
-    const historyPath = path.join(resourceDir, HISTORY_FILENAME);
-
-    if (!existsSync(historyPath)) {
-      return true;
-    }
-
+  async deleteHistory(resourceType: ResourceType, resourceId: string): Promise<boolean> {
     try {
-      await fs.unlink(historyPath);
-      this.logger.debug(`Deleted history at ${historyPath}`);
+      const db = await this.getDb();
+
+      db.run(
+        `DELETE FROM version_history
+         WHERE tenant_id = 'default' AND resource_type = ? AND resource_id = ?`,
+        [resourceType, resourceId]
+      );
+
+      this.logger.debug(`Deleted history for ${resourceType}/${resourceId}`);
       return true;
     } catch (error) {
-      this.logger.error(`Failed to delete history at ${historyPath}: ${error}`);
+      this.logger.error(`Failed to delete history for ${resourceType}/${resourceId}: ${error}`);
       return false;
     }
   }
 
   /**
    * Format history for display in MCP response.
-   *
-   * @param history - History file to format
-   * @param limit - Maximum entries to show (default: 10)
    */
   formatHistoryForDisplay(history: HistoryFile, limit: number = 10): string {
     const parts: string[] = [];
 
-    parts.push(
-      `📜 **Version History**: ${history.resource_id} (${history.versions.length} versions)`
-    );
+    parts.push(`**Version History**: ${history.resource_id} (${history.versions.length} versions)`);
     parts.push('');
     parts.push('| Version | Date | Changes | Description |');
     parts.push('|---------|------|---------|-------------|');
@@ -305,44 +361,17 @@ export class VersionHistoryService {
         hour: '2-digit',
         minute: '2-digit',
       });
-      const current = entry.version === history.current_version ? ' (current)' : '';
+      const current = entry.version === history.current_version ? ' (latest)' : '';
       const changes = entry.diff_summary !== '' ? entry.diff_summary : '-';
       parts.push(`| ${entry.version}${current} | ${date} | ${changes} | ${entry.description} |`);
     }
 
     if (history.versions.length > limit) {
+      const remaining = history.versions.length - limit;
       parts.push('');
-      parts.push(`*... and ${history.versions.length - limit} more versions*`);
+      parts.push(`*... and ${remaining} more ${remaining === 1 ? 'version' : 'versions'}*`);
     }
 
     return parts.join('\n');
-  }
-
-  // ==========================================================================
-  // Private Helpers
-  // ==========================================================================
-
-  private async loadHistoryFile(
-    historyPath: string,
-    resourceType: 'prompt' | 'gate' | 'methodology',
-    resourceId: string
-  ): Promise<HistoryFile> {
-    if (existsSync(historyPath)) {
-      const content = await fs.readFile(historyPath, 'utf8');
-      return JSON.parse(content) as HistoryFile;
-    }
-
-    // Create new history file
-    return {
-      resource_type: resourceType,
-      resource_id: resourceId,
-      current_version: 0,
-      versions: [],
-    };
-  }
-
-  private async saveHistoryFile(historyPath: string, history: HistoryFile): Promise<void> {
-    const content = JSON.stringify(history, null, 2);
-    await fs.writeFile(historyPath, content, 'utf8');
   }
 }

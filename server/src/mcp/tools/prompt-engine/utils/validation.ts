@@ -2,7 +2,7 @@
 /**
  * Engine Validator - Handles engine-specific validation
  *
- * Extracted from PromptExecutionService to provide focused
+ * Extracted from PromptExecutor to provide focused
  * validation capabilities with clear separation of concerns.
  */
 

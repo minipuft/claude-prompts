@@ -22,7 +22,7 @@ Hooks activate automatically. Type `>>analyze` and watch the suggestion appear.
 | Forgets to continue chain | `post-prompt-engine.py` | Injects `[Chain] Step 2/5` reminder |
 | Skips gate review | `post-prompt-engine.py` | Prompts `GATE_REVIEW: PASS\|FAIL` |
 | Ignores FAIL verdict | `gate-enforce.py` | Blocks until criteria addressed |
-| Session state bloat | `pre-compact.py` | Cleans up before `/compact` |
+| Chain lost after compaction | `compact-recovery.py` | Re-injects chain state post-compaction |
 
 ## Hooks Reference
 
@@ -76,9 +76,9 @@ echo '{"tool_name": "prompt_engine", "tool_input": {"gate_verdict": "GATE_REVIEW
 echo $?  # Output: 0
 ```
 
-### `pre-compact.py` (PreCompact)
+### `compact-recovery.py` (SessionStart, matcher: "compact")
 
-Cleans up chain session state before context compaction to prevent stale data.
+Re-injects active chain state after compaction. Reads from SQLite (`state.db`) and outputs a continuation directive to stdout, which Claude Code adds to post-compaction context. Replaces the former `pre-compact.py` (PreCompact), which was a side-effects-only event that could not inject context.
 
 ## Configuration
 
@@ -106,7 +106,8 @@ Set in `server/config.json`:
   "hooks": {
     "UserPromptSubmit": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/prompt-suggest.py"}]}],
     "PostToolUse": [{"matcher": "*prompt_engine*", "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/post-prompt-engine.py"}]}],
-    "PreToolUse": [{"matcher": "*prompt_engine*", "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/gate-enforce.py"}]}]
+    "PreToolUse": [{"matcher": "*prompt_engine*", "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/gate-enforce.py"}]}],
+    "SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/compact-recovery.py"}]}]
   }
 }
 ```
@@ -119,16 +120,18 @@ hooks/
 ├── prompt-suggest.py       # UserPromptSubmit - syntax detection
 ├── post-prompt-engine.py   # PostToolUse - chain/gate tracking
 ├── gate-enforce.py         # PreToolUse - gate verdict enforcement
-├── pre-compact.py          # PreCompact - session cleanup
+├── compact-recovery.py     # SessionStart("compact") - chain state recovery
 └── lib/
-    ├── cache_manager.py    # Reads server/cache/prompts.cache.json
-    ├── session_state.py    # Chain/gate state tracking
+    ├── cache_manager.py    # Prompt/gate metadata queries (via SQLite resource_index)
+    ├── db_reader.py        # Read-only SQLite access to state.db
+    ├── hook_state_store.py # SQLite-backed session state (hooks-state.db)
+    ├── session_state.py    # Chain/gate state tracking (delegates to hook_state_store)
     └── workspace.py        # MCP_WORKSPACE resolution
 ```
 
-## Cache
+## Data Access
 
-Hooks read from `server/cache/prompts.cache.json` (generated on server startup, updated on hot-reload). This enables argument suggestions without server calls.
+Hooks read prompt/gate metadata from `server/runtime-state/state.db` (SQLite, read-only via `db_reader.py`). Session state is stored in `server/runtime-state/hooks-state.db` (SQLite, read-write via `hook_state_store.py`).
 
 ## Other Platforms
 

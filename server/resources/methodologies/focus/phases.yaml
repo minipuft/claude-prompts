@@ -21,18 +21,33 @@ processingSteps:
     methodologyBasis: FOCUS Frame phase
     order: 1
     required: true
+    section_header: '## Frame'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: observe_processing
     name: Information Gathering
     description: Gather relevant information
     methodologyBasis: FOCUS Observe phase
     order: 2
     required: true
+    section_header: '## Observe'
+    guards:
+      required: true
+      min_length: 80
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
   - id: undertake_processing
     name: Implementation
     description: Execute the solution
     methodologyBasis: FOCUS Undertake phase
     order: 3
     required: true
+    section_header: '## Undertake'
+    guards:
+      required: true
+      min_length: 100
+      forbidden_terms: ['TODO', 'TBD', 'placeholder', 'to be determined', 'will be added']
 executionSteps:
   - id: frame_execution
     name: Frame Execution

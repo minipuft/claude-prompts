@@ -3,7 +3,7 @@
  * Script Tool Hot-Reload Support
  *
  * Provides cache invalidation for script tools when their definition files change.
- * Integrates with the HotReloadManager auxiliary reload system.
+ * Integrates with the HotReloadObserver auxiliary reload system.
  *
  * Script tools are nested inside prompt directories:
  * ```
@@ -18,7 +18,7 @@
  */
 
 import type { Logger } from '../../../shared/types/index.js';
-import type { HotReloadEvent } from '../../hot-reload/hot-reload-manager.js';
+import type { HotReloadEvent } from '../../hot-reload/hot-reload-observer.js';
 import type { ScriptToolDefinitionLoader } from '../core/script-definition-loader.js';
 
 /**

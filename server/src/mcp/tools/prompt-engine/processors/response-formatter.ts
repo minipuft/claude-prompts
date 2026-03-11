@@ -2,7 +2,7 @@
 /**
  * Response Formatter - Handles response formatting and coordination
  *
- * Extracted from PromptExecutionService to provide focused
+ * Extracted from PromptExecutor to provide focused
  * response formatting capabilities with clear separation of concerns.
  */
 
@@ -12,7 +12,7 @@ import type {
   Logger,
   GateValidationInfo,
   ToolResponse,
-  IResponseFormatter,
+  ResponseFormatterPort,
 } from '../../../../shared/types/index.js';
 
 const fallbackLogger: Logger = {
@@ -132,7 +132,7 @@ function normalizeToolResponse(payload: unknown, defaultIsError = false): ToolRe
   };
 }
 
-export class ResponseFormatter implements SimpleResponseFormatter, IResponseFormatter {
+export class ResponseFormatter implements SimpleResponseFormatter, ResponseFormatterPort {
   private analyticsService?: AnalyticsService;
   private readonly logger: Logger;
 

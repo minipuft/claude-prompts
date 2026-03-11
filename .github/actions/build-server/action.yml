@@ -1,0 +1,20 @@
+name: Build Server
+description: Runs the server build command in a target working directory.
+
+inputs:
+  working-directory:
+    description: Directory containing server package scripts.
+    required: false
+    default: server
+  command:
+    description: Build command to execute.
+    required: false
+    default: npm run build
+
+runs:
+  using: composite
+  steps:
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.command }}

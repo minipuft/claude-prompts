@@ -7,6 +7,7 @@
  * definitions without requiring methodology-specific TypeScript code.
  */
 
+import type { ProcessingStepDefinition } from './step-generator.js';
 import type {
   MethodologyGateDefinition as CanonicalGateDefinition,
   TemplateSuggestionDefinition,
@@ -18,23 +19,12 @@ import type {
   ProcessingStep,
 } from '../types/methodology-types.js';
 
-// Import canonical type definitions and re-export for backwards compatibility
-
 // Re-export canonical types with local aliases for backwards compatibility
 export type MethodologyGateDefinition = CanonicalGateDefinition;
 export type TemplateSuggestion = TemplateSuggestionDefinition;
 
-/**
- * Processing step definition from YAML
- */
-export interface ProcessingStepDefinition {
-  id: string;
-  name: string;
-  description: string;
-  methodologyBasis: string;
-  order: number;
-  required: boolean;
-}
+// Re-export for consumers that import from this module
+export type { ProcessingStepDefinition } from './step-generator.js';
 
 /**
  * Methodology definition subset for enhancement
@@ -100,6 +90,8 @@ export function convertProcessingSteps(steps: ProcessingStepDefinition[]): Proce
     methodologyBasis: step.methodologyBasis,
     order: step.order,
     required: step.required,
+    ...(step.section_header && { section_header: step.section_header }),
+    ...(step.guards && { guards: step.guards }),
   }));
 }
 

@@ -113,7 +113,7 @@ When `loop:true` is enabled, the Stop hook prevents Claude from stopping until v
 
 ### How Stop Hook Works
 
-1. When verification starts with `loop:true`, state is written to `runtime-state/verify-active.json`
+1. When verification starts with `loop:true`, state is written to `runtime-state/verify-state.db`
 2. Claude makes changes and attempts to finish responding (end of turn)
 3. The Stop hook intercepts the stop and runs the verification command
 4. If PASS → Claude stops normally, user sees success
@@ -365,6 +365,39 @@ resource_manager(resource_type:"checkpoint", action:"rollback", name:"pre-refact
    :: verify:"npm test -- --testPathPattern=auth"
    ```
 
+## Scope and Chain Behavior
+
+### Global Scope in Chains
+
+When `:: verify` is used on a chain command, it applies to the **first execution** of the chain — not to a specific step. The verification runs during the initial pipeline execution before any steps complete.
+
+```bash
+# :: verify applies to the FIRST pipeline execution, not just step 2
+>>step1 --> >>step2 :: verify:"npm test" :fast
+```
+
+To verify a specific step, run the chain without `:: verify` and add verification as a separate follow-up call.
+
+### One-Shot Behavior
+
+`:: verify` is parsed from the inline command syntax only on the **first call**. When resuming a chain with `chain_id` and `user_response`, the inline operators are not re-parsed — the resumed execution uses the persisted chain session state.
+
+This means:
+- Verification runs once during initial execution
+- After a bounce-back (failed verification), submitting a fix via `chain_id` + `user_response` resumes with the persisted `pendingShellVerification` state
+- The `:: verify` syntax itself is not re-evaluated on resume
+
+### gate_action Requires Chain Context
+
+The `gate_action` parameter (`retry`/`skip`/`abort`) only works within a chain session. Each non-chain MCP call creates a fresh `ExecutionContext`, so attempt counts reset. Use chain sessions for multi-attempt verification:
+
+```bash
+# Start a chain so verification state persists across calls
+prompt_engine(command: ">>fix-bug :: verify:'npm test' max:3")
+# On failure, resume with chain_id from the response
+prompt_engine(chain_id: "chain-fix-bug", user_response: "applied fix")
+```
+
 ## Troubleshooting
 
 ### Verification keeps failing
@@ -382,7 +415,7 @@ resource_manager(resource_type:"checkpoint", action:"rollback", name:"pre-refact
 ### Stop hook not working
 
 - Ensure `loop:true` is set
-- Check that `runtime-state/verify-active.json` is being created
+- Check that `runtime-state/verify-state.db` is being created
 - Verify Stop hook is configured in Claude Code settings
 
 ## See Also

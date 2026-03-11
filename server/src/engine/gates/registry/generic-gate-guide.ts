@@ -1,8 +1,8 @@
-// @lifecycle canonical - Data-driven IGateGuide implementation from YAML definitions.
+// @lifecycle canonical - Data-driven GateGuide implementation from YAML definitions.
 /**
  * Generic Gate Guide
  *
- * Data-driven implementation of IGateGuide that works with any gate definition.
+ * Data-driven implementation of GateGuide that works with any gate definition.
  * All behavior is driven by the YAML definition, not hardcoded logic.
  *
  * This mirrors the GenericMethodologyGuide pattern from the framework system.
@@ -13,7 +13,7 @@
 import { isGateActiveForContext } from '../utils/gate-activation.js';
 
 import type {
-  IGateGuide,
+  GateGuide,
   GateDefinitionYaml,
   GateActivationRules,
   GateActivationContext,
@@ -32,7 +32,7 @@ const DEFAULT_SEVERITY_TO_ENFORCEMENT: Record<GateSeverity, GateEnforcementMode>
 /**
  * Generic Gate Guide
  *
- * Implements IGateGuide interface using data from YAML definitions.
+ * Implements GateGuide interface using data from YAML definitions.
  * All behavior is driven by the definition, making it easy to add
  * new gates without writing code.
  *
@@ -46,9 +46,9 @@ const DEFAULT_SEVERITY_TO_ENFORCEMENT: Record<GateSeverity, GateEnforcementMode>
  * }
  * ```
  */
-export class GenericGateGuide implements IGateGuide {
+export class GenericGateGuide implements GateGuide {
   // -------------------------------------------------------------------------
-  // Readonly Properties (from IGateGuide)
+  // Readonly Properties (from GateGuide)
   // -------------------------------------------------------------------------
 
   readonly gateId: string;

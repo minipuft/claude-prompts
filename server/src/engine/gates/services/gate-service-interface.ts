@@ -31,7 +31,7 @@ export interface GateServiceConfig {
   };
 }
 
-export interface IGateService {
+export interface GateService {
   readonly serviceType: 'compositional' | 'semantic';
 
   enhancePrompt(

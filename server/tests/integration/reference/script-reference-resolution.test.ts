@@ -19,18 +19,16 @@ import { processTemplateWithRefs } from '../../../src/shared/utils/jsonUtils.js'
 import type { Logger } from '../../../src/infra/logging/index.js';
 import type {
   LoadedScriptTool,
+  ScriptExecutorPort,
   ScriptExecutionResult,
 } from '../../../src/modules/automation/types.js';
-import type {
-  IScriptLoader,
-  IScriptExecutorService,
-} from '../../../src/engine/execution/reference/script-reference-resolver.js';
+import type { ScriptLoader } from '../../../src/engine/execution/reference/index.js';
 
 describe('ScriptReferenceResolver Integration', () => {
   let resolver: ScriptReferenceResolver;
   let mockLogger: Logger;
-  let mockLoader: IScriptLoader;
-  let mockExecutor: IScriptExecutorService;
+  let mockLoader: ScriptLoader;
+  let mockExecutor: ScriptExecutorPort;
   let scripts: Record<string, LoadedScriptTool>;
 
   // Helper to create mock script tool

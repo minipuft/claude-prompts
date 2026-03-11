@@ -27,7 +27,6 @@ from typing import Literal
 
 from workspace import get_runtime_state_dir
 
-
 # === Configuration Classes ===
 
 
@@ -296,7 +295,10 @@ async def spawn_claude_print_async(
             return SpawnResult(
                 success=False,
                 output="",
-                error=f"Circuit breaker OPEN - too many failures. Retry after {circuit.config.recovery_timeout_seconds}s",
+                error=(
+                    "Circuit breaker OPEN - too many failures. "
+                    f"Retry after {circuit.config.recovery_timeout_seconds}s"
+                ),
                 exit_code=-1,
                 timed_out=False,
                 retries_used=retries_used,

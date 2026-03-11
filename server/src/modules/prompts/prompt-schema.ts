@@ -84,6 +84,8 @@ export const ChainStepSchema = z.object({
   outputMapping: z.record(z.string()).optional(),
   /** Number of retry attempts on failure (default: 0) */
   retries: z.number().int().nonnegative().optional(),
+  /** Client-agnostic capability hint for delegation model selection */
+  subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
 });
 
 export type ChainStepYaml = z.infer<typeof ChainStepSchema>;
@@ -194,6 +196,8 @@ export const PromptDataSchema = z
     registerWithMcp: z.boolean().optional(),
     /** Script tool IDs declared by this prompt (references tools/{id}/ directories) */
     tools: z.array(z.string().min(1)).optional(),
+    /** Client-agnostic capability hint for delegation model selection */
+    subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
   })
   .passthrough(); // Allow additional fields for extensibility
 
@@ -273,8 +277,14 @@ export type PromptsConfigYaml = z.infer<typeof PromptsConfigSchema>;
 export const PromptYamlSchema = z
   .object({
     // Required core fields
-    /** Unique identifier for the prompt (must match directory name) */
-    id: z.string().min(1, 'Prompt ID is required'),
+    /** Unique identifier for the prompt (must match directory name). Convention: lowercase with underscores. */
+    id: z
+      .string()
+      .min(1, 'Prompt ID is required')
+      .regex(
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/,
+        'Prompt ID must start with a letter and contain only alphanumeric characters, underscores, or hyphens'
+      ),
     /** Human-readable name */
     name: z.string().min(1, 'Prompt name is required'),
     /** Category this prompt belongs to (auto-derived from directory if omitted) */
@@ -313,6 +323,10 @@ export const PromptYamlSchema = z
     // Script tools
     /** Script tool IDs declared by this prompt (references tools/{id}/ directories) */
     tools: z.array(z.string().min(1)).optional(),
+
+    // Delegation
+    /** Client-agnostic capability hint for delegation model selection */
+    subagentModel: z.enum(['heavy', 'standard', 'fast']).optional(),
   })
   .passthrough() // Allow additional fields for extensibility
   .refine(

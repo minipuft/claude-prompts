@@ -22,14 +22,15 @@
  *     ┌──────────────┴──────────────┐
  *     │                             │
  *     ↓                             ↓
- * resource-changes.jsonl    resource-hashes.json
- * (append-only log)         (hash cache)
+ * resource_changes (SQLite)  resource_hash_cache (SQLite)
+ * (structured log)           (hash cache blob)
  */
 
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 
+import { SqliteEngine } from '../../database/sqlite-engine.js';
+import { SqliteStateStore } from '../../database/stores/sqlite-store.js';
 import { Logger } from '../../logging/index.js';
 
 import type { ChangeSource, TrackedResourceType } from '../../../shared/types/index.js';
@@ -84,8 +85,8 @@ export interface GetChangesParams {
 export interface ResourceChangeTrackerConfig {
   /** Maximum entries to retain (default: 1000) */
   maxEntries: number;
-  /** Directory for runtime state files */
-  runtimeStateDir: string;
+  /** Server root directory (for SqliteEngine singleton) */
+  serverRoot: string;
   /** Whether to track prompts */
   trackPrompts: boolean;
   /** Whether to track gates */
@@ -94,37 +95,34 @@ export interface ResourceChangeTrackerConfig {
 
 const DEFAULT_CONFIG: ResourceChangeTrackerConfig = {
   maxEntries: 1000,
-  runtimeStateDir: '',
+  serverRoot: '',
   trackPrompts: true,
   trackGates: true,
 };
 
 /**
  * ResourceChangeTracker class
- * Provides audit logging and hash tracking for resource changes
+ * Provides audit logging and hash tracking for resource changes via SQLite
  */
 export class ResourceChangeTracker {
   private logger: Logger;
   private config: ResourceChangeTrackerConfig;
   private hashCache: Map<string, string> = new Map();
-  private changesFilePath: string;
-  private hashCacheFilePath: string;
+  private dbManager?: SqliteEngine;
+  private hashStore?: SqliteStateStore<Record<string, string>>;
   private initialized: boolean = false;
 
   constructor(logger: Logger, config: Partial<ResourceChangeTrackerConfig> = {}) {
     this.logger = logger;
     this.config = { ...DEFAULT_CONFIG, ...config };
 
-    if (this.config.runtimeStateDir === '') {
-      throw new Error('ResourceChangeTracker requires runtimeStateDir configuration');
+    if (this.config.serverRoot === '') {
+      throw new Error('ResourceChangeTracker requires serverRoot configuration');
     }
-
-    this.changesFilePath = path.join(this.config.runtimeStateDir, 'resource-changes.jsonl');
-    this.hashCacheFilePath = path.join(this.config.runtimeStateDir, 'resource-hashes.json');
   }
 
   /**
-   * Initialize the tracker by loading existing state
+   * Initialize the tracker by loading existing state from SQLite
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
@@ -133,10 +131,21 @@ export class ResourceChangeTracker {
 
     this.logger.debug('ResourceChangeTracker: Initializing...');
 
-    // Ensure runtime state directory exists
-    await fs.mkdir(this.config.runtimeStateDir, { recursive: true });
+    // Initialize SqliteEngine and hash store (idempotent — no-op if already initialized)
+    this.dbManager = await SqliteEngine.getInstance(this.config.serverRoot, this.logger);
+    await this.dbManager.initialize();
 
-    // Load hash cache
+    this.hashStore = new SqliteStateStore<Record<string, string>>(
+      this.dbManager,
+      {
+        tableName: 'resource_hash_cache',
+        stateColumn: 'state',
+        defaultState: () => ({}),
+      },
+      this.logger
+    );
+
+    // Load hash cache from SQLite
     await this.loadHashCache();
 
     this.initialized = true;
@@ -144,29 +153,25 @@ export class ResourceChangeTracker {
   }
 
   /**
-   * Load hash cache from disk
+   * Load hash cache from SQLite
    */
   private async loadHashCache(): Promise<void> {
     try {
-      const data = await fs.readFile(this.hashCacheFilePath, 'utf-8');
-      const parsed = JSON.parse(data) as Record<string, string>;
-      this.hashCache = new Map(Object.entries(parsed));
+      const cached = await this.hashStore!.load();
+      this.hashCache = new Map(Object.entries(cached));
       this.logger.debug(`ResourceChangeTracker: Loaded ${this.hashCache.size} cached hashes`);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.logger.warn('ResourceChangeTracker: Failed to load hash cache', error);
-      }
-      // File doesn't exist or is invalid - start fresh
+      this.logger.warn('ResourceChangeTracker: Failed to load hash cache', error);
       this.hashCache = new Map();
     }
   }
 
   /**
-   * Save hash cache to disk
+   * Save hash cache to SQLite
    */
   private async saveHashCache(): Promise<void> {
     const data = Object.fromEntries(this.hashCache);
-    await fs.writeFile(this.hashCacheFilePath, JSON.stringify(data, null, 2), 'utf-8');
+    await this.hashStore!.save(data);
   }
 
   /**
@@ -224,33 +229,36 @@ export class ResourceChangeTracker {
       return;
     }
 
-    const entry: ResourceChangeEntry = {
-      timestamp: new Date().toISOString(),
-      source: params.source,
-      operation: params.operation,
-      resourceType: params.resourceType,
-      resourceId: params.resourceId,
-      filePath: params.filePath,
-      contentHash,
-      ...(previousHash !== undefined && previousHash !== contentHash ? { previousHash } : {}),
-    };
-
-    // Update cache
+    // Update in-memory cache
     if (params.operation === 'removed') {
       this.hashCache.delete(cacheKey);
     } else {
       this.hashCache.set(cacheKey, contentHash);
     }
 
-    // Append to log file (JSONL format)
-    const logLine = JSON.stringify(entry) + '\n';
-    await fs.appendFile(this.changesFilePath, logLine, 'utf-8');
+    // INSERT change into resource_changes table
+    const timestamp = new Date().toISOString();
+    this.dbManager!.run(
+      `INSERT INTO resource_changes (tenant_id, timestamp, source, operation, resource_type, resource_id, file_path, content_hash, previous_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'default',
+        timestamp,
+        params.source,
+        params.operation,
+        params.resourceType,
+        params.resourceId,
+        params.filePath,
+        contentHash,
+        previousHash !== undefined && previousHash !== contentHash ? previousHash : null,
+      ]
+    );
 
     // Persist hash cache
     await this.saveHashCache();
 
     // Rotate log if needed
-    await this.rotateLogIfNeeded();
+    this.rotateLogIfNeeded();
 
     this.logger.info(
       `📝 ResourceChangeTracker: ${params.operation} ${params.resourceType}/${params.resourceId} (source: ${params.source})`
@@ -258,25 +266,28 @@ export class ResourceChangeTracker {
   }
 
   /**
-   * Rotate log file if it exceeds maxEntries
+   * Rotate log if it exceeds maxEntries (SQL DELETE)
    */
-  private async rotateLogIfNeeded(): Promise<void> {
+  private rotateLogIfNeeded(): void {
     try {
-      const content = await fs.readFile(this.changesFilePath, 'utf-8');
-      const lines = content.trim().split('\n').filter(Boolean);
+      const countResult = this.dbManager!.queryOne<{ cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM resource_changes'
+      );
+      const count = countResult?.cnt ?? 0;
 
-      if (lines.length > this.config.maxEntries) {
-        // Keep only the most recent entries
-        const trimmedLines = lines.slice(-this.config.maxEntries);
-        await fs.writeFile(this.changesFilePath, trimmedLines.join('\n') + '\n', 'utf-8');
+      if (count > this.config.maxEntries) {
+        this.dbManager!.run(
+          `DELETE FROM resource_changes WHERE id NOT IN (
+            SELECT id FROM resource_changes ORDER BY id DESC LIMIT ?
+          )`,
+          [this.config.maxEntries]
+        );
         this.logger.debug(
-          `ResourceChangeTracker: Rotated log from ${lines.length} to ${trimmedLines.length} entries`
+          `ResourceChangeTracker: Rotated log from ${count} to ${this.config.maxEntries} entries`
         );
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.logger.warn('ResourceChangeTracker: Failed to rotate log', error);
-      }
+      this.logger.warn('ResourceChangeTracker: Failed to rotate log', error);
     }
   }
 
@@ -290,43 +301,56 @@ export class ResourceChangeTracker {
 
     const { limit = 50, source, resourceType, since, resourceId } = params;
 
-    try {
-      const content = await fs.readFile(this.changesFilePath, 'utf-8');
-      const lines = content.trim().split('\n').filter(Boolean);
+    // Build query dynamically based on filters
+    const conditions: string[] = [];
+    const values: (string | number)[] = [];
 
-      let entries: ResourceChangeEntry[] = lines
-        .map((line) => {
-          try {
-            return JSON.parse(line) as ResourceChangeEntry;
-          } catch {
-            return null;
-          }
-        })
-        .filter((entry): entry is ResourceChangeEntry => entry !== null);
-
-      // Apply filters
-      if (source !== undefined) {
-        entries = entries.filter((e) => e.source === source);
-      }
-      if (resourceType !== undefined) {
-        entries = entries.filter((e) => e.resourceType === resourceType);
-      }
-      if (resourceId !== undefined && resourceId !== '') {
-        entries = entries.filter((e) => e.resourceId === resourceId);
-      }
-      if (since !== undefined && since !== '') {
-        const sinceDate = new Date(since);
-        entries = entries.filter((e) => new Date(e.timestamp) >= sinceDate);
-      }
-
-      // Return most recent entries first, limited
-      return entries.reverse().slice(0, limit);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return [];
-      }
-      throw error;
+    if (source !== undefined) {
+      conditions.push('source = ?');
+      values.push(source);
     }
+    if (resourceType !== undefined) {
+      conditions.push('resource_type = ?');
+      values.push(resourceType);
+    }
+    if (resourceId !== undefined && resourceId !== '') {
+      conditions.push('resource_id = ?');
+      values.push(resourceId);
+    }
+    if (since !== undefined && since !== '') {
+      conditions.push('timestamp >= ?');
+      values.push(since);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    values.push(limit);
+
+    const rows = this.dbManager!.query<{
+      timestamp: string;
+      source: string;
+      operation: string;
+      resource_type: string;
+      resource_id: string;
+      file_path: string;
+      content_hash: string;
+      previous_hash: string | null;
+    }>(
+      `SELECT timestamp, source, operation, resource_type, resource_id, file_path, content_hash, previous_hash
+       FROM resource_changes ${whereClause}
+       ORDER BY id DESC LIMIT ?`,
+      values
+    );
+
+    return rows.map((row) => ({
+      timestamp: row.timestamp,
+      source: row.source as ChangeSource,
+      operation: row.operation as ChangeOperation,
+      resourceType: row.resource_type as TrackedResourceType,
+      resourceId: row.resource_id,
+      filePath: row.file_path,
+      contentHash: row.content_hash,
+      ...(row.previous_hash ? { previousHash: row.previous_hash } : {}),
+    }));
   }
 
   /**
@@ -435,22 +459,20 @@ export class ResourceChangeTracker {
   async getStats(): Promise<{
     cachedHashes: number;
     totalChanges: number;
-    changesFilePath: string;
-    hashCacheFilePath: string;
   }> {
     let totalChanges = 0;
     try {
-      const content = await fs.readFile(this.changesFilePath, 'utf-8');
-      totalChanges = content.trim().split('\n').filter(Boolean).length;
+      const result = this.dbManager?.queryOne<{ cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM resource_changes'
+      );
+      totalChanges = result?.cnt ?? 0;
     } catch {
-      // File doesn't exist
+      // Table may not exist yet
     }
 
     return {
       cachedHashes: this.hashCache.size,
       totalChanges,
-      changesFilePath: this.changesFilePath,
-      hashCacheFilePath: this.hashCacheFilePath,
     };
   }
 
@@ -459,16 +481,12 @@ export class ResourceChangeTracker {
    */
   async clear(): Promise<void> {
     this.hashCache.clear();
-    try {
-      await fs.unlink(this.changesFilePath);
-    } catch {
-      // File may not exist
+
+    if (this.dbManager) {
+      this.dbManager.run('DELETE FROM resource_changes');
+      await this.hashStore!.save({});
     }
-    try {
-      await fs.unlink(this.hashCacheFilePath);
-    } catch {
-      // File may not exist
-    }
+
     this.logger.info('ResourceChangeTracker: All tracking data cleared');
   }
 }

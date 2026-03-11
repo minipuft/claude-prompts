@@ -7,20 +7,10 @@
  *
  * The prompt guidance system consists of:
  * - PromptGuidanceService: Unified service orchestrating all guidance components
- * - MethodologyTracker: Tracks active methodology state and handles switching
  * - TemplateEnhancer: Enhances user templates with methodology-specific guidance
  *
- * Note: SystemPromptInjector was removed - its functionality is now inlined
- * in PromptGuidanceService.injectMethodologyGuidance()
+ * Active framework state is read from FrameworkManager (SQLite-backed via FrameworkStateStore).
  */
-
-// Core prompt guidance components
-export {
-  MethodologyTracker,
-  createMethodologyTracker,
-  type MethodologyTrackerConfig,
-  type MethodologyTrackerEvents,
-} from './methodology-tracker.js';
 
 export {
   TemplateEnhancer,
@@ -40,10 +30,8 @@ export type { PromptGuidanceResult as ServicePromptGuidanceResult } from './serv
 
 // Re-export relevant types from the types system
 export type {
-  MethodologyHealth,
   MethodologyState,
   MethodologySwitchRequest,
-  PersistedMethodologyState,
   PromptGuidanceConfig,
   PromptGuidanceResult,
   SystemPromptInjectionResult,

@@ -2,13 +2,16 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import { ExecutionContext } from '../../../../src/engine/execution/context/execution-context.js';
 import { GateEnhancementStage } from '../../../../src/engine/execution/pipeline/stages/05-gate-enhancement-stage.js';
+import { GateEnhancementService } from '../../../../src/engine/gates/services/gate-enhancement-service.js';
+import { GateMetricsRecorder } from '../../../../src/engine/gates/services/gate-metrics-recorder.js';
+import { TemporaryGateRegistrar } from '../../../../src/engine/gates/services/temporary-gate-registrar.js';
 
 import type { GateLoader } from '../../../../src/engine/gates/core/gate-loader.js';
 import type { TemporaryGateRegistry } from '../../../../src/engine/gates/core/temporary-gate-registry.js';
 import type { GateManager } from '../../../../src/engine/gates/gate-manager.js';
-import type { IGateService } from '../../../../src/engine/gates/services/gate-service-interface.js';
+import type { GateService } from '../../../../src/engine/gates/services/gate-service-interface.js';
 import type { Logger } from '../../../../src/infra/logging/index.js';
-import type { ConvertedPrompt } from '../../../../src/shared/types/index.js';
+import type { ConvertedPrompt } from '../../../../src/engine/execution/types.js';
 
 /**
  * Creates a mock GateLoader that returns specified methodology gate IDs.
@@ -82,21 +85,17 @@ const createLogger = (): Logger => ({
   debug: jest.fn(),
 });
 
-const baseFrameworkConfig = {
-  enableSystemPromptInjection: true,
-  enableMethodologyGates: true,
-  enableDynamicToolDescriptions: true,
-};
 const baseGatesConfig = {
   enabled: true,
   definitionsDirectory: 'gates',
+  enableMethodologyGates: true,
 };
 
-const createGateService = () => {
+const createGateService = (): GateService => {
   return {
-    serviceType: 'compositional' as const,
-    supportsValidation: jest.fn().mockReturnValue(false),
-    updateConfig: jest.fn(),
+    serviceType: 'compositional',
+    supportsValidation: jest.fn().mockReturnValue(false) as unknown as () => boolean,
+    updateConfig: jest.fn() as unknown as GateService['updateConfig'],
     enhancePrompt: jest.fn(async (prompt: ConvertedPrompt, gateIds: string[]) => ({
       enhancedPrompt: {
         ...prompt,
@@ -106,9 +105,46 @@ const createGateService = () => {
       injectedGateIds: gateIds,
       validationResults: [],
       instructionLength: gateIds.join(',').length,
-    })),
-  } satisfies IGateService;
+    })) as unknown as GateService['enhancePrompt'],
+  };
 };
+
+/**
+ * Wires services and creates a GateEnhancementStage for testing.
+ */
+function createStage(options: {
+  gateService: GateService;
+  temporaryRegistry?: TemporaryGateRegistry;
+  gateReferenceResolver?: any;
+  frameworkManagerProvider?: () => any;
+  logger?: Logger;
+  gatesConfigProvider?: () => any;
+  gateLoader?: GateLoader;
+  gateManagerProvider?: () => GateManager;
+}): GateEnhancementStage {
+  const logger = options.logger ?? createLogger();
+  const metricsRecorder = new GateMetricsRecorder(undefined);
+  const registrar = new TemporaryGateRegistrar(
+    options.temporaryRegistry,
+    options.gateReferenceResolver,
+    logger
+  );
+  const enhancementService = new GateEnhancementService(
+    options.gateService,
+    options.temporaryRegistry,
+    options.frameworkManagerProvider ?? (() => undefined),
+    options.gateManagerProvider ?? (() => undefined as any),
+    options.gateLoader,
+    metricsRecorder,
+    logger
+  );
+  return new GateEnhancementStage(
+    enhancementService,
+    registrar,
+    options.gatesConfigProvider,
+    logger
+  );
+}
 
 const samplePrompt: ConvertedPrompt = {
   id: 'demo',
@@ -126,16 +162,11 @@ describe('GateEnhancementStage', () => {
       createTemporaryGate: jest.fn().mockReturnValue('temp_gate_custom'),
     } as unknown as TemporaryGateRegistry;
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
       temporaryRegistry,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({
       command: '>>demo',
@@ -176,12 +207,12 @@ describe('GateEnhancementStage', () => {
       commandType: 'single',
       convertedPrompt: samplePrompt,
       inlineGateIds: ['inline_gate'],
-    };
+    } as any;
 
     await stage.execute(context);
 
     expect(gateService.enhancePrompt).toHaveBeenCalledTimes(1);
-    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock).mock.calls[0][1];
+    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock<any>).mock.calls[0][1];
     expect(gateIdsPassed).toEqual(
       expect.arrayContaining(['quality', 'inline_gate', 'temp_gate_custom'])
     );
@@ -195,20 +226,11 @@ describe('GateEnhancementStage', () => {
   test('filters methodology gates when disabled in framework config', async () => {
     const gateService = createGateService();
     const mockGateLoader = createMockGateLoader();
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      undefined,
-      () => ({
-        ...baseFrameworkConfig,
-        enableMethodologyGates: false,
-      }),
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig,
-      mockGateLoader
-    );
+      gateLoader: mockGateLoader,
+      gatesConfigProvider: () => ({ ...baseGatesConfig, enableMethodologyGates: false }),
+    });
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.executionPlan = {
@@ -222,26 +244,20 @@ describe('GateEnhancementStage', () => {
     context.parsedCommand = {
       commandType: 'single',
       convertedPrompt: samplePrompt,
-    };
+    } as any;
 
     await stage.execute(context);
 
-    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock).mock.calls[0][1];
+    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock<any>).mock.calls[0][1];
     expect(gateIdsPassed).toEqual(['quality']);
   });
 
   test('skips gate enhancement entirely when gates config is disabled', async () => {
     const gateService = createGateService();
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      undefined,
-      () => baseFrameworkConfig,
-      undefined,
-      undefined,
-      createLogger(),
-      undefined,
-      () => ({ ...baseGatesConfig, enabled: false })
-    );
+      gatesConfigProvider: () => ({ ...baseGatesConfig, enabled: false }),
+    });
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.executionPlan = {
@@ -255,7 +271,7 @@ describe('GateEnhancementStage', () => {
     context.parsedCommand = {
       commandType: 'single',
       convertedPrompt: samplePrompt,
-    };
+    } as any;
 
     await stage.execute(context);
 
@@ -265,18 +281,11 @@ describe('GateEnhancementStage', () => {
   test('applies gates per chain step and stores step-level instructions', async () => {
     const gateService = createGateService();
     const mockGateManager = createMockGateManager();
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      undefined,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig,
-      undefined, // gateLoader
-      () => mockGateManager // gateManagerProvider - provides category-based gate selection
-    );
+      gatesConfigProvider: () => baseGatesConfig,
+      gateManagerProvider: () => mockGateManager,
+    });
 
     const firstStepPrompt: ConvertedPrompt = {
       ...samplePrompt,
@@ -316,15 +325,15 @@ describe('GateEnhancementStage', () => {
           args: {},
           inlineGateIds: [],
           convertedPrompt: secondStepPrompt,
-          executionPlan: { gates: ['planner_gate'] },
+          executionPlan: { gates: ['planner_gate'] } as any,
         },
       ],
-    };
+    } as any;
 
     await stage.execute(context);
 
     expect(gateService.enhancePrompt).toHaveBeenCalledTimes(2);
-    const [firstCall, secondCall] = (gateService.enhancePrompt as jest.Mock).mock.calls;
+    const [firstCall, secondCall] = (gateService.enhancePrompt as jest.Mock<any>).mock.calls;
     expect(firstCall[1]).toEqual(
       expect.arrayContaining(['step_gate_1', 'research-quality', 'technical-accuracy'])
     );
@@ -337,16 +346,10 @@ describe('GateEnhancementStage', () => {
 
   test('processes string gates from unified gates parameter', async () => {
     const gateService = createGateService();
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      undefined,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({
       command: '>>demo',
@@ -369,11 +372,11 @@ describe('GateEnhancementStage', () => {
     context.parsedCommand = {
       commandType: 'single',
       convertedPrompt: samplePrompt,
-    };
+    } as any;
 
     await stage.execute(context);
 
-    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock).mock.calls[0][1];
+    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock<any>).mock.calls[0][1];
     expect(gateIdsPassed).toContain('quality-check');
     expect(gateIdsPassed).toContain('code-quality');
   });
@@ -390,16 +393,11 @@ describe('GateEnhancementStage', () => {
       }),
     } as any;
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      tempGateRegistry,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      temporaryRegistry: tempGateRegistry,
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({
       command: '>>step1 --> >>step2 --> >>step3',
@@ -444,21 +442,21 @@ describe('GateEnhancementStage', () => {
 
     // Step 1 should NOT have the gate
     const step1Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step1'
       )?.[1] ?? [];
     expect(step1Gates).not.toContain('temp_step_2_gate');
 
     // Step 2 SHOULD have the gate
     const step2Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step2'
       )?.[1] ?? [];
     expect(step2Gates).toContain('temp_step_2_gate');
 
     // Step 3 should NOT have the gate
     const step3Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step3'
       )?.[1] ?? [];
     expect(step3Gates).not.toContain('temp_step_2_gate');
@@ -476,16 +474,11 @@ describe('GateEnhancementStage', () => {
       }),
     } as any;
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      tempGateRegistry,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      temporaryRegistry: tempGateRegistry,
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({
       command: '>>step1 --> >>step2 --> >>step3',
@@ -530,21 +523,21 @@ describe('GateEnhancementStage', () => {
 
     // Step 1 SHOULD have the gate
     const step1Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step1'
       )?.[1] ?? [];
     expect(step1Gates).toContain('temp_multi_gate');
 
     // Step 2 should NOT have the gate
     const step2Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step2'
       )?.[1] ?? [];
     expect(step2Gates).not.toContain('temp_multi_gate');
 
     // Step 3 SHOULD have the gate
     const step3Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step3'
       )?.[1] ?? [];
     expect(step3Gates).toContain('temp_multi_gate');
@@ -562,16 +555,11 @@ describe('GateEnhancementStage', () => {
       }),
     } as any;
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      tempGateRegistry,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      temporaryRegistry: tempGateRegistry,
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({
       command: '>>step1 --> >>step2',
@@ -611,13 +599,13 @@ describe('GateEnhancementStage', () => {
 
     // Both steps SHOULD have the gate
     const step1Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step1'
       )?.[1] ?? [];
     expect(step1Gates).toContain('temp_all_steps');
 
     const step2Gates =
-      (gateService.enhancePrompt as jest.Mock).mock.calls.find(
+      (gateService.enhancePrompt as jest.Mock<any>).mock.calls.find(
         (call) => call[0].id === 'step2'
       )?.[1] ?? [];
     expect(step2Gates).toContain('temp_all_steps');
@@ -639,14 +627,10 @@ describe('GateEnhancementStage', () => {
       }),
     } as any;
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      tempGateRegistry,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger()
-    );
+      temporaryRegistry: tempGateRegistry,
+    });
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.state.gates.requestedOverrides = {
@@ -667,7 +651,7 @@ describe('GateEnhancementStage', () => {
     context.parsedCommand = {
       commandType: 'single',
       convertedPrompt: samplePrompt,
-    };
+    } as any;
 
     await stage.execute(context);
 
@@ -698,16 +682,10 @@ describe('GateEnhancementStage', () => {
 
   test('uses GateAccumulator for priority-based deduplication', async () => {
     const gateService = createGateService();
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
-      undefined,
-      () => baseFrameworkConfig,
-      undefined, // gateReferenceResolver
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig
-    );
+      gatesConfigProvider: () => baseGatesConfig,
+    });
 
     const context = new ExecutionContext({ command: '>>demo' });
     context.executionPlan = {
@@ -724,7 +702,7 @@ describe('GateEnhancementStage', () => {
         category: 'analysis', // Would auto-add research-quality from category
       },
       inlineGateIds: ['code-quality'], // Duplicate - should win due to higher priority
-    };
+    } as any;
 
     await stage.execute(context);
 
@@ -739,7 +717,8 @@ describe('GateEnhancementStage', () => {
 
     // Verify gateService was called with deduplicated list
     expect(gateService.enhancePrompt).toHaveBeenCalledTimes(1);
-    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock).mock.calls[0][1];
+    const gateIdsPassed = (gateService.enhancePrompt as jest.Mock<any>).mock
+      .calls[0][1] as string[];
 
     // No duplicates - code-quality should appear only once
     const codeQualityCount = gateIdsPassed.filter((g: string) => g === 'code-quality').length;
@@ -753,18 +732,12 @@ describe('GateEnhancementStage', () => {
     } as unknown as TemporaryGateRegistry;
     const mockGateManager = createMockGateManager();
 
-    const stage = new GateEnhancementStage(
+    const stage = createStage({
       gateService,
       temporaryRegistry,
-      () => baseFrameworkConfig,
-      undefined,
-      () => undefined, // frameworkManagerProvider
-      createLogger(),
-      undefined,
-      () => baseGatesConfig,
-      undefined, // gateLoader
-      () => mockGateManager // gateManagerProvider - provides category-based gate selection
-    );
+      gatesConfigProvider: () => baseGatesConfig,
+      gateManagerProvider: () => mockGateManager,
+    });
 
     const context = new ExecutionContext({ command: '>>demo' });
 
@@ -787,7 +760,7 @@ describe('GateEnhancementStage', () => {
       commandType: 'single',
       convertedPrompt: { ...samplePrompt, category: 'development' },
       inlineGateIds: ['inline-gate'], // inline-operator source
-    };
+    } as any;
 
     await stage.execute(context);
 

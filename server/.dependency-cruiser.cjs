@@ -78,12 +78,36 @@ module.exports = {
 
     // --- Layer 3: modules/ (domain, imports shared/ + engine/) ---
     {
-      name: 'modules-no-infra',
+      name: 'modules-no-infra-static',
       comment:
-        'modules/ (Layer 3) must use DI, not direct infra/ imports. ConfigManager DI migration pending.',
-      severity: 'warn',
+        'modules/ (Layer 3) must not have static imports from infra/. Use shared/types interfaces + constructor injection.',
+      severity: 'error',
       from: { path: '^src/modules/' },
-      to: { path: '^src/infra/' },
+      to: {
+        path: '^src/infra/',
+        dependencyTypesNot: ['dynamic-import', 'type-only'],
+      },
+    },
+    {
+      name: 'modules-infra-dynamic',
+      comment:
+        'modules/ dynamic imports of infra/ for lazy initialization. Track for future DI migration.',
+      severity: 'info',
+      from: { path: '^src/modules/' },
+      to: {
+        path: '^src/infra/',
+        dependencyTypes: ['dynamic-import'],
+      },
+    },
+    {
+      name: 'modules-infra-type-only',
+      comment: 'modules/ type-only imports from infra/. Track for shared/types consolidation.',
+      severity: 'info',
+      from: { path: '^src/modules/' },
+      to: {
+        path: '^src/infra/',
+        dependencyTypes: ['type-only'],
+      },
     },
     {
       name: 'modules-no-mcp',
@@ -95,12 +119,25 @@ module.exports = {
 
     // --- Layer 4: mcp/ (protocol interface, imports shared/ + engine/ + modules/) ---
     {
-      name: 'mcp-no-infra-direct',
+      name: 'mcp-no-infra-static',
       comment:
-        'mcp/ (Layer 4) should use engine/ interfaces, not direct infra/ imports. ConfigManager DI migration pending.',
-      severity: 'warn',
+        'mcp/ (Layer 4) must not have static value imports from infra/. Use shared/types interfaces.',
+      severity: 'error',
       from: { path: '^src/mcp/' },
-      to: { path: '^src/infra/' },
+      to: {
+        path: '^src/infra/',
+        dependencyTypesNot: ['dynamic-import', 'type-only'],
+      },
+    },
+    {
+      name: 'mcp-infra-dynamic',
+      comment: 'mcp/ dynamic imports of infra/ for runtime wiring. Track for consolidation.',
+      severity: 'info',
+      from: { path: '^src/mcp/' },
+      to: {
+        path: '^src/infra/',
+        dependencyTypes: ['dynamic-import'],
+      },
     },
 
     // ============================================

@@ -21,7 +21,7 @@ import {
   type PendingConfirmationTracker,
 } from './pending-confirmation-tracker.js';
 
-import type { IExecutionModeService } from '../../../shared/types/index.js';
+import type { ExecutionModeServicePort } from '../../../shared/types/index.js';
 import type {
   LoadedScriptTool,
   ToolDetectionMatch,
@@ -59,7 +59,7 @@ export interface ExecutionModeServiceConfig {
  * // Execute filterResult.readyForExecution tools
  * ```
  */
-export class ExecutionModeService implements IExecutionModeService {
+export class ExecutionModeService implements ExecutionModeServicePort {
   private readonly debug: boolean;
   private readonly confirmationTracker: PendingConfirmationTracker;
 

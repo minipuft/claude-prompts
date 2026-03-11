@@ -2,7 +2,7 @@
 /**
  * Generic Methodology Guide
  *
- * A data-driven implementation of IMethodologyGuide that works with JSON
+ * A data-driven implementation of MethodologyGuide that works with JSON
  * methodology definitions. This eliminates the need for TypeScript classes
  * per methodology - the same class works for any registered framework (built-in or custom).
  *
@@ -46,7 +46,7 @@ import type { ContentAnalysisResult } from '../../../shared/types/index.js';
 import type { ConvertedPrompt, ExecutionType } from '../../execution/types.js';
 
 /**
- * GenericMethodologyGuide - Data-driven implementation of IMethodologyGuide
+ * GenericMethodologyGuide - Data-driven implementation of MethodologyGuide
  *
  * This class can represent any methodology by loading its definition from JSON.
  * All methodology-specific behavior is derived from the JSON data.

@@ -8,6 +8,7 @@
  */
 
 import type { ContentAnalysisResult } from '../../../shared/types/index.js';
+import type { PhaseGuard } from '../methodology/methodology-schema.js';
 import type {
   ProcessingGuidance,
   StepGuidance,
@@ -65,6 +66,10 @@ export interface ProcessingStepDefinition {
   methodologyBasis: string;
   order: number;
   required: boolean;
+  /** Section header for detection (e.g., "## Context") */
+  section_header?: string;
+  /** Deterministic phase guards evaluated against the section under this header */
+  guards?: PhaseGuard;
 }
 
 /**
@@ -93,6 +98,8 @@ export function generateProcessingSteps(steps: ProcessingStepDefinition[]): Proc
       methodologyBasis: step.methodologyBasis,
       order: step.order,
       required: step.required,
+      ...(step.section_header && { section_header: step.section_header }),
+      ...(step.guards && { guards: step.guards }),
     }));
 }
 

@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "prompt_engine",
+        "matcher": ".*prompt_engine",
         "hooks": [
           {
             "type": "command",
@@ -29,7 +29,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "prompt_engine",
+        "matcher": ".*prompt_engine",
         "hooks": [
           {
             "type": "command",
@@ -63,14 +63,14 @@
         ]
       }
     ],
-    "PreCompact": [
+    "SessionStart": [
       {
-        "matcher": "*",
+        "matcher": "compact",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pre-compact.py",
-            "name": "pre-compact",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/compact-recovery.py",
+            "name": "compact-recovery",
             "timeout": 5
           }
         ]

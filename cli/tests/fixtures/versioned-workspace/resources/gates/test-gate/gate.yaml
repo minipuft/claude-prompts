@@ -1,0 +1,8 @@
+id: test-gate
+name: Test Gate
+type: validation
+description: A test gate for CLI integration tests
+guidanceFile: guidance.md
+pass_criteria:
+  - type: content_check
+    min_length: 50

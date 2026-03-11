@@ -12,7 +12,7 @@ import express, { Request, Response } from 'express';
 import { PromptAssetManager } from '../../modules/prompts/index.js';
 import { reloadPromptData as reloadPromptDataFromDisk } from '../../modules/prompts/prompt-refresh-service.js';
 import { safeWriteFile } from '../../shared/utils/file-transactions.js';
-import { McpToolsManager } from '../tools/index.js';
+import { McpToolRouter } from '../tools/index.js';
 
 import type { Category, PromptData, PromptsFile } from '../../modules/prompts/types.js';
 import type { ConfigManager, Logger, ToolResponse } from '../../shared/types/index.js';
@@ -21,11 +21,11 @@ import type { ResourceManagerInput } from '../tools/resource-manager/core/types.
 /**
  * API Manager class
  */
-export class ApiManager {
+export class ApiRouter {
   private logger: Logger;
   private configManager: ConfigManager;
   private promptManager: PromptAssetManager | undefined;
-  private mcpToolsManager: McpToolsManager | undefined;
+  private mcpToolsManager: McpToolRouter | undefined;
   private promptsData: PromptData[] = [];
   private categories: Category[] = [];
   private convertedPrompts: any[] = [];
@@ -34,7 +34,7 @@ export class ApiManager {
     logger: Logger,
     configManager: ConfigManager,
     promptManager?: PromptAssetManager,
-    mcpToolsManager?: McpToolsManager
+    mcpToolsManager?: McpToolRouter
   ) {
     this.logger = logger;
     this.configManager = configManager;
@@ -447,11 +447,11 @@ export class ApiManager {
 /**
  * Create and configure an API manager
  */
-export function createApiManager(
+export function createApiRouter(
   logger: Logger,
   configManager: ConfigManager,
   promptManager?: PromptAssetManager,
-  mcpToolsManager?: McpToolsManager
-): ApiManager {
-  return new ApiManager(logger, configManager, promptManager, mcpToolsManager);
+  mcpToolsManager?: McpToolRouter
+): ApiRouter {
+  return new ApiRouter(logger, configManager, promptManager, mcpToolsManager);
 }

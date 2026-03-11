@@ -13,6 +13,7 @@ const stageOrder = [
   'RequestNormalization',
   'DependencyInjection',
   'ExecutionLifecycle',
+  'IdentityResolution',
   'CommandParsing',
   'InlineGateExtraction',
   'OperatorValidation',
@@ -26,7 +27,6 @@ const stageOrder = [
   'StepResponseCapture',
   'StepExecution',
   'GateReview',
-  'CallToAction',
   'ResponseFormatting',
   'PostFormattingCleanup',
 ] as const;
@@ -82,20 +82,20 @@ const createPipeline = (
     requestStage,
     dependencyStage,
     lifecycleStage,
+    identityResolutionStage,
     parsingStage,
     inlineGateStage,
     operatorValidationStage,
     planningStage,
-    judgeSelectionStage, // position 8 (before gate/framework)
-    gateStage, // position 9
-    frameworkStage, // position 10
-    sessionStage, // position 11
-    frameworkInjectionControlStage, // position 12
-    promptGuidanceStage, // position 13
-    responseCaptureStage, // position 14
-    executionStage, // position 15
-    gateReviewStage, // position 16
-    callToActionStage, // position 17
+    judgeSelectionStage, // position 9 (before gate/framework)
+    gateStage, // position 10
+    frameworkStage, // position 11
+    sessionStage, // position 12
+    frameworkInjectionControlStage, // position 13
+    promptGuidanceStage, // position 14
+    responseCaptureStage, // position 15
+    executionStage, // position 16
+    gateReviewStage, // position 17
     formattingStage, // position 18
     postFormattingStage, // position 19
   ] = stageInstances;
@@ -104,6 +104,7 @@ const createPipeline = (
     requestStage,
     dependencyStage,
     lifecycleStage,
+    identityResolutionStage,
     parsingStage,
     inlineGateStage,
     operatorValidationStage,
@@ -119,8 +120,8 @@ const createPipeline = (
     responseCaptureStage,
     null, // shellVerificationStage (optional - null to skip)
     executionStage,
+    null, // phaseGuardVerificationStage (optional - null to skip)
     gateReviewStage,
-    callToActionStage,
     formattingStage,
     postFormattingStage,
     createLogger(),

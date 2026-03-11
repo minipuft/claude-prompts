@@ -3,7 +3,7 @@
 Stop hook: Shell verification for Ralph Wiggum-style autonomous loops.
 
 When Claude tries to stop, this hook:
-1. Reads runtime-state/verify-active.json (written by MCP server)
+1. Reads runtime-state/verify-state.db (written by MCP server via SQLite)
 2. Runs the verification command
 3. If PASS (exit 0): Allows Claude to stop
 4. If FAIL (exit != 0): Blocks stop, feeds error back to Claude
@@ -26,6 +26,15 @@ from pathlib import Path
 # Add hooks lib to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
+from db_reader import load_active_chain_state
+from session_state import load_session_state
+from verify_active_store import (
+    clear_verify_active_state,
+    load_verify_active_state,
+    save_verify_active_state,
+)
+from workspace import get_runtime_state_dir
+
 
 def ensure_ralph_session_id(verify_state: dict) -> str:
     """
@@ -46,11 +55,10 @@ def ensure_ralph_session_id(verify_state: dict) -> str:
     return session_id
 
 
-def get_verify_state_path() -> Path:
-    """Get path to verify-active.json from MCP server's runtime-state."""
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(Path(__file__).parent.parent))
-    # MCP server writes to {plugin_root}/runtime-state/ (process.cwd() is plugin root)
-    return Path(plugin_root) / "runtime-state" / "verify-active.json"
+def get_debug_log_path() -> Path:
+    """Get path for ralph debug log in runtime-state."""
+    dev_fallback = Path(__file__).parent.parent / "server" / "runtime-state"
+    return get_runtime_state_dir(dev_fallback) / "ralph-debug.log"
 
 
 def get_config_path() -> Path:
@@ -94,37 +102,23 @@ def load_context_isolation_config() -> dict:
             "spawnTimeout": isolation.get("timeout", defaults["spawnTimeout"]),
             "permissionMode": isolation.get("permissionMode", defaults["permissionMode"]),
         }
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return defaults
 
 
-def load_verify_state() -> dict | None:
-    """Load verification state from MCP server's runtime-state."""
-    state_file = get_verify_state_path()
-
-    if not state_file.exists():
-        return None
-
-    try:
-        return json.loads(state_file.read_text())
-    except (json.JSONDecodeError, IOError):
-        return None
+def load_verify_state(session_id: str | None = None) -> dict | None:
+    """Load verification state from SQLite verify-state.db."""
+    return load_verify_active_state(session_id)
 
 
-def save_verify_state(state: dict) -> None:
-    """Save updated verification state."""
-    state_file = get_verify_state_path()
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps(state, indent=2))
+def save_verify_state(state: dict, session_id: str = "") -> None:
+    """Save updated verification state to SQLite verify-state.db."""
+    save_verify_active_state(state, session_id)
 
 
-def clear_verify_state() -> None:
-    """Clear verification state file."""
-    state_file = get_verify_state_path()
-    try:
-        state_file.unlink()
-    except FileNotFoundError:
-        pass
+def clear_verify_state(session_id: str | None = None) -> None:
+    """Clear verification state from SQLite verify-state.db."""
+    clear_verify_active_state(session_id)
 
 
 def run_verification(command: str, timeout: int, working_dir: str = None) -> dict:
@@ -204,7 +198,7 @@ def format_error_feedback(result: dict, verify_state: dict) -> str:
 def log_debug(message: str, data: dict | str | None = None) -> None:
     """Write debug info to ralph-debug.log for troubleshooting."""
     from datetime import datetime
-    log_path = get_verify_state_path().parent / "ralph-debug.log"
+    log_path = get_debug_log_path()
     timestamp = datetime.now().isoformat()
     with open(log_path, "a") as f:
         f.write(f"\n[{timestamp}] {message}\n")
@@ -238,9 +232,9 @@ def spawn_isolated_iteration(
     })
 
     # Import here to avoid import errors when not in isolation mode
+    from cli_spawner import SpawnConfig, spawn_claude_print
     from session_tracker import get_session_tracker
     from task_protocol import create_task_file
-    from cli_spawner import spawn_claude_print, SpawnConfig
 
     config = verify_state["config"]
     state = verify_state.get("state", {})
@@ -359,7 +353,11 @@ def spawn_isolated_iteration(
         error_output = verify_result["stderr"] or verify_result["stdout"] or "No output"
         return {
             "passed": False,
-            "output": f"Spawned instance attempted fix but verification still fails.\n\nSpawned output:\n{result.output[:500]}\n\nVerification error:\n{error_output}",
+            "output": (
+                "Spawned instance attempted fix but verification still fails.\n\n"
+                f"Spawned output:\n{result.output[:500]}\n\n"
+                f"Verification error:\n{error_output}"
+            ),
             "stats": stats_dict,
             "spawn_output": result.output[:1000] if result.output else None,
         }
@@ -377,27 +375,82 @@ def main():
     if hook_input.get("stop_hook_active"):
         sys.exit(0)
 
-    # Load verification state from MCP server's runtime-state
-    verify_state = load_verify_state()
+    # Session scoping: use session_id from hook_input to isolate clients
+    hook_session_id = hook_input.get("session_id", "") or ""
+
+    # Load verification state from MCP server's runtime-state (scoped to this client)
+    verify_state = load_verify_state(hook_session_id or None)
 
     if not verify_state:
-        # No active verification - allow stop
+        # No active verification — check for active chain before allowing stop
+        # SSOT: read from server's state.db (works without PostToolUse hook)
+        chain_state = load_active_chain_state()
+        # Fallback: hooks-state.db (if PostToolUse populated it)
+        if not chain_state and hook_session_id:
+            chain_state = load_session_state(hook_session_id)
+        if chain_state:
+            chain_id = chain_state.get("chain_id", "")
+            step = chain_state.get("current_step", 0)
+            total = chain_state.get("total_steps", 0)
+            pending_gate = chain_state.get("pending_gate")
+
+            # Block if: steps remain OR pending gate/verify at final step
+            # (load_active_chain_state already filters truly completed chains)
+            needs_continuation = chain_id and step > 0 and step < total
+            needs_review = chain_id and step > 0 and pending_gate
+
+            if needs_continuation or needs_review:
+                if pending_gate:
+                    reason = (
+                        f"Chain {chain_id} has a pending gate review (step {step}/{total}).\n\n"
+                        f"Submit gate_verdict via prompt_engine:\n"
+                        f'  chain_id="{chain_id}"\n'
+                        f'  gate_verdict="GATE_REVIEW: PASS|FAIL - <reason>"'
+                    )
+                else:
+                    reason = (
+                        f"Chain {chain_id} is active (step {step}/{total}).\n\n"
+                        f"Continue the chain:\n"
+                        f'  prompt_engine(chain_id="{chain_id}")'
+                    )
+
+                print(json.dumps({
+                    "decision": "block",
+                    "reason": reason
+                }))
+                sys.stdout.flush()
+                sys.exit(0)
+
+        # No active chain or verification — allow stop
         sys.exit(0)
 
     config = verify_state.get("config", {})
     state = verify_state.get("state", {})
 
+    # Staleness check: if state is older than 1 hour, discard and allow stop
+    from datetime import datetime, timedelta, timezone
+    started_at = state.get("startedAt", "")
+    if started_at:
+        try:
+            start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - start_time > timedelta(hours=1):
+                clear_verify_state(hook_session_id or None)
+                sys.exit(0)
+        except (ValueError, TypeError):
+            pass  # Malformed timestamp — proceed normally
+
     # Ensure RALPH_SESSION_ID is set for context tracking hooks
     session_id = ensure_ralph_session_id(verify_state)
 
-    # Get iteration count
-    iteration = state.get("iteration", 0) + 1
+    # Get iteration count — MCP server already increments before writing state,
+    # so use the value directly (no +1 to avoid double-counting)
+    iteration = state.get("iteration", 0) or 1
     max_iterations = config.get("maxIterations", 10)
 
-    # Check iteration limit
-    if iteration > max_iterations:
+    # Check iteration limit (>= because iteration is already incremented by MCP server)
+    if iteration >= max_iterations:
         # Max iterations reached - clear state and allow stop
-        clear_verify_state()
+        clear_verify_state(hook_session_id or None)
         print(json.dumps({
             "decision": None,  # Allow stop
             "systemMessage": f"[Verify] Max iterations ({max_iterations}) reached. Stopping."
@@ -420,11 +473,23 @@ def main():
     state["iteration"] = iteration
     state["lastResult"] = result
     verify_state["state"] = state
-    save_verify_state(verify_state)
+    save_verify_state(verify_state, hook_session_id)
 
     if result["passed"]:
         # Verification passed - clear state and allow stop
-        clear_verify_state()
+        clear_verify_state(hook_session_id or None)
+
+        # Opportunistic cleanup of stale state across all stores
+        try:
+            from hook_state_store import cleanup_stale_rows
+            from session_state import cleanup_old_sessions
+            from session_tracker import cleanup_old_ralph_sessions
+            cleanup_stale_rows(max_age_hours=24)
+            cleanup_old_sessions(max_age_hours=24)
+            cleanup_old_ralph_sessions(max_age_hours=24)
+        except Exception:
+            pass  # Non-critical — don't fail verification success
+
         print(json.dumps({
             "decision": None,  # Allow stop
             "systemMessage": f"[Verify] PASSED on iteration {iteration}!"
@@ -451,7 +516,7 @@ def main():
 
             if spawn_result["passed"]:
                 # Spawned instance succeeded
-                clear_verify_state()
+                clear_verify_state(hook_session_id or None)
 
                 # Format stats for display
                 stats = spawn_result.get("stats", {})
@@ -496,7 +561,7 @@ def main():
                 # Spawned instance failed - update state and bounce back
                 state["iteration"] = iteration + 1  # Count the spawn as an iteration
                 verify_state["state"] = state
-                save_verify_state(verify_state)
+                save_verify_state(verify_state, hook_session_id)
 
                 # Format stats even on failure
                 stats = spawn_result.get("stats", {})

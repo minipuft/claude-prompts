@@ -1,6 +1,5 @@
 # Troubleshooting
 
-> Status: canonical
 
 Common issues and how to fix them.
 
@@ -38,6 +37,9 @@ MCP_WORKSPACE=/path/to/workspace npx claude-prompts
 node -e "JSON.parse(require('fs').readFileSync('config.json'))"
 ```
 
+> [!NOTE]
+> For all CLI flags and environment variables, see the [CLI Configuration](../reference/mcp-tools.md#cli-configuration) section in the MCP Tools reference.
+
 ---
 
 ## MCP Client Issues
@@ -65,6 +67,9 @@ node -e "JSON.parse(require('fs').readFileSync('config.json'))"
 2. Restart Claude Desktop to refresh MCP connections
 3. Verify `prompts.registerWithMcp: true` in `config.json`
 
+> [!NOTE]
+> For per-client setup instructions, see the [Client Integration Guide](./client-integration.md) or the [Quick Start](../../README.md#quick-start) in the README.
+
 ---
 
 ## Prompt Issues
@@ -88,18 +93,24 @@ node -e "JSON.parse(require('fs').readFileSync('config.json'))"
 3. Check `server/logs/` for watcher errors
 4. Use supervisor mode if STDIO sessions must persist during reload
 
+> [!NOTE]
+> For prompt creation and file structure, see the [Build Your First Prompt](../tutorials/build-first-prompt.md) tutorial. For the full schema, see [Prompt YAML Schema](../reference/prompt-yaml-schema.md).
+
 ---
 
 ## Chain Issues
 
 ### Chain Sessions Reset Unexpectedly
 
-**Cause**: `runtime-state/chain-sessions.json` permissions or corruption.
+**Cause**: `runtime-state/state.db` permissions or corruption.
 
 **Fix**:
 1. Check write permissions on `runtime-state/` directory
-2. Delete `chain-sessions.json` and restart (sessions will reset)
+2. Delete `state.db` and restart (sessions will reset)
 3. In CI, use HTTP transport (`--transport=streamable-http`) to avoid STDIO restrictions
+
+> [!NOTE]
+> For chain concepts and session management, see [Chains Lifecycle](../concepts/chains-lifecycle.md). For chain step configuration, see [Chain Schema Reference](../reference/chain-schema.md).
 
 ### Chain Stuck / Won't Advance
 
@@ -109,7 +120,7 @@ node -e "JSON.parse(require('fs').readFileSync('config.json'))"
 1. Check if gate review is pending—send `gate_verdict` (preferred format: `GATE_REVIEW: PASS/FAIL - reason`) or `gate_action` when retries are exhausted
 2. Bundle responses for efficiency: include both `user_response` and `gate_verdict` in one call
 3. Force restart: `prompt_engine(command: ">>prompt", force_restart: true)`
-4. Inspect session: check `runtime-state/chain-sessions.json`
+4. Inspect session: `system_control(action: "status")`
 
 ---
 
@@ -133,6 +144,9 @@ system_control(action: "framework", operation: "switch", framework: "CAGEERF")
 2. Remove `%clean` or `%lean` modifiers from command
 3. Use `%guided` to force injection
 
+> [!NOTE]
+> For injection frequency tuning and modifier details, see the [Injection Control Guide](./injection-control.md).
+
 ---
 
 ## Gate Issues
@@ -154,6 +168,9 @@ system_control(action: "framework", operation: "switch", framework: "CAGEERF")
 1. Use `gate_action: "skip"` to bypass and continue
 2. Use `gate_action: "retry"` to reset attempt counter
 3. Clarify criteria in the gate definition
+
+> [!NOTE]
+> For gate syntax, types, and best practices, see the [Gates Guide](./gates.md). For the full `gate.yaml` schema, see [Gate Configuration Reference](../reference/gate-configuration.md).
 
 ---
 
@@ -195,3 +212,11 @@ When reporting bugs, include:
 4. Transport type (STDIO/SSE/Streamable HTTP)
 5. Node.js version: `node -v`
 6. Steps to reproduce
+
+---
+
+## See Also
+
+- **[MCP Tools Reference](../reference/mcp-tools.md)** — Full tool parameters, operators, and workflows
+- **[Architecture Overview](../architecture/overview.md)** — How the pipeline processes requests
+- **[Build Your First Prompt](../tutorials/build-first-prompt.md)** — Getting started tutorial

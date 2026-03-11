@@ -11,34 +11,33 @@ import {
   compareResourceBaseline,
 } from './resource-change-tracking.js';
 import {
-  createFrameworkStateManager,
-  FrameworkStateManager,
-} from '../engine/frameworks/framework-state-manager.js';
+  createFrameworkStateStore,
+  FrameworkStateStore,
+} from '../engine/frameworks/framework-state-store.js';
 import { createGateManager, GateManager } from '../engine/gates/gate-manager.js';
 import { createMetricsCollector } from '../infra/observability/metrics/index.js';
 import { ResourceChangeTracker } from '../infra/observability/tracking/index.js';
-import { createMcpToolsManager, McpToolsManager } from '../mcp/tools/index.js';
+import { createMcpToolsManager, McpToolRouter } from '../mcp/tools/index.js';
 import {
-  createToolDescriptionManager,
-  ToolDescriptionManager,
-} from '../mcp/tools/tool-description-manager.js';
+  createToolDescriptionLoader,
+  ToolDescriptionLoader,
+} from '../mcp/tools/tool-description-loader.js';
 import { isChainPrompt } from '../shared/utils/chainUtils.js';
 
-import type { PathResolver } from './paths.js';
 import type { RuntimeLaunchOptions } from './options.js';
+import type { PathResolver } from './paths.js';
 import type { ConvertedPrompt } from '../engine/execution/types.js';
-import type { EventEmittingConfigManager } from '../infra/config/index.js';
+import type { ConfigLoader } from '../infra/config/index.js';
 import type { Logger } from '../infra/logging/index.js';
 import type { PromptAssetManager } from '../modules/prompts/index.js';
 import type { Category, PromptData } from '../modules/prompts/types.js';
-import type { ConversationManager } from '../modules/text-refs/conversation.js';
-import type { TextReferenceManager } from '../modules/text-refs/index.js';
+import type { ConversationStore } from '../modules/text-refs/conversation.js';
+import type { TextReferenceStore } from '../modules/text-refs/index.js';
 import type {
   FrameworksConfig,
-  IHookRegistry,
-  IMcpNotificationEmitter,
+  HookRegistryPort,
+  McpNotificationEmitterPort,
 } from '../shared/types/index.js';
-import type { ServiceManager } from '../shared/utils/service-manager.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export interface ModuleInitCallbacks {
@@ -49,32 +48,31 @@ export interface ModuleInitCallbacks {
 
 export interface ModuleInitParams {
   logger: Logger;
-  configManager: EventEmittingConfigManager;
+  configManager: ConfigLoader;
   runtimeOptions: RuntimeLaunchOptions;
   promptsData: PromptData[];
   categories: Category[];
   convertedPrompts: ConvertedPrompt[];
   promptManager: PromptAssetManager;
-  conversationManager: ConversationManager;
-  textReferenceManager: TextReferenceManager;
+  conversationStore: ConversationStore;
+  textReferenceStore: TextReferenceStore;
   mcpServer: McpServer;
-  serviceManager: ServiceManager;
   callbacks: ModuleInitCallbacks;
   /** Server root for runtime state directories */
   serverRoot?: string;
   /** Path resolver for workspace-derived resource overlays */
   pathResolver?: PathResolver;
   /** Hook registry for pipeline event emissions */
-  hookRegistry?: IHookRegistry;
+  hookRegistry?: HookRegistryPort;
   /** Notification emitter for MCP client notifications */
-  notificationEmitter?: IMcpNotificationEmitter;
+  notificationEmitter?: McpNotificationEmitterPort;
 }
 
 export interface ModuleInitResult {
-  frameworkStateManager: FrameworkStateManager;
+  frameworkStateStore: FrameworkStateStore;
   gateManager: GateManager;
-  mcpToolsManager: McpToolsManager;
-  toolDescriptionManager: ToolDescriptionManager;
+  mcpToolsManager: McpToolRouter;
+  toolDescriptionLoader: ToolDescriptionLoader;
   /** Resource change tracker for audit logging (undefined if serverRoot not provided) */
   resourceChangeTracker?: ResourceChangeTracker;
 }
@@ -88,10 +86,9 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
     categories,
     convertedPrompts,
     promptManager,
-    conversationManager,
-    textReferenceManager,
+    conversationStore,
+    textReferenceStore,
     mcpServer,
-    serviceManager,
     callbacks,
     serverRoot,
     pathResolver,
@@ -133,8 +130,8 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
     typeof configManager.getServerRoot === 'function'
       ? configManager.getServerRoot()
       : path.dirname(configManager.getConfigPath());
-  const frameworkStateManager = await createFrameworkStateManager(logger, frameworkStateRoot);
-  if (isVerbose) logger.info('✅ FrameworkStateManager initialized successfully');
+  const frameworkStateStore = await createFrameworkStateStore(logger, frameworkStateRoot);
+  if (isVerbose) logger.info('✅ FrameworkStateStore initialized successfully');
 
   const currentFrameworkConfig = configManager.getFrameworksConfig();
   callbacks.handleFrameworkConfigChange(currentFrameworkConfig);
@@ -170,9 +167,8 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
     mcpServer,
     promptManager,
     configManager,
-    conversationManager,
-    textReferenceManager,
-    serviceManager,
+    conversationStore,
+    textReferenceStore,
     callbacks.fullServerRefresh,
     callbacks.restartServer,
     gateManager,
@@ -183,18 +179,18 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
   mcpToolsManager.updateData(promptsData, convertedPrompts, categories);
 
   if (isVerbose) logger.info('🔄 Connecting Framework State Manager...');
-  mcpToolsManager.setFrameworkStateManager(frameworkStateManager);
+  mcpToolsManager.setFrameworkStateStore(frameworkStateStore);
 
   if (isVerbose) logger.info('🔄 Initializing Framework Manager...');
   await mcpToolsManager.setFrameworkManager();
 
   if (isVerbose) logger.info('🔄 Initializing Tool Description Manager...');
-  const toolDescriptionManager = createToolDescriptionManager(logger, configManager);
-  toolDescriptionManager.setFrameworkStateManager(frameworkStateManager);
-  await toolDescriptionManager.initialize();
+  const toolDescriptionLoader = createToolDescriptionLoader(logger, configManager);
+  toolDescriptionLoader.setFrameworkStateStore(frameworkStateStore);
+  await toolDescriptionLoader.initialize();
 
   if (isVerbose) logger.info('🔄 Connecting Tool Description Manager to MCP Tools...');
-  mcpToolsManager.setToolDescriptionManager(toolDescriptionManager);
+  mcpToolsManager.setToolDescriptionLoader(toolDescriptionLoader);
 
   // Wire up hook registry and notification emitter for pipeline events
   if (hookRegistry) {
@@ -207,11 +203,33 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
   if (isVerbose) logger.info('🔄 Registering all MCP tools...');
   await mcpToolsManager.registerAllTools();
 
+  // Index resources to SQLite for hook consumption (prompt-suggest, etc.)
+  if (serverRoot !== undefined && serverRoot !== '') {
+    try {
+      const { SqliteEngine } = await import('../infra/database/sqlite-engine.js');
+      const { createResourceIndexer } = await import('../infra/database/resource-indexer.js');
+      const { ScriptToolDefinitionLoader } =
+        await import('../modules/automation/core/script-definition-loader.js');
+      const dbManager = await SqliteEngine.getInstance(serverRoot, logger);
+      await dbManager.initialize();
+      const resourcesDir = pathResolver?.getResourcesPath() ?? path.join(serverRoot, 'resources');
+      const scriptLoader = new ScriptToolDefinitionLoader({ validateOnLoad: true });
+      const indexer = createResourceIndexer(dbManager, logger, {
+        resourcesDir,
+        toolLoader: (dir, id) => scriptLoader.loadAllToolsForPrompt(dir, id),
+      });
+      await indexer.syncAll();
+      if (isVerbose) logger.info('✅ ResourceIndexer synced to SQLite');
+    } catch (error) {
+      logger.warn('Failed to sync resource index:', error);
+    }
+  }
+
   return {
-    frameworkStateManager,
+    frameworkStateStore,
     gateManager,
     mcpToolsManager,
-    toolDescriptionManager,
+    toolDescriptionLoader,
     resourceChangeTracker,
   };
 }

@@ -19,6 +19,10 @@ export interface ServerCliArgs {
   gates?: string;
   scripts?: string;
   styles?: string;
+  workspaceId?: string;
+  organizationId?: string;
+  identityMode?: string;
+  client?: string;
 }
 
 export function parseServerCliArgs(args: string[] = process.argv.slice(2)): ServerCliArgs {
@@ -42,6 +46,10 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
       gates: { type: 'string' },
       scripts: { type: 'string' },
       styles: { type: 'string' },
+      'workspace-id': { type: 'string' },
+      'organization-id': { type: 'string' },
+      'identity-mode': { type: 'string' },
+      client: { type: 'string' },
     },
     strict: false,
     allowPositionals: true,
@@ -65,5 +73,9 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
     gates: values.gates as string | undefined,
     scripts: values.scripts as string | undefined,
     styles: values.styles as string | undefined,
+    workspaceId: values['workspace-id'] as string | undefined,
+    organizationId: values['organization-id'] as string | undefined,
+    identityMode: values['identity-mode'] as string | undefined,
+    client: values.client as string | undefined,
   };
 }

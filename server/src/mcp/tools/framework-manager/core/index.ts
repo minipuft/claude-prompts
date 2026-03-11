@@ -1,5 +1,6 @@
 // @lifecycle canonical - Core framework manager exports.
-export { ConsolidatedFrameworkManager, createConsolidatedFrameworkManager } from './manager.js';
+export { FrameworkToolHandler, createFrameworkToolHandler } from './manager.js';
+export type { FrameworkResourceContext } from './context.js';
 export type {
   FrameworkManagerActionId,
   FrameworkManagerInput,

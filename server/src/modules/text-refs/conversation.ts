@@ -6,7 +6,7 @@
 
 import type { Logger, ConversationHistoryItem } from '../../shared/types/index.js';
 
-export class ConversationManager {
+export class ConversationStore {
   private readonly logger: Logger;
   private conversationHistory: ConversationHistoryItem[] = [];
   private readonly maxHistorySize: number;
@@ -122,9 +122,9 @@ export class ConversationManager {
   }
 }
 
-export function createConversationManager(
+export function createConversationStore(
   logger: Logger,
   maxHistorySize?: number
-): ConversationManager {
-  return new ConversationManager(logger, maxHistorySize);
+): ConversationStore {
+  return new ConversationStore(logger, maxHistorySize);
 }

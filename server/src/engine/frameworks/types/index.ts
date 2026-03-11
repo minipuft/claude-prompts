@@ -16,7 +16,7 @@ export type {
   FrameworkMethodology,
   FrameworkSelectionCriteria,
   FrameworkType,
-  IMethodologyGuide,
+  MethodologyGuide,
   MethodologyEnhancement,
   MethodologyToolDescription,
   MethodologyToolDescriptions,
@@ -34,7 +34,6 @@ export { BaseMethodologyGuide } from './methodology-types.js';
 // Prompt guidance types
 export type {
   FrameworkStateInfo,
-  IPromptGuidanceService,
   MethodologyHealth,
   MethodologyState,
   MethodologySwitchRequest,

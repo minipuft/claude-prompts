@@ -13,7 +13,7 @@ import {
   type RuntimeMethodologyLoaderConfig,
 } from './runtime-methodology-loader.js';
 import { Logger } from '../../../infra/logging/index.js';
-import { IMethodologyGuide } from '../types/index.js';
+import { MethodologyGuide } from '../types/index.js';
 
 // Data-driven methodology system (YAML-only)
 
@@ -30,7 +30,7 @@ export interface MethodologyRegistryConfig {
   /** Whether to auto-load built-in methodology guides */
   autoLoadBuiltIn: boolean;
   /** Custom methodology guides to load */
-  customGuides?: IMethodologyGuide[];
+  customGuides?: MethodologyGuide[];
   /** Whether to validate guides on registration */
   validateOnRegistration: boolean;
   /** Configuration for the runtime YAML loader */
@@ -41,7 +41,7 @@ export interface MethodologyRegistryConfig {
  * Methodology guide registry entry
  */
 export interface MethodologyGuideEntry {
-  guide: IMethodologyGuide;
+  guide: MethodologyGuide;
   registeredAt: Date;
   isBuiltIn: boolean;
   enabled: boolean;
@@ -119,7 +119,7 @@ export class MethodologyRegistry {
    * Register a methodology guide
    */
   async registerGuide(
-    guide: IMethodologyGuide,
+    guide: MethodologyGuide,
     isBuiltIn: boolean = false,
     source: MethodologySource = 'custom'
   ): Promise<boolean> {
@@ -174,7 +174,7 @@ export class MethodologyRegistry {
   /**
    * Get a methodology guide by ID
    */
-  getGuide(guideId: string): IMethodologyGuide | undefined {
+  getGuide(guideId: string): MethodologyGuide | undefined {
     this.ensureInitialized();
 
     const entry = this.guides.get(guideId.toLowerCase());
@@ -190,10 +190,10 @@ export class MethodologyRegistry {
   /**
    * Get all registered methodology guides
    */
-  getAllGuides(enabledOnly: boolean = true): IMethodologyGuide[] {
+  getAllGuides(enabledOnly: boolean = true): MethodologyGuide[] {
     this.ensureInitialized();
 
-    const guides: IMethodologyGuide[] = [];
+    const guides: MethodologyGuide[] = [];
     for (const [_, entry] of this.guides) {
       if (!enabledOnly || entry.enabled) {
         guides.push(entry.guide);
@@ -410,7 +410,7 @@ export class MethodologyRegistry {
   /**
    * Load custom methodology guides
    */
-  private async loadCustomGuides(customGuides: IMethodologyGuide[]): Promise<void> {
+  private async loadCustomGuides(customGuides: MethodologyGuide[]): Promise<void> {
     this.logger.debug(`Loading ${customGuides.length} custom methodology guides...`);
 
     for (const guide of customGuides) {
@@ -426,7 +426,7 @@ export class MethodologyRegistry {
   /**
    * Validate a methodology guide
    */
-  private validateGuide(guide: IMethodologyGuide): { valid: boolean; errors: string[] } {
+  private validateGuide(guide: MethodologyGuide): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     // Check required properties

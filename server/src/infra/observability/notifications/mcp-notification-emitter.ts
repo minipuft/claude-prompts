@@ -16,7 +16,7 @@
  * - notifications/chain/failed - Chain failed with error
  */
 
-import type { IMcpNotificationEmitter } from '../../../shared/types/index.js';
+import type { McpNotificationEmitterPort } from '../../../shared/types/index.js';
 import type { Logger } from '../../logging/index.js';
 
 /**
@@ -105,7 +105,7 @@ export interface ChainCompleteNotification {
  * Sends MCP protocol notifications to connected clients.
  * Gracefully handles missing server or notification support.
  */
-export class McpNotificationEmitter implements IMcpNotificationEmitter {
+export class McpNotificationEmitter implements McpNotificationEmitterPort {
   private server?: McpNotificationServer;
   private readonly logger: Logger;
 

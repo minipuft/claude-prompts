@@ -13,7 +13,7 @@ import type { ToolResponse } from '../../../../src/shared/types/index.js';
 describe('ResourceManagerRouter', () => {
   let router: ResourceManagerRouter;
   let logger: MockLogger;
-  let mockPromptResourceService: {
+  let mockPromptResourceHandler: {
     handleAction: jest.MockedFunction<
       (args: Record<string, unknown>, context: Record<string, unknown>) => Promise<ToolResponse>
     >;
@@ -38,7 +38,7 @@ describe('ResourceManagerRouter', () => {
     jest.clearAllMocks();
     logger = new MockLogger();
 
-    mockPromptResourceService = {
+    mockPromptResourceHandler = {
       handleAction: jest.fn<
         (args: Record<string, unknown>, context: Record<string, unknown>) => Promise<ToolResponse>
       >(() => Promise.resolve(successResponse)),
@@ -58,9 +58,9 @@ describe('ResourceManagerRouter', () => {
 
     router = createResourceManagerRouter({
       logger: logger as unknown as Parameters<typeof createResourceManagerRouter>[0]['logger'],
-      promptResourceService: mockPromptResourceService as unknown as Parameters<
+      promptResourceHandler: mockPromptResourceHandler as unknown as Parameters<
         typeof createResourceManagerRouter
-      >[0]['promptResourceService'],
+      >[0]['promptResourceHandler'],
       gateManager: mockGateManager as unknown as Parameters<
         typeof createResourceManagerRouter
       >[0]['gateManager'],
@@ -79,7 +79,7 @@ describe('ResourceManagerRouter', () => {
 
       const result = await router.handleAction(args, {});
 
-      expect(mockPromptResourceService.handleAction).toHaveBeenCalledTimes(1);
+      expect(mockPromptResourceHandler.handleAction).toHaveBeenCalledTimes(1);
       expect(mockGateManager.handleAction).not.toHaveBeenCalled();
       expect(mockFrameworkManager.handleAction).not.toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
@@ -94,7 +94,7 @@ describe('ResourceManagerRouter', () => {
       const result = await router.handleAction(args, {});
 
       expect(mockGateManager.handleAction).toHaveBeenCalledTimes(1);
-      expect(mockPromptResourceService.handleAction).not.toHaveBeenCalled();
+      expect(mockPromptResourceHandler.handleAction).not.toHaveBeenCalled();
       expect(mockFrameworkManager.handleAction).not.toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
     });
@@ -108,7 +108,7 @@ describe('ResourceManagerRouter', () => {
       const result = await router.handleAction(args, {});
 
       expect(mockFrameworkManager.handleAction).toHaveBeenCalledTimes(1);
-      expect(mockPromptResourceService.handleAction).not.toHaveBeenCalled();
+      expect(mockPromptResourceHandler.handleAction).not.toHaveBeenCalled();
       expect(mockGateManager.handleAction).not.toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
     });
@@ -127,7 +127,7 @@ describe('ResourceManagerRouter', () => {
       expect((result.content[0] as { text: string }).text).toContain(
         'only valid for resource_type: "methodology"'
       );
-      expect(mockPromptResourceService.handleAction).not.toHaveBeenCalled();
+      expect(mockPromptResourceHandler.handleAction).not.toHaveBeenCalled();
     });
 
     test('rejects analyze_type action for non-prompt resources', async () => {
@@ -197,7 +197,7 @@ describe('ResourceManagerRouter', () => {
       const result = await router.handleAction(args, {});
 
       expect(result.isError).toBeFalsy();
-      expect(mockPromptResourceService.handleAction).toHaveBeenCalledTimes(1);
+      expect(mockPromptResourceHandler.handleAction).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -284,7 +284,7 @@ describe('ResourceManagerRouter', () => {
 
       await router.handleAction(args, {});
 
-      expect(mockPromptResourceService.handleAction).toHaveBeenCalledWith(
+      expect(mockPromptResourceHandler.handleAction).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'create',
           id: 'test-prompt',
@@ -344,7 +344,7 @@ describe('ResourceManagerRouter', () => {
 
   describe('error handling', () => {
     test('catches and formats handler errors', async () => {
-      mockPromptResourceService.handleAction.mockRejectedValueOnce(new Error('Handler error'));
+      mockPromptResourceHandler.handleAction.mockRejectedValueOnce(new Error('Handler error'));
 
       const args: ResourceManagerInput = {
         resource_type: 'prompt',
@@ -382,7 +382,7 @@ describe('ResourceManagerRouter', () => {
 
       await router.handleAction(args, context);
 
-      expect(mockPromptResourceService.handleAction).toHaveBeenCalledWith(
+      expect(mockPromptResourceHandler.handleAction).toHaveBeenCalledWith(
         expect.any(Object),
         context
       );

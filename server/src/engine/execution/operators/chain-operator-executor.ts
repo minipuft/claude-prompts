@@ -3,7 +3,7 @@ import { Logger } from '../../../infra/logging/index.js';
 import { processTemplate, processTemplateWithRefs } from '../../../shared/utils/jsonUtils.js';
 import { hasFrameworkGuidance } from '../../frameworks/utils/framework-detection.js';
 import { DEFAULT_GATE_RETRY_CONFIG } from '../../gates/constants.js';
-import { composeReviewPrompt } from '../../gates/core/review-utils.js';
+import { DelegationRenderer } from '../delegation/renderer.js';
 
 import type {
   ChainStepExecutionInput,
@@ -13,7 +13,9 @@ import type {
   NormalStepInput,
 } from './types.js';
 import type { PendingGateReview } from '../../../shared/types/chain-execution.js';
-import type { IScriptReferenceResolver } from '../../../shared/utils/jsonUtils.js';
+import type { RequestClientProfile } from '../../../shared/types/request-identity.js';
+import type { ScriptReferenceResolverPort } from '../../../shared/utils/jsonUtils.js';
+import type { DelegationPayload, RenderingHints } from '../delegation/types.js';
 import type { InjectionState } from '../pipeline/decisions/injection/types.js';
 import type { PromptReferenceResolver } from '../reference/index.js';
 import type { ConvertedPrompt } from '../types.js';
@@ -23,13 +25,6 @@ import type { ConvertedPrompt } from '../types.js';
  */
 function isGateReviewInput(input: ChainStepExecutionInput): input is GateReviewInput {
   return input.executionType === 'gate_review';
-}
-
-/**
- * Type guard for normal step input
- */
-function isNormalStepInput(input: ChainStepExecutionInput): input is NormalStepInput {
-  return input.executionType === 'normal';
 }
 
 export class ChainOperatorExecutor {
@@ -44,7 +39,7 @@ export class ChainOperatorExecutor {
       systemPrompt?: string;
     } | null>,
     private readonly referenceResolver?: PromptReferenceResolver,
-    private readonly scriptReferenceResolver?: IScriptReferenceResolver
+    private readonly scriptReferenceResolver?: ScriptReferenceResolverPort
   ) {}
 
   async renderStep(input: ChainStepExecutionInput): Promise<ChainStepRenderResult> {
@@ -87,6 +82,7 @@ export class ChainOperatorExecutor {
     inlineGuidanceText?: string
   ): Promise<ChainStepRenderResult> {
     const { pendingGateReview } = input;
+    const isRetry = pendingGateReview.attemptCount > 0;
     const gateGuidanceEnabled = this.isGateGuidanceEnabled(chainContext);
     const frameworkInjectionEnabled = this.isFrameworkInjectionEnabledForGates(chainContext);
 
@@ -118,9 +114,6 @@ export class ChainOperatorExecutor {
       reviewStep ??
       (lastStepIndex >= 0 ? stepPrompts[lastStepIndex] : (stepPrompts[fallbackIndex] ?? undefined));
 
-    // Build concise PASS/FAIL warning at top
-    const gateWarning = '';
-
     // Get original content from last step if available
     let originalContent = '';
     if (targetStep) {
@@ -135,7 +128,8 @@ export class ChainOperatorExecutor {
         const stepArgs = this.normalizeStepArgs(
           (chainContext['currentStepArgs'] as Record<string, unknown> | undefined) ??
             targetStep?.args ??
-            {}
+            {},
+          convertedPrompt
         );
         const templateContext = { ...chainContext, ...stepArgs };
 
@@ -145,15 +139,23 @@ export class ChainOperatorExecutor {
           targetStep.promptId
         );
 
+        const intentForReview = this.buildOriginalIntentSection(chainContext);
         originalContent = [
           '## Original Task Instructions',
           '',
+          ...(intentForReview ? [intentForReview, ''] : []),
           renderedTemplate,
           '',
           '---',
           '',
         ].join('\n');
       }
+    }
+
+    // On retry, abbreviate task content — the LLM already has the full task above
+    if (isRetry) {
+      originalContent =
+        '## Review Context\n\nReview the original task and your output above against the gate criteria.\n\n---\n';
     }
 
     // Build gate guidance using proper renderer for framework-aware, category-aware rendering
@@ -194,20 +196,15 @@ export class ChainOperatorExecutor {
       this.logger.debug('[SymbolicChain] Gate guidance injection suppressed by decision');
     }
 
-    // Build attempt tracking and streamlined retry hints
-    // Use default from constants when not specified in pending review
+    // Build streamlined retry hints and metadata
+    // Attempt display is handled by ResponseAssembler.buildGateReviewCTA()
     const attemptCount = pendingGateReview?.attemptCount ?? 0;
     const maxAttempts = pendingGateReview?.maxAttempts ?? DEFAULT_GATE_RETRY_CONFIG.max_attempts;
-    const attemptSummary = `**Review Attempts:** ${Math.min(
-      attemptCount + 1, // Display as 1-indexed (Attempt 1 of 2, not 0 of 2)
-      maxAttempts
-    )}/${maxAttempts}`;
-
-    const supplementalSections: string[] = [attemptSummary];
+    const supplementalSections: string[] = [];
 
     if (hasInlineGateFocus) {
       supplementalSections.push(
-        '**Inline Gate Priority:** These inline criteria triggered the review. Fix them before checking framework standards.'
+        '**Inline Gate Priority:** These inline gates triggered the review. Fix them before checking framework standards.'
       );
     }
 
@@ -251,9 +248,9 @@ export class ChainOperatorExecutor {
       );
     }
 
-    // Build framework guidance for gate reviews if enabled
+    // Build framework guidance for gate reviews if enabled (skip on retry — already seen)
     let frameworkGuidance = '';
-    if (frameworkInjectionEnabled && targetStep) {
+    if (!isRetry && frameworkInjectionEnabled && targetStep) {
       const guidance = await this.buildFrameworkGuidance(targetStep);
       if (guidance) {
         frameworkGuidance = guidance;
@@ -266,11 +263,12 @@ export class ChainOperatorExecutor {
     }
 
     // Assemble in proper order: Framework → Warning → Content → Gates → Metadata
-    const reviewPrompt = this.buildManualReviewBody(pendingGateReview) ?? originalContent;
+    // Use original task template as the review body. Gate guidance comes from
+    // GateGuidanceRenderer (gateGuidance variable) as the single source of truth.
+    const reviewPrompt = originalContent;
 
     const contentParts = [
       frameworkGuidance,
-      gateWarning,
       reviewPrompt,
       gateGuidance,
       supplementalSections.join('\n\n'),
@@ -334,7 +332,8 @@ export class ChainOperatorExecutor {
     // Prioritize currentStepArgs from chainContext (pipeline integration)
     // Fall back to step-level args captured during parsing
     const stepArgs = this.normalizeStepArgs(
-      (chainContext['currentStepArgs'] as Record<string, unknown> | undefined) ?? step?.args ?? {}
+      (chainContext['currentStepArgs'] as Record<string, unknown> | undefined) ?? step?.args ?? {},
+      convertedPrompt
     );
 
     const templateContext: Record<string, unknown> = {
@@ -389,14 +388,12 @@ export class ChainOperatorExecutor {
 
     const lines: string[] = [];
     const stepNumber = currentStepIndex + 1;
-    const isFirstStep = currentStepIndex === 0;
     const isFinalStep = currentStepIndex === totalSteps - 1;
 
-    if (isFirstStep) {
-      const metadataSection = this.renderChainMetadataSection(chainContext, totalSteps);
-      if (metadataSection) {
-        lines.push(metadataSection);
-      }
+    // Original Request Intent — provides delivery context for every chain step
+    const intentSection = this.buildOriginalIntentSection(chainContext);
+    if (intentSection) {
+      lines.push(intentSection);
     }
 
     // Use target-aware helper to determine if framework should be suppressed on steps
@@ -432,11 +429,19 @@ export class ChainOperatorExecutor {
       );
     }
 
-    const callToAction = !isFinalStep
-      ? `Use the resume shortcut below and include your step output in user_response${
-          gateGuidanceEnabled ? ' (add gate_verdict if a gate asks you to self-review)' : ''
-        } so Step ${stepNumber + 1} can begin.`
-      : 'Deliver the final response to the user (no user_response needed once the chain completes).';
+    // Required Response Format — guides structured output for delivery verification
+    lines.push(this.buildResponseFormatSection(isFinalStep, gateGuidanceEnabled));
+
+    // Check if the NEXT step is delegated — if so, render a delegation CTA instead
+    const nextStep = !isFinalStep ? stepPrompts[currentStepIndex + 1] : undefined;
+    const callToAction =
+      nextStep?.delegated === true
+        ? this.buildDelegationCTA(nextStep, stepPrompts.length, gateGuidanceEnabled, chainContext)
+        : !isFinalStep
+          ? `Use the resume shortcut below and include your step output in user_response${
+              gateGuidanceEnabled ? ' (add gate_verdict if a gate asks you to self-review)' : ''
+            } so Step ${stepNumber + 1} can begin.`
+          : 'Deliver the final response to the user (no user_response needed once the chain completes).';
 
     const content = lines.filter(Boolean).join('\n\n').trimEnd();
 
@@ -447,6 +452,7 @@ export class ChainOperatorExecutor {
       promptName,
       content,
       callToAction,
+      nextStepDelegated: nextStep?.delegated === true || undefined,
     };
   }
 
@@ -465,7 +471,7 @@ export class ChainOperatorExecutor {
     const sections: string[] = ['\n\n---\n\n##  Quality Enhancement Gates'];
 
     if (inlineGateIds.length > 0 || (inlineGuidanceText && inlineGuidanceText.trim().length > 0)) {
-      sections.push('\n\n###  Inline Quality Criteria (PRIMARY)\n');
+      sections.push('\n\n###  Inline Gates (PRIMARY)\n');
       if (inlineGuidanceText && inlineGuidanceText.trim().length > 0) {
         sections.push(inlineGuidanceText.trim());
       }
@@ -595,12 +601,137 @@ export class ChainOperatorExecutor {
     }
   }
 
-  private renderChainMetadataSection(
-    chainContext: Record<string, unknown>,
-    totalSteps: number
-  ): string | null {
-    // Chain metadata banner removed to reduce redundant instructions.
-    return null;
+  /**
+   * Build a delegation CTA using the existing DelegationRenderer infrastructure.
+   * Produces a Task tool directive instructing the LLM to spawn a sub-agent.
+   */
+  private buildDelegationCTA(
+    nextStep: ChainStepPrompt,
+    totalSteps: number,
+    gateGuidanceEnabled: boolean,
+    chainContext: Record<string, unknown>
+  ): string {
+    const agentType =
+      nextStep.agentType ?? nextStep.convertedPrompt?.delegationAgent ?? 'chain-executor';
+    const subagentModel = nextStep.subagentModel ?? nextStep.convertedPrompt?.subagentModel;
+    const clientProfile = this.extractClientProfile(chainContext);
+
+    const payload: DelegationPayload = {
+      stepNumber: nextStep.stepNumber,
+      totalSteps,
+      promptName: this.getPromptDisplayName(nextStep),
+      agentType,
+      ...(clientProfile != null ? { clientProfile } : {}),
+      ...(subagentModel != null ? { subagentModel } : {}),
+      gateCount: 0,
+      hasGates: gateGuidanceEnabled,
+    };
+
+    const hints: RenderingHints = {
+      gateGuidanceEnabled,
+      frameworkInjectionEnabled: true,
+    };
+
+    const renderer = new DelegationRenderer();
+    return renderer.render(payload, undefined, hints);
+  }
+
+  private extractClientProfile(
+    chainContext: Record<string, unknown>
+  ): RequestClientProfile | undefined {
+    const fromIdentityContext = this.asRequestClientProfile(
+      (
+        chainContext['requestIdentityContext'] as
+          | { clientProfile?: RequestClientProfile }
+          | undefined
+      )?.clientProfile ??
+        (
+          chainContext['requestIdentityContext'] as
+            | { identity?: { clientProfile?: RequestClientProfile } }
+            | undefined
+        )?.identity?.clientProfile
+    );
+    if (fromIdentityContext != null) {
+      return fromIdentityContext;
+    }
+
+    return this.asRequestClientProfile(chainContext['clientProfile']);
+  }
+
+  private asRequestClientProfile(value: unknown): RequestClientProfile | undefined {
+    if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    const candidate = value as Partial<RequestClientProfile>;
+    if (
+      typeof candidate.clientFamily !== 'string' ||
+      typeof candidate.clientId !== 'string' ||
+      typeof candidate.clientVersion !== 'string' ||
+      typeof candidate.delegationProfile !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      clientFamily: candidate.clientFamily,
+      clientId: candidate.clientId,
+      clientVersion: candidate.clientVersion,
+      delegationProfile: candidate.delegationProfile,
+    };
+  }
+
+  /**
+   * Build Original Request Intent section from chainContext original_args.
+   * Provides delivery context so each step knows what the chain was initiated for.
+   */
+  private buildOriginalIntentSection(chainContext: Record<string, unknown>): string | null {
+    const originalArgs = chainContext['original_args'] as Record<string, unknown> | undefined;
+    if (!originalArgs || Object.keys(originalArgs).length === 0) {
+      return null;
+    }
+
+    const lines: string[] = [
+      '### Original Request Intent',
+      '',
+      'This chain was initiated with the following request. Your work must satisfy this intent:',
+      '',
+    ];
+
+    for (const [key, value] of Object.entries(originalArgs)) {
+      const truncated =
+        String(value).length > 200 ? String(value).substring(0, 200) + '...' : String(value);
+      lines.push(`- **${key}**: ${truncated}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Build Required Response Format section for structured delivery verification.
+   */
+  private buildResponseFormatSection(isFinalStep: boolean, gateGuidanceEnabled: boolean): string {
+    const lines: string[] = [
+      '---',
+      '',
+      '### Required Response Format',
+      '',
+      '**Summary**: What was implemented (2-3 sentences)',
+      '',
+    ];
+
+    if (gateGuidanceEnabled) {
+      lines.push(
+        '**Gate Coverage**:',
+        '- [1] PASS|FAIL: rationale',
+        '- [2] PASS|FAIL: rationale',
+        ''
+      );
+    }
+
+    if (isFinalStep) {
+      lines.push('**GATE_REVIEW: PASS|FAIL - overall assessment**');
+    }
+
+    return lines.join('\n');
   }
 
   private isInlineGateId(gateId: string): boolean {
@@ -640,33 +771,33 @@ export class ChainOperatorExecutor {
     return undefined;
   }
 
-  private buildManualReviewBody(pendingReview?: PendingGateReview): string | null {
-    if (!pendingReview) {
-      return null;
+  private normalizeStepArgs(
+    argsInput?: Record<string, unknown>,
+    prompt?: ConvertedPrompt
+  ): Record<string, unknown> {
+    const defaults: Record<string, unknown> = {};
+    if (prompt?.arguments) {
+      for (const arg of prompt.arguments) {
+        if (arg.defaultValue !== undefined) {
+          defaults[arg.name] = arg.defaultValue;
+        }
+      }
     }
 
-    if (pendingReview.combinedPrompt && pendingReview.combinedPrompt.trim().length > 0) {
-      return pendingReview.combinedPrompt;
+    const result =
+      !argsInput || typeof argsInput !== 'object' ? defaults : { ...defaults, ...argsInput };
+
+    if (prompt?.arguments) {
+      for (const arg of prompt.arguments) {
+        if (arg.required && (result[arg.name] === undefined || result[arg.name] === '')) {
+          this.logger.warn(
+            `[SymbolicChain] Required argument "${arg.name}" missing for prompt "${prompt.id}"`
+          );
+        }
+      }
     }
 
-    if (pendingReview.prompts && pendingReview.prompts.length > 0) {
-      const composed = composeReviewPrompt(
-        pendingReview.prompts,
-        pendingReview.previousResponse,
-        pendingReview.retryHints ?? []
-      );
-      return composed.combinedPrompt;
-    }
-
-    return null;
-  }
-
-  private normalizeStepArgs(argsInput?: Record<string, unknown>): Record<string, unknown> {
-    if (!argsInput || typeof argsInput !== 'object') {
-      return {};
-    }
-
-    return { ...argsInput };
+    return result;
   }
 
   private async renderTemplate(
@@ -710,14 +841,6 @@ export class ChainOperatorExecutor {
 
   private getPromptDisplayName(step: ChainStepPrompt): string {
     return step.convertedPrompt?.name || step.promptId;
-  }
-
-  private buildChainSummary(stepPrompts: ChainStepPrompt[]): string {
-    if (stepPrompts.length === 0) {
-      return '(no steps)';
-    }
-
-    return stepPrompts.map((step) => this.getPromptDisplayName(step)).join(' → ');
   }
 
   private resolveReviewStep(

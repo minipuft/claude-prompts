@@ -5,6 +5,7 @@ import { InlineGateExtractionStage } from '../../../../src/engine/execution/pipe
 import { OperatorValidationStage } from '../../../../src/engine/execution/pipeline/stages/03-operator-validation-stage.js';
 import { SessionManagementStage } from '../../../../src/engine/execution/pipeline/stages/07-session-stage.js';
 import { FrameworkValidator } from '../../../../src/engine/frameworks/framework-validator.js';
+import { InlineGateProcessor } from '../../../../src/engine/gates/services/inline-gate-processor.js';
 
 import type { ChainSessionManager } from '../../../../src/modules/chains/manager.js';
 import type {
@@ -211,11 +212,12 @@ describe('Symbolic pipeline coverage', () => {
     context.parsedCommand = buildParsedCommand();
 
     const registry = createTemporaryGateRegistry();
-    const inlineStage = new InlineGateExtractionStage(
+    const inlineGateProcessor = new InlineGateProcessor(
       registry as any,
       createResolver() as any,
       logger
     );
+    const inlineStage = new InlineGateExtractionStage(inlineGateProcessor, logger);
     await inlineStage.execute(context);
 
     expect(registry.createTemporaryGate).toHaveBeenCalledTimes(3);

@@ -50,9 +50,73 @@
       }
     },
 
+    "identity": {
+      "type": "object",
+      "description": "Identity and client-profile resolution for scope isolation and delegation routing",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["permissive", "locked"],
+          "default": "permissive",
+          "description": "Identity precedence mode"
+        },
+        "allowPerRequestOverride": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow request claims to override launch defaults based on transport policy"
+        },
+        "launchDefaults": {
+          "type": "object",
+          "description": "Launch-time defaults used when request identity/profile metadata is missing",
+          "properties": {
+            "organizationId": {
+              "type": "string",
+              "description": "Default organization scope"
+            },
+            "workspaceId": {
+              "type": "string",
+              "description": "Default workspace scope"
+            },
+            "clientFamily": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex",
+                "gemini",
+                "opencode",
+                "cursor",
+                "unknown"
+              ],
+              "description": "Authoritative launch-level client family for delegation routing"
+            },
+            "clientId": {
+              "type": "string",
+              "description": "Authoritative launch-level client identifier"
+            },
+            "clientVersion": {
+              "type": "string",
+              "description": "Authoritative launch-level client version"
+            },
+            "delegationProfile": {
+              "type": "string",
+              "enum": [
+                "task_tool_v1",
+                "spawn_agent_v1",
+                "gemini_subagent_v1",
+                "opencode_agent_v1",
+                "cursor_agent_v1",
+                "neutral_v1"
+              ],
+              "description": "Authoritative launch-level delegation profile"
+            }
+          }
+        }
+      }
+    },
+
     "methodologies": {
       "type": "object",
-      "description": "Framework methodologies (CAGEERF, ReACT, etc.) that guide LLM behavior",
+      "description": "Framework methodologies (CAGEERF, ReACT, etc.) that guide LLM behavior. Controls three injection types: system-prompt (methodology phases), gate-guidance (quality criteria), and style-guidance (response formatting).",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -66,14 +130,44 @@
         },
         "systemPromptFrequency": {
           "type": "integer",
-          "default": 3,
+          "default": 2,
           "minimum": 1,
-          "description": "Inject methodology guidance every N chain steps (reduces token usage)"
+          "description": "Inject methodology guidance every N chain steps. Higher values reduce token usage at the cost of less frequent methodology reinforcement."
+        },
+        "systemPromptTarget": {
+          "type": "string",
+          "enum": ["steps", "gates", "both"],
+          "default": "steps",
+          "description": "Where to inject methodology guidance: 'steps' (normal execution), 'gates' (gate reviews), or 'both'"
+        },
+        "gateGuidanceFrequency": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Inject gate criteria every N chain steps. 0 = first step only (default). Gate review steps always receive guidance regardless of this setting."
+        },
+        "gateGuidanceTarget": {
+          "type": "string",
+          "enum": ["steps", "gates", "both"],
+          "default": "both",
+          "description": "Where to inject gate criteria: 'steps' (normal execution), 'gates' (gate reviews), or 'both'"
         },
         "styleGuidance": {
           "type": "boolean",
           "default": true,
           "description": "Include response formatting guidance in prompts"
+        },
+        "styleGuidanceFrequency": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Inject style guidance every N chain steps. 0 = first step only (default). Set to 1 for every step."
+        },
+        "styleGuidanceTarget": {
+          "type": "string",
+          "enum": ["steps", "gates", "both"],
+          "default": "steps",
+          "description": "Where to inject style guidance: 'steps' (normal execution), 'gates' (gate reviews), or 'both'"
         }
       }
     },
@@ -96,6 +190,27 @@
           "type": "boolean",
           "default": true,
           "description": "Apply methodology-specific quality gates"
+        },
+        "evaluation": {
+          "type": "object",
+          "description": "Judge evaluation defaults. Gates with evaluation.mode 'judge' use context-isolated review via delegation.",
+          "properties": {
+            "defaultMode": {
+              "type": "string",
+              "enum": ["self", "judge"],
+              "default": "self",
+              "description": "Default evaluation mode for all gates: 'self' (same-context review) or 'judge' (context-isolated delegation)"
+            },
+            "defaultModel": {
+              "type": "string",
+              "description": "Default model hint for judge sub-agents (e.g., 'haiku' for cheap evaluation)"
+            },
+            "strict": {
+              "type": "boolean",
+              "default": true,
+              "description": "Default strict mode: use failure-first framing for judge evaluation"
+            }
+          }
         }
       }
     },
@@ -161,6 +276,26 @@
           "default": 50,
           "minimum": 1,
           "description": "Maximum versions to retain per prompt"
+        }
+      }
+    },
+
+    "phaseGuards": {
+      "type": "object",
+      "description": "Phase guards: deterministic structural validation of LLM output against methodology phase definitions (zero LLM cost)",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["enforce", "warn", "off"],
+          "default": "enforce",
+          "description": "Enforcement mode: 'enforce' blocks advancement until structural requirements pass, 'warn' logs advisory warnings, 'off' disables phase guards"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum retry attempts before phase guard review expires (enforce mode only)"
         }
       }
     },

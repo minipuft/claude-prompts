@@ -13,15 +13,15 @@ This data feeds the session story for context-isolated Ralph instances.
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
 # Add hooks lib to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
+from lesson_extractor import summarize_error
 from session_tracker import get_session_tracker
-from lesson_extractor import extract_lesson, extract_approach, summarize_error
+from verify_active_store import load_verify_active_state
 
 
 def parse_hook_input() -> dict:
@@ -32,29 +32,17 @@ def parse_hook_input() -> dict:
         return {}
 
 
-def get_verify_state_path() -> Path:
-    """Get path to verify-active.json state file."""
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(Path(__file__).parent.parent))
-    return Path(plugin_root) / "runtime-state" / "verify-active.json"
-
-
-def get_active_ralph_session() -> str | None:
+def get_active_ralph_session(hook_session_id: str | None = None) -> str | None:
     """
     Get the currently active Ralph session ID.
 
-    Checks for verify-active.json state file (source of truth for Ralph sessions).
-    State files persist across process boundaries, unlike environment variables.
+    Checks verify-state.db (source of truth for Ralph sessions).
+    When hook_session_id is provided, scopes lookup to that client's state.
     """
-    state_file = get_verify_state_path()
-
-    if not state_file.exists():
+    state = load_verify_active_state(hook_session_id)
+    if not state:
         return None
-
-    try:
-        state = json.loads(state_file.read_text())
-        return state.get("sessionId")
-    except (json.JSONDecodeError, IOError):
-        return None
+    return state.get("sessionId")
 
 
 def extract_file_change_details(tool_input: dict, tool_name: str) -> dict | None:
@@ -105,8 +93,8 @@ def main():
     if not any(t in tool_name for t in tracked_tools):
         sys.exit(0)
 
-    # Only track during active Ralph sessions
-    ralph_session = get_active_ralph_session()
+    # Only track during active Ralph sessions (scoped to this client)
+    ralph_session = get_active_ralph_session(session_id or None)
     if not ralph_session:
         # No active Ralph session, no tracking needed
         sys.exit(0)

@@ -63,7 +63,7 @@ const operations: ActionDescriptor[] = [
     category: 'gates',
     status: 'working',
     requiredArgs: [],
-    description: 'Displays registered quality gates via GateSystemManager.',
+    description: 'Displays registered quality gates via GateStateStore.',
   },
   {
     id: 'analytics:view',

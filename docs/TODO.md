@@ -1,6 +1,5 @@
 # Roadmap
 
-> Status: canonical
 
 What's next for Claude Prompts MCP.
 

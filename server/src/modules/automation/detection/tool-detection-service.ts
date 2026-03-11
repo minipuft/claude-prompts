@@ -21,7 +21,7 @@
 
 import { DEFAULT_EXECUTION_CONFIG } from '../types.js';
 
-import type { IToolDetectionService } from '../../../shared/types/index.js';
+import type { ToolDetectionServicePort } from '../../../shared/types/index.js';
 import type {
   LoadedScriptTool,
   ToolDetectionMatch,
@@ -61,7 +61,7 @@ export interface ToolDetectionConfig {
  * }
  * ```
  */
-export class ToolDetectionService implements IToolDetectionService {
+export class ToolDetectionService implements ToolDetectionServicePort {
   private readonly debug: boolean;
 
   constructor(config: ToolDetectionConfig = {}) {

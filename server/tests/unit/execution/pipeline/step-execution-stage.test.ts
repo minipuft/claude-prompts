@@ -173,6 +173,75 @@ describe('StepExecutionStage', () => {
     expect(context.executionResults?.content).toBe('rendered chain step');
   });
 
+  test('returns completion when session-based single prompt has advanced past totalSteps', async () => {
+    const { executor: chainExecutor, renderStepMock } = createChainExecutor();
+    const { sessionManager } = createSessionManager();
+    const stage = new StepExecutionStage(chainExecutor, sessionManager, createLogger());
+
+    // Simulates: single prompt with gateConfiguration, after gate_verdict PASS
+    // advanceStep() moved currentStep from 1 → 2, totalSteps is 1
+    const context = new ExecutionContext({ command: '>>demo topic="AI"' });
+    context.executionPlan = {
+      strategy: 'prompt',
+      gates: ['workflow-preflight'],
+      requiresFramework: false,
+      requiresSession: true,
+      llmValidationEnabled: false,
+    } as any;
+    context.sessionContext = {
+      sessionId: 'review-demo-123',
+      chainId: 'chain-demo#1',
+      isChainExecution: true,
+      currentStep: 2,
+      totalSteps: 1,
+    };
+    context.parsedCommand = {
+      commandType: 'single',
+      convertedPrompt: samplePrompt,
+      promptArgs: { topic: 'AI' },
+    };
+
+    await stage.execute(context);
+
+    expect(renderStepMock).not.toHaveBeenCalled();
+    expect(context.state.session.chainComplete).toBe(true);
+    expect(context.executionResults?.content).toBe('Execution complete.');
+  });
+
+  test('does not short-circuit when session currentStep equals totalSteps (still executing)', async () => {
+    const { executor: chainExecutor } = createChainExecutor();
+    const { sessionManager } = createSessionManager();
+    const stage = new StepExecutionStage(chainExecutor, sessionManager, createLogger());
+
+    // currentStep=1, totalSteps=1 → still needs to execute (not past total)
+    const context = new ExecutionContext({ command: '>>demo topic="AI"' });
+    context.executionPlan = {
+      strategy: 'prompt',
+      gates: ['workflow-preflight'],
+      requiresFramework: false,
+      requiresSession: true,
+      llmValidationEnabled: false,
+    } as any;
+    context.sessionContext = {
+      sessionId: 'review-demo-456',
+      chainId: 'chain-demo#1',
+      isChainExecution: true,
+      currentStep: 1,
+      totalSteps: 1,
+    };
+    context.parsedCommand = {
+      commandType: 'single',
+      convertedPrompt: samplePrompt,
+      promptArgs: { topic: 'AI' },
+    };
+
+    await stage.execute(context);
+
+    // Should execute the prompt, not short-circuit
+    expect(context.state.session.chainComplete).not.toBe(true);
+    expect(context.executionResults?.content).toContain('Process AI');
+  });
+
   test('skips rendering and returns completion stub when chain is already complete', async () => {
     const { executor: chainExecutor, renderStepMock } = createChainExecutor();
     const { sessionManager } = createSessionManager();
@@ -219,12 +288,9 @@ describe('StepExecutionStage', () => {
 
     await stage.execute(context);
 
+    // Session-level completion check catches this before reaching executeChainStep()
     expect(renderStepMock).not.toHaveBeenCalled();
     expect(context.state.session.chainComplete).toBe(true);
-    expect(typeof context.executionResults?.content).toBe('string');
-    expect(context.executionResults?.metadata).toMatchObject({
-      promptId: 'chain-complete',
-      totalSteps: 3,
-    });
+    expect(context.executionResults?.content).toBe('Execution complete.');
   });
 });

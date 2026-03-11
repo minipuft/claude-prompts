@@ -70,7 +70,7 @@ class SessionTracker:
             try:
                 with open(self.state_file) as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         # Create new state
@@ -91,7 +91,7 @@ class SessionTracker:
         try:
             with open(self.state_file, "w") as f:
                 json.dump(self.state, f, indent=2)
-        except IOError:
+        except OSError:
             pass
 
     def set_goal(self, goal: str, verification_command: str, working_directory: str = "") -> None:
@@ -277,3 +277,21 @@ def clear_ralph_session(session_id: str) -> None:
     """Clear a Ralph session by ID."""
     tracker = SessionTracker(session_id)
     tracker.clear()
+
+
+def cleanup_old_ralph_sessions(max_age_hours: int = 24) -> int:
+    """Delete ralph-sessions JSON files older than max_age. Returns count deleted."""
+    import time
+    sessions_dir = _get_ralph_sessions_dir()
+    if not sessions_dir.exists():
+        return 0
+    cutoff = time.time() - (max_age_hours * 3600)
+    count = 0
+    for f in sessions_dir.glob("*.json"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                count += 1
+        except OSError:
+            pass
+    return count

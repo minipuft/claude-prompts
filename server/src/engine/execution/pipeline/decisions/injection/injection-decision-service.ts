@@ -75,7 +75,7 @@ export class InjectionDecisionService {
   }
 
   /**
-   * Replace all runtime overrides at once (e.g., from SessionOverrideManager)
+   * Replace all runtime overrides at once (e.g., from SessionOverrideResolver)
    * and clear cached decisions so new overrides take effect immediately.
    */
   syncRuntimeOverrides(overrides: Map<InjectionType, InjectionRuntimeOverride>): void {

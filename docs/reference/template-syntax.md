@@ -1,6 +1,5 @@
 # Template Syntax Reference
 
-> Status: canonical
 
 We use **Nunjucks** (a robust templating engine) extended with custom tags for embedding prompts and scripts.
 
