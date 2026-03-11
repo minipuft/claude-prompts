@@ -70,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Prompt ID hyphen/underscore resolution**: Prompts created with hyphens (e.g., `hot-reload-test`) now resolve correctly when invoked. The command parser normalizes hyphens to underscores during validation, and prompt creation enforces the underscore convention with duplicate detection — `my-prompt` and `my_prompt` are treated as the same prompt
+  - `validatePromptExists` returns the canonical stored ID after hyphen-agnostic matching
+  - `normalizePromptId` + `validatePromptId` enforce ID format at creation time
+  - Schema-level regex validation added to `PromptYamlSchema`
+
+- **Gate verdict multi-line validation**: Gate verdicts containing `GATE_VERDICTS:` per-gate blocks no longer rejected at the MCP schema boundary. Validation now delegates to the canonical `isValidGateVerdict()` contract which correctly extracts the first line before pattern matching
+
 - **Skills-sync gate bundling via service module**: `npm run skills:export` now uses the canonical service module with full gate resolution. Prompts that declare `gateConfiguration.include` get gates bundled as `gates/{id}/gate.yaml` + `guidance.md` alongside the SKILL.md, with an inline `## Quality Gates` criteria table. Standalone gate/methodology/style skills are no longer exported.
 
 - **ArgumentHistoryTracker initialization race condition**: `trackExecution()` now auto-initializes if called before `initialize()` completes, preventing silent data loss when the first `prompt_engine` call arrives before the fire-and-forget init finishes
@@ -86,6 +93,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Validation outcome: `tests/unit` now passes end-to-end (`123` suites, `1293` tests)
 
 ### Changed
+
+- **BREAKING**: License changed from MIT to AGPL-3.0-only. Network use of modified versions now requires source disclosure under Section 13 of the GNU Affero General Public License v3
+  - All package manifests (`package.json`, `manifest.json`, `plugin.json`) updated to SPDX `AGPL-3.0-only`
+  - Skills-sync export default updated — exported skill packages now declare AGPL-3.0-only
+
+- **BREAKING**: Minimum Node.js version raised to 22.x (`engines.node >=22.0.0`). Node 18 and 20 are no longer tested or supported due to `node:sqlite` dependency
+
+- **Python hooks linting and type checking**: Added Ruff (linting) and Pyrefly (type checking) to CI pipeline for `hooks/` Python code
+  - `ruff.toml` config with pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify, comprehensions rule sets
+  - `pyrefly.toml` config with baseline mode — enforces zero new type errors while allowing gradual cleanup of 16 baselined issues
+  - 55 auto-fixes applied across hook scripts (import sorting, unused imports, pyupgrade)
+
+- **Gate verdict validation consolidated to single source of truth**: Removed inline Zod regex from MCP tool registration (`index.ts`), delegating to `isValidGateVerdict()` from `gate-verdict-contract.ts`. All verdict validation now flows through YAML-configured patterns in `verdict-patterns.yaml` — one validation path instead of two
 
 - **Client-aware delegation routing**: Delegation CTAs are now selected from resolved client profile instead of a Claude-only default
   - Added hybrid client profile precedence for routing (`launch defaults` → `trusted request metadata` → `options.client_profile` → SDK `clientInfo` → unknown fallback)
