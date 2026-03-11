@@ -1,0 +1,19 @@
+{
+  "name": "claude-prompts",
+  "description": "Hot-reloadable versioned prompts with easy tools for prompt engineering, chain workflows, quality gates. Symbolic syntax: >>prompt --> >>chain @framework :: 'gate'",
+  "author": {
+    "name": "minipuft"
+  },
+  "homepage": "https://github.com/minipuft/claude-prompts",
+  "repository": "https://github.com/minipuft/claude-prompts",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "mcp",
+    "prompts",
+    "templates",
+    "gates",
+    "chains",
+    "workflows"
+  ],
+  "version": "2.0.0"
+}

@@ -1,0 +1,40 @@
+import { PromptResourceDependencies } from './core/types.js';
+import { FrameworkManager } from '../../../../engine/frameworks/framework-manager.js';
+import { FrameworkStateStore } from '../../../../engine/frameworks/framework-state-store.js';
+import { ContentAnalyzer } from '../../../../modules/semantic/configurable-semantic-analyzer.js';
+import { type Logger, ToolResponse, ConfigManager } from '../../../../shared/types/index.js';
+import type { ConvertedPrompt } from '../../../../engine/execution/types.js';
+import type { PromptData, Category } from '../../../../modules/prompts/types.js';
+import type { PromptResourceActionId } from '../../../metadata/definitions/prompt-resource.js';
+import type { PromptResourceHandlerPort } from '../core/types.js';
+export declare class PromptResourceHandler implements PromptResourceHandlerPort {
+    private readonly logger;
+    private readonly dependencies;
+    private readonly promptAnalyzer;
+    private readonly comparisonEngine;
+    private readonly gateAnalyzer;
+    private readonly textDiffService;
+    private readonly filterParser;
+    private readonly promptMatcher;
+    private readonly fileOperations;
+    private readonly versionHistoryService;
+    private readonly lifecycleService;
+    private readonly discoveryService;
+    private readonly versioningService;
+    private promptsData;
+    private convertedPrompts;
+    private categories;
+    constructor(dependencies: PromptResourceDependencies);
+    updateData(promptsData: PromptData[], convertedPrompts: ConvertedPrompt[], categories: Category[]): void;
+    setFrameworkStateStore(frameworkStateStore: FrameworkStateStore): void;
+    setFrameworkManager(frameworkManager: FrameworkManager): void;
+    handleAction(args: {
+        action: PromptResourceActionId;
+        [key: string]: any;
+    }, extra: any): Promise<ToolResponse>;
+    private reloadPrompts;
+    private appendActionWarnings;
+    private describeActionStatus;
+    private handleError;
+}
+export declare function createPromptResourceHandler(logger: Logger, configManager: ConfigManager, semanticAnalyzer: ContentAnalyzer, frameworkStateStore: FrameworkStateStore | undefined, frameworkManager: FrameworkManager | undefined, onRefresh: () => Promise<void>, onRestart: (reason: string) => Promise<void>): PromptResourceHandler;
