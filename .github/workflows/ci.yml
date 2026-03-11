@@ -79,7 +79,7 @@ jobs:
         working-directory: .
         run: |
           pip install pyrefly --quiet
-          pyrefly check hooks/ --baseline hooks/.pyrefly-baseline.json
+          pyrefly check --baseline hooks/.pyrefly-baseline.json
 
   # ============================================================
   # Stage 2: Build (single Node LTS, upload artifact)
