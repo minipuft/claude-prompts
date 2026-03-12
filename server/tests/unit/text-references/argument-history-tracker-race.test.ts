@@ -12,15 +12,12 @@
  * Fix: trackExecution() now calls initialize() if not yet initialized (idempotent).
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test, jest } from '@jest/globals';
-
-import { mkdtempSync, rmSync, mkdirSync } from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { afterEach, describe, expect, test, jest } from '@jest/globals';
 
 import { ArgumentHistoryTracker } from '../../../src/modules/text-refs/argument-history-tracker.js';
 
 import type { Logger } from '../../../src/infra/logging/index.js';
+import type { DatabasePort } from '../../../src/shared/types/persistence.js';
 
 const createLogger = (): Logger =>
   ({
@@ -30,29 +27,51 @@ const createLogger = (): Logger =>
     error: jest.fn(),
   }) as unknown as Logger;
 
+/**
+ * Creates a mock DatabasePort that captures data written via run() and
+ * returns it from queryOne(), simulating SQLite round-trip persistence.
+ */
+const createPersistentMockDb = (): DatabasePort & { _storage: Map<string, string> } => {
+  const storage = new Map<string, string>();
+
+  return {
+    _storage: storage,
+    isInitialized: () => true,
+    initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    queryOne: jest.fn().mockImplementation((...args: unknown[]) => {
+      const params = args[1] as unknown[] | undefined;
+      const tenantId = (params?.[0] as string) ?? 'default';
+      const state = storage.get(tenantId);
+      return state ? { state } : null;
+    }),
+    query: jest.fn().mockReturnValue([]),
+    run: jest.fn().mockImplementation((...args: unknown[]) => {
+      const sql = args[0] as string;
+      const params = args[1] as unknown[] | undefined;
+      if (sql.includes('INSERT OR REPLACE INTO argument_history')) {
+        const tenantId = (params?.[0] as string) ?? 'default';
+        const state = (params?.[1] as string) ?? '{}';
+        storage.set(tenantId, state);
+      }
+    }),
+    transaction: jest.fn(),
+    beginTransaction: jest.fn(),
+    commit: jest.fn(),
+    rollback: jest.fn(),
+  } as unknown as DatabasePort & { _storage: Map<string, string> };
+};
+
 describe('ArgumentHistoryTracker (race condition)', () => {
-  let tmpRoot: string;
-
-  beforeAll(() => {
-    tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'arg-race-'));
-    mkdirSync(path.join(tmpRoot, 'runtime-state'), { recursive: true });
-  });
-
-  afterAll(() => {
-    try {
-      rmSync(tmpRoot, { recursive: true, force: true });
-    } catch {}
-  });
-
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   test('trackExecution auto-initializes when called before initialize()', async () => {
     const logger = createLogger();
+    const mockDb = createPersistentMockDb();
 
     // Create tracker but do NOT call initialize()
-    const tracker = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const tracker = new ArgumentHistoryTracker(logger, 10, mockDb);
 
     // Call trackExecution directly — before the fix, this silently dropped data
     const entryId = await tracker.trackExecution({
@@ -76,9 +95,10 @@ describe('ArgumentHistoryTracker (race condition)', () => {
 
   test('trackExecution data persists to SQLite even without prior initialize()', async () => {
     const logger = createLogger();
+    const mockDb = createPersistentMockDb();
 
     // Tracker A: write without prior initialize()
-    const trackerA = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const trackerA = new ArgumentHistoryTracker(logger, 10, mockDb);
     await trackerA.trackExecution({
       promptId: 'chain-race',
       sessionId: 'sess-race-2',
@@ -88,8 +108,8 @@ describe('ArgumentHistoryTracker (race condition)', () => {
     });
     await trackerA.shutdown();
 
-    // Tracker B: should restore data from SQLite
-    const trackerB = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    // Tracker B: should restore data from the same mock db
+    const trackerB = new ArgumentHistoryTracker(logger, 10, mockDb);
     await trackerB.initialize();
 
     const history = trackerB.getSessionHistory('sess-race-2');
@@ -102,8 +122,9 @@ describe('ArgumentHistoryTracker (race condition)', () => {
 
   test('multiple trackExecution calls without initialize() are idempotent', async () => {
     const logger = createLogger();
+    const mockDb = createPersistentMockDb();
 
-    const tracker = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const tracker = new ArgumentHistoryTracker(logger, 10, mockDb);
 
     // Call trackExecution multiple times without initialize() — each should work
     await tracker.trackExecution({

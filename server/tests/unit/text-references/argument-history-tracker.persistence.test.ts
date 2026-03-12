@@ -1,12 +1,9 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test, jest } from '@jest/globals';
-
-import { mkdtempSync, rmSync, mkdirSync } from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { afterEach, describe, expect, test, jest } from '@jest/globals';
 
 import { ArgumentHistoryTracker } from '../../../src/modules/text-refs/argument-history-tracker.js';
 
 import type { Logger } from '../../../src/infra/logging/index.js';
+import type { DatabasePort } from '../../../src/shared/types/persistence.js';
 
 const createLogger = (): Logger =>
   ({
@@ -16,29 +13,51 @@ const createLogger = (): Logger =>
     error: jest.fn(),
   }) as unknown as Logger;
 
+/**
+ * Creates a mock DatabasePort that captures data written via run() and
+ * returns it from queryOne(), simulating SQLite round-trip persistence.
+ */
+const createPersistentMockDb = (): DatabasePort & { _storage: Map<string, string> } => {
+  const storage = new Map<string, string>();
+
+  return {
+    _storage: storage,
+    isInitialized: () => true,
+    initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    queryOne: jest.fn().mockImplementation((...args: unknown[]) => {
+      const params = args[1] as unknown[] | undefined;
+      const tenantId = (params?.[0] as string) ?? 'default';
+      const state = storage.get(tenantId);
+      return state ? { state } : null;
+    }),
+    query: jest.fn().mockReturnValue([]),
+    run: jest.fn().mockImplementation((...args: unknown[]) => {
+      const sql = args[0] as string;
+      const params = args[1] as unknown[] | undefined;
+      if (sql.includes('INSERT OR REPLACE INTO argument_history')) {
+        const tenantId = (params?.[0] as string) ?? 'default';
+        const state = (params?.[1] as string) ?? '{}';
+        storage.set(tenantId, state);
+      }
+    }),
+    transaction: jest.fn(),
+    beginTransaction: jest.fn(),
+    commit: jest.fn(),
+    rollback: jest.fn(),
+  } as unknown as DatabasePort & { _storage: Map<string, string> };
+};
+
 describe('ArgumentHistoryTracker (persistence)', () => {
-  let tmpRoot: string;
-
-  beforeAll(() => {
-    tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'arg-history-'));
-    mkdirSync(path.join(tmpRoot, 'runtime-state'), { recursive: true });
-  });
-
-  afterAll(() => {
-    try {
-      rmSync(tmpRoot, { recursive: true, force: true });
-    } catch {}
-  });
-
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   test('writes to and restores from SQLite argument_history table', async () => {
     const logger = createLogger();
+    const mockDb = createPersistentMockDb();
 
     // First tracker: write one entry
-    const trackerA = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const trackerA = new ArgumentHistoryTracker(logger, 10, mockDb);
     await trackerA.initialize();
 
     await trackerA.trackExecution({
@@ -51,8 +70,8 @@ describe('ArgumentHistoryTracker (persistence)', () => {
 
     await trackerA.shutdown();
 
-    // Second tracker: should restore previous state from SQLite
-    const trackerB = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    // Second tracker: should restore previous state from the same mock db
+    const trackerB = new ArgumentHistoryTracker(logger, 10, mockDb);
     await trackerB.initialize();
 
     const history = trackerB.getSessionHistory('sess-1');

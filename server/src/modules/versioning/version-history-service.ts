@@ -43,23 +43,32 @@ export interface VersioningConfigProvider {
 export class VersionHistoryService {
   private logger: Logger;
   private configProvider: VersioningConfigProvider;
-  private dbManager: DatabasePort | null = null;
+  private dbManager: DatabasePort | null;
 
-  constructor(deps: { logger: Logger; configManager: VersioningConfigProvider }) {
+  constructor(deps: {
+    logger: Logger;
+    configManager: VersioningConfigProvider;
+    dbManager?: DatabasePort;
+  }) {
     this.logger = deps.logger;
     this.configProvider = deps.configManager;
+    this.dbManager = deps.dbManager ?? null;
+  }
+
+  /** Late-bind DatabasePort (setter injection, matching codebase convention). */
+  setDatabasePort(db: DatabasePort): void {
+    this.dbManager = db;
   }
 
   /**
-   * Get database instance (lazy initialization via dynamic import).
-   * Dynamic import is architecturally acceptable: module types against DatabasePort
-   * from shared/types and only resolves the concrete implementation at runtime.
+   * Get database instance.
+   * Requires DatabasePort to be injected via constructor or setDatabasePort().
    */
-  private async getDb(): Promise<DatabasePort> {
+  private getDb(): DatabasePort {
     if (!this.dbManager) {
-      const serverRoot = this.configProvider.getServerRoot();
-      const { SqliteEngine: Engine } = await import('../../infra/database/sqlite-engine.js');
-      this.dbManager = await Engine.getInstance(serverRoot, this.logger);
+      throw new Error(
+        'VersionHistoryService: DatabasePort not provided. Pass dbManager in constructor or call setDatabasePort().'
+      );
     }
     return this.dbManager;
   }
@@ -93,7 +102,7 @@ export class VersionHistoryService {
     }
 
     try {
-      const db = await this.getDb();
+      const db = this.getDb();
 
       // Get current max version
       const row = db.queryOne<{ max_version: number | null }>(
@@ -152,7 +161,7 @@ export class VersionHistoryService {
    */
   async loadHistory(resourceType: ResourceType, resourceId: string): Promise<HistoryFile | null> {
     try {
-      const db = await this.getDb();
+      const db = this.getDb();
 
       const rows = db.query<VersionRow>(
         `SELECT version, snapshot, diff_summary, description, created_at
@@ -197,7 +206,7 @@ export class VersionHistoryService {
     version: number
   ): Promise<VersionEntry | null> {
     try {
-      const db = await this.getDb();
+      const db = this.getDb();
 
       const row = db.queryOne<VersionRow>(
         `SELECT version, snapshot, diff_summary, description, created_at
@@ -230,7 +239,7 @@ export class VersionHistoryService {
    */
   async getLatestVersion(resourceType: ResourceType, resourceId: string): Promise<number> {
     try {
-      const db = await this.getDb();
+      const db = this.getDb();
 
       const row = db.queryOne<{ max_version: number | null }>(
         `SELECT MAX(version) as max_version FROM version_history
@@ -326,7 +335,7 @@ export class VersionHistoryService {
    */
   async deleteHistory(resourceType: ResourceType, resourceId: string): Promise<boolean> {
     try {
-      const db = await this.getDb();
+      const db = this.getDb();
 
       db.run(
         `DELETE FROM version_history

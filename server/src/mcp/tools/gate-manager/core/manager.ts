@@ -24,17 +24,20 @@ export class GateToolHandler {
   private readonly lifecycle: GateLifecycleProcessor;
   private readonly discovery: GateDiscoveryProcessor;
   private readonly versioning: GateVersioningProcessor;
+  private readonly versionHistoryService: VersionHistoryService;
 
   constructor(deps: GateManagerDependencies) {
+    this.versionHistoryService = new VersionHistoryService({
+      logger: deps.logger,
+      configManager: deps.configManager,
+    });
+
     const ctx: GateResourceContext = {
       logger: deps.logger,
       gateManager: deps.gateManager,
       configManager: deps.configManager,
       textDiffService: new ObjectDiffGenerator(),
-      versionHistoryService: new VersionHistoryService({
-        logger: deps.logger,
-        configManager: deps.configManager,
-      }),
+      versionHistoryService: this.versionHistoryService,
       gateFileService: new GateFileWriter({
         logger: deps.logger,
         configManager: deps.configManager,
@@ -47,6 +50,10 @@ export class GateToolHandler {
     this.versioning = new GateVersioningProcessor(ctx);
 
     deps.logger.debug('GateToolHandler initialized');
+  }
+
+  setDatabasePort(db: import('../../../../shared/types/persistence.js').DatabasePort): void {
+    this.versionHistoryService.setDatabasePort(db);
   }
 
   async handleAction(args: GateManagerInput, _context: Record<string, any>): Promise<ToolResponse> {

@@ -178,6 +178,20 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
   if (isVerbose) logger.info('🔄 Updating MCP tools manager data...');
   mcpToolsManager.updateData(promptsData, convertedPrompts, categories);
 
+  // Wire DatabasePort early so sub-handlers have it before first use
+  if (serverRoot !== undefined && serverRoot !== '') {
+    try {
+      const { SqliteEngine } = await import('../infra/database/sqlite-engine.js');
+      const dbManager = await SqliteEngine.getInstance(serverRoot, logger);
+      await dbManager.initialize();
+      mcpToolsManager.setDatabasePort(dbManager);
+    } catch (error) {
+      logger.warn(
+        `Failed to wire DatabasePort to MCP tools: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   if (isVerbose) logger.info('🔄 Connecting Framework State Manager...');
   mcpToolsManager.setFrameworkStateStore(frameworkStateStore);
 

@@ -15,7 +15,14 @@
 import { ArgumentHistoryEntry, ReviewContext, PersistedArgumentHistory } from './types.js';
 
 import type { Logger } from '../../shared/types/index.js';
-import type { StateStore } from '../../shared/types/persistence.js';
+import type { DatabasePort } from '../../shared/types/persistence.js';
+
+const DEFAULT_STATE: PersistedArgumentHistory = {
+  version: '1.0.0',
+  lastUpdated: 0,
+  chains: {},
+  sessionToChain: {},
+};
 
 /**
  * ArgumentHistoryTracker Class
@@ -33,33 +40,39 @@ export class ArgumentHistoryTracker {
   /** Maximum entries per chain (FIFO cleanup) */
   private readonly maxEntriesPerChain: number;
 
-  /** SQLite state store */
-  private stateStore?: StateStore<PersistedArgumentHistory>;
+  /** Database port for direct SQL persistence */
+  private db?: DatabasePort;
 
   /** Whether initialization has completed */
   private initialized: boolean = false;
 
   /**
-   * Create an ArgumentHistoryTracker instance
+   * Create an ArgumentHistoryTracker instance.
    *
    * @param logger - Logger instance
    * @param maxEntriesPerChain - Maximum entries per chain (default: 50)
-   * @param serverRoot - Server root directory for SqliteEngine
+   * @param dbManager - Optional DatabasePort for persistence (set later via setDatabasePort if not provided)
    */
   constructor(
     private logger: Logger,
     maxEntriesPerChain: number = 50,
-    private readonly serverRoot: string
+    dbManager?: DatabasePort
   ) {
     this.maxEntriesPerChain = maxEntriesPerChain;
+    this.db = dbManager;
 
     this.logger.debug(
       `ArgumentHistoryTracker initialized (maxEntriesPerChain: ${this.maxEntriesPerChain})`
     );
   }
 
+  /** Late-bind DatabasePort (setter injection, matching codebase convention). */
+  setDatabasePort(db: DatabasePort): void {
+    this.db = db;
+  }
+
   /**
-   * Initialize SQLite state store and load persisted data.
+   * Initialize: load persisted data from database.
    * Must be called before first use.
    */
   async initialize(): Promise<void> {
@@ -67,28 +80,9 @@ export class ArgumentHistoryTracker {
       return;
     }
 
-    // Dynamic import: resolve infra dependencies at runtime (avoids static layer violation)
-    const { SqliteEngine } = await import('../../infra/database/sqlite-engine.js');
-    const { SqliteStateStore } = await import('../../infra/database/stores/sqlite-store.js');
-    const dbManager = await SqliteEngine.getInstance(this.serverRoot, this.logger);
-    await dbManager.initialize();
-
-    this.stateStore = new SqliteStateStore<PersistedArgumentHistory>(
-      dbManager,
-      {
-        tableName: 'argument_history',
-        stateColumn: 'state',
-        defaultState: () => ({
-          version: '1.0.0',
-          lastUpdated: 0,
-          chains: {},
-          sessionToChain: {},
-        }),
-      },
-      this.logger
-    );
-
-    await this.loadFromStore();
+    if (this.db) {
+      await this.loadFromStore();
+    }
     this.initialized = true;
   }
 
@@ -339,10 +333,10 @@ export class ArgumentHistoryTracker {
   }
 
   /**
-   * Save argument history to SQLite
+   * Save argument history to SQLite via DatabasePort.
    */
   private async saveToStore(): Promise<void> {
-    if (!this.stateStore) {
+    if (!this.db) {
       return;
     }
 
@@ -364,7 +358,10 @@ export class ArgumentHistoryTracker {
         sessionToChain,
       };
 
-      await this.stateStore.save(persistedData);
+      this.db.run('INSERT OR REPLACE INTO argument_history (tenant_id, state) VALUES (?, ?)', [
+        'default',
+        JSON.stringify(persistedData),
+      ]);
       this.logger.debug('Saved argument history to SQLite');
     } catch (error) {
       this.logger.error('Failed to save argument history:', error);
@@ -372,15 +369,21 @@ export class ArgumentHistoryTracker {
   }
 
   /**
-   * Load argument history from SQLite
+   * Load argument history from SQLite via DatabasePort.
    */
   private async loadFromStore(): Promise<void> {
-    if (!this.stateStore) {
+    if (!this.db) {
       return;
     }
 
     try {
-      const persistedData = await this.stateStore.load();
+      const row = this.db.queryOne<{ state: string }>(
+        'SELECT state FROM argument_history WHERE tenant_id = ?',
+        ['default']
+      );
+      const persistedData: PersistedArgumentHistory = row
+        ? (JSON.parse(row.state) as PersistedArgumentHistory)
+        : DEFAULT_STATE;
 
       this.chainHistory.clear();
       Object.entries(persistedData.chains).forEach(([chainId, entries]) => {

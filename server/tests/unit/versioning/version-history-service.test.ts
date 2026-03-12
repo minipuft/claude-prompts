@@ -64,6 +64,7 @@ describe('VersionHistoryService', () => {
     service = new VersionHistoryService({
       logger: dbCtx.logger,
       configManager: mockConfigProvider,
+      dbManager: dbCtx.dbManager,
     });
   });
 

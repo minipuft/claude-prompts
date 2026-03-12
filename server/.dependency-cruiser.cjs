@@ -91,8 +91,8 @@ module.exports = {
     {
       name: 'modules-infra-dynamic',
       comment:
-        'modules/ dynamic imports of infra/ for lazy initialization. Track for future DI migration.',
-      severity: 'info',
+        'modules/ must not dynamically import infra/. Use constructor injection via DatabasePort.',
+      severity: 'error',
       from: { path: '^src/modules/' },
       to: {
         path: '^src/infra/',
@@ -101,8 +101,8 @@ module.exports = {
     },
     {
       name: 'modules-infra-type-only',
-      comment: 'modules/ type-only imports from infra/. Track for shared/types consolidation.',
-      severity: 'info',
+      comment: 'modules/ must not have type-only imports from infra/. Use shared/types interfaces.',
+      severity: 'error',
       from: { path: '^src/modules/' },
       to: {
         path: '^src/infra/',
@@ -131,8 +131,9 @@ module.exports = {
     },
     {
       name: 'mcp-infra-dynamic',
-      comment: 'mcp/ dynamic imports of infra/ for runtime wiring. Track for consolidation.',
-      severity: 'info',
+      comment:
+        'mcp/ must not dynamically import infra/. Use constructor injection via DatabasePort.',
+      severity: 'error',
       from: { path: '^src/mcp/' },
       to: {
         path: '^src/infra/',
@@ -220,7 +221,7 @@ module.exports = {
     {
       name: 'no-orphans',
       comment: 'Orphan modules should be removed or integrated.',
-      severity: 'info',
+      severity: 'error',
       from: {
         orphan: true,
         pathNot: [
@@ -228,6 +229,7 @@ module.exports = {
           '(^|/)\\.[^/]+\\.(js|cjs|mjs|ts|json)$',
           '\\.test\\.ts$',
           'index\\.ts$',
+          '_generated/',
         ],
       },
       to: {},

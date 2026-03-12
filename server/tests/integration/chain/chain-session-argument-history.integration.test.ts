@@ -8,14 +8,17 @@ import { ChainSessionManager } from '../../../src/modules/chains/manager.js';
 import { ArgumentHistoryTracker } from '../../../src/modules/text-refs/argument-history-tracker.js';
 
 import type { Logger } from '../../../src/infra/logging/index.js';
+import type { DatabasePort } from '../../../src/shared/types/persistence.js';
 
 class StubTextReferenceStore {
   private store: Record<string, Record<number, { result: string; metadata: any }>> = {};
-  storeChainStepResult = jest.fn((chainId: string, step: number, result: string, metadata: any) => {
+  storeChainStepResult = jest.fn().mockImplementation((...args: unknown[]) => {
+    const [chainId, step, result, metadata] = args as [string, number, string, any];
     this.store[chainId] ||= {} as any;
     this.store[chainId][step] = { result, metadata };
   });
-  buildChainVariables = jest.fn().mockImplementation((chainId: string) => {
+  buildChainVariables = jest.fn().mockImplementation((...args: unknown[]) => {
+    const chainId = args[0] as string;
     const steps = this.store[chainId] || {};
     const step_results: Record<string, string> = {};
     for (const [k, v] of Object.entries(steps)) {
@@ -35,6 +38,56 @@ const createLogger = (): Logger =>
     error: jest.fn(),
   }) as unknown as Logger;
 
+/**
+ * Creates a mock DatabasePort that stores data in-memory, simulating SQLite.
+ * Supports both argument_history and chain_run_registry tables.
+ */
+const createMockDb = (): DatabasePort => {
+  const tables = new Map<string, Map<string, string>>();
+
+  return {
+    isInitialized: () => true,
+    initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    queryOne: jest.fn().mockImplementation((...args: unknown[]) => {
+      const sql = args[0] as string;
+      const params = args[1] as unknown[] | undefined;
+      const tenantId = (params?.[0] as string) ?? 'default';
+      if (sql.includes('argument_history')) {
+        const state = tables.get('argument_history')?.get(tenantId);
+        return state ? { state } : null;
+      }
+      if (sql.includes('chain_run_registry')) {
+        const state = tables.get('chain_run_registry')?.get(tenantId);
+        return state ? { state } : null;
+      }
+      return null;
+    }),
+    query: jest.fn().mockReturnValue([]),
+    run: jest.fn().mockImplementation((...args: unknown[]) => {
+      const sql = args[0] as string;
+      const params = args[1] as unknown[] | undefined;
+      if (sql.includes('INSERT OR REPLACE INTO argument_history')) {
+        if (!tables.has('argument_history')) tables.set('argument_history', new Map());
+        tables
+          .get('argument_history')!
+          .set((params?.[0] as string) ?? 'default', (params?.[1] as string) ?? '{}');
+      }
+      if (sql.includes('INSERT OR REPLACE INTO chain_run_registry')) {
+        if (!tables.has('chain_run_registry')) tables.set('chain_run_registry', new Map());
+        tables
+          .get('chain_run_registry')!
+          .set((params?.[0] as string) ?? 'default', (params?.[1] as string) ?? '{}');
+      }
+    }),
+    transaction: jest
+      .fn()
+      .mockImplementation(async (...args: unknown[]) => (args[0] as () => any)()),
+    beginTransaction: jest.fn(),
+    commit: jest.fn(),
+    rollback: jest.fn(),
+  } as unknown as DatabasePort;
+};
+
 describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
   let tmpRoot: string;
 
@@ -52,7 +105,9 @@ describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
   test('real step completion writes argument-history to SQLite and enriches chainContext', async () => {
     const logger = createLogger();
     const textReference = new StubTextReferenceStore();
-    const tracker = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const mockDb = createMockDb();
+
+    const tracker = new ArgumentHistoryTracker(logger, 10, mockDb);
     await tracker.initialize();
 
     const manager = new ChainSessionManager(
@@ -61,6 +116,7 @@ describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
       { serverRoot: tmpRoot, cleanupIntervalMs: 1000 },
       tracker
     );
+    manager.setDatabasePort(mockDb);
 
     await manager.createSession('sess-1', 'chain-ctx', 2, { input: 'alpha' });
 
@@ -78,7 +134,7 @@ describe('ChainSessionManager + ArgumentHistoryTracker (integration)', () => {
     expect(context.previous_step_results['1']).toBe('REAL-OUTPUT-1');
 
     // Verify persistence: new tracker instance should see the data
-    const tracker2 = new ArgumentHistoryTracker(logger, 10, tmpRoot);
+    const tracker2 = new ArgumentHistoryTracker(logger, 10, mockDb);
     await tracker2.initialize();
     const history = tracker2.getSessionHistory('sess-1');
     expect(history.length).toBeGreaterThan(0);

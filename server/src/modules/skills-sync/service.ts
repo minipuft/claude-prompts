@@ -492,7 +492,7 @@ async function loadSyncConfig(): Promise<SyncConfig> {
 }
 
 /**
- * Load tools from SQLite resource_index (type='tool').
+ * Load tools from SQLite resource_index (type='tool') via DatabasePort directly.
  * Returns empty record if DB is unavailable or no tools indexed.
  */
 async function loadToolsCache(
@@ -501,11 +501,40 @@ async function loadToolsCache(
 ): Promise<Record<string, ToolIndexEntry>> {
   if (dbManager?.isInitialized()) {
     try {
-      const { createResourceIndexer } = await import('../../infra/database/resource-indexer.js');
-      const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
-      const indexer = createResourceIndexer(dbManager, logger, { resourcesDir: '' });
-      const tools = indexer.queryTools();
-      if (Object.keys(tools).length > 0) return tools;
+      const rows = dbManager.query<{
+        id: string;
+        name: string | null;
+        category: string | null;
+        description: string | null;
+        content_hash: string | null;
+        metadata_json: string | null;
+      }>('SELECT * FROM resource_index WHERE type = ? ORDER BY id', ['tool']);
+
+      const result: Record<string, ToolIndexEntry> = {};
+      for (const row of rows) {
+        if (!row.metadata_json) continue;
+        try {
+          const meta = JSON.parse(row.metadata_json) as Record<string, unknown>;
+          const execution = meta['execution'] as ToolIndexEntry['execution'] | undefined;
+          result[row.id] = {
+            id: row.id.includes('/') ? (row.id.split('/').pop() ?? row.id) : row.id,
+            name: row.name ?? row.id,
+            runtime: (meta['runtime'] as string) ?? 'auto',
+            inputSchema: (meta['input_schema'] as ToolIndexEntry['inputSchema']) ?? {},
+            execution: execution ?? { trigger: 'schema_match', confirm: true, strict: false },
+            ...(meta['env'] != null ? { env: meta['env'] as Record<string, string> } : {}),
+            promptId: (meta['prompt_id'] as string) ?? '',
+            category: row.category ?? '',
+            description: row.description ?? '',
+            toolDir: (meta['tool_dir'] as string) ?? '',
+            scriptPath: (meta['script_path'] as string) ?? 'script.py',
+            contentHash: row.content_hash ?? '',
+          };
+        } catch {
+          // Skip unparseable tool metadata
+        }
+      }
+      if (Object.keys(result).length > 0) return result;
     } catch {
       // DB read failed
     }

@@ -10,7 +10,7 @@
  * Sessions are saved to disk after every change and loaded on initialization.
  */
 
-import { SqliteChainRunRegistry, type ChainRunRegistry } from './run-registry.js';
+import { DirectChainRunRegistry, type ChainRunRegistry } from './run-registry.js';
 import { StepState } from '../../shared/types/chain-execution.js';
 import { resolveContinuityScopeId } from '../../shared/utils/request-identity-scope.js';
 import { ArgumentHistoryTracker, TextReferenceStore } from '../text-refs/index.js';
@@ -119,6 +119,12 @@ export class ChainSessionStore implements ChainSessionService {
     this.startCleanupScheduler();
   }
 
+  /** Late-bind DatabasePort (setter injection, matching codebase convention). */
+  setDatabasePort(db: DatabasePort): void {
+    this.injectedDbEngine = db;
+    this.resolvedDbEngine = db;
+  }
+
   /**
    * Initialize the manager asynchronously
    */
@@ -126,19 +132,14 @@ export class ChainSessionStore implements ChainSessionService {
     try {
       // Create SQLite-backed registry if no custom store was provided
       if (!this.runRegistry) {
-        const dbManager = this.injectedDbEngine
-          ? this.injectedDbEngine
-          : await this.resolveDbEngine();
+        const dbManager = this.injectedDbEngine;
+        if (!dbManager) {
+          this.logger.warn('ChainSessionStore: no DatabasePort provided, persistence disabled');
+          return;
+        }
         await dbManager.initialize();
         this.resolvedDbEngine = dbManager;
-        // Dynamic import: construct SqliteStateStore at runtime (avoids static infra import)
-        const { SqliteStateStore } = await import('../../infra/database/stores/sqlite-store.js');
-        const store = new SqliteStateStore<PersistedChainRunRegistry>(
-          dbManager,
-          { tableName: 'chain_run_registry', stateColumn: 'state', defaultState: () => ({}) },
-          this.logger
-        );
-        this.runRegistry = new SqliteChainRunRegistry(store, this.logger);
+        this.runRegistry = new DirectChainRunRegistry(dbManager, this.logger);
       }
       await this.runRegistry.ensureInitialized();
       this.cleanupStalePidRows();
@@ -368,11 +369,7 @@ export class ChainSessionStore implements ChainSessionService {
    * Collect tenant_id values from a table where the PID is dead (not alive).
    * Skips non-numeric IDs and optionally skips the current process PID.
    */
-  /** Lazy-resolve the database engine via dynamic import (avoids static infra dependency). */
-  private async resolveDbEngine(): Promise<DatabasePort> {
-    const { SqliteEngine } = await import('../../infra/database/sqlite-engine.js');
-    return SqliteEngine.getInstance(this.serverRoot, this.logger);
-  }
+  // DB engine accessed via this.resolvedDbEngine (set in initialize or setDatabasePort)
 
   private collectDeadPidTenants(db: DatabasePort, query: string, skipOwnPid: boolean): string[] {
     const rows = db.query<{ tenant_id: string }>(query);

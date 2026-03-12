@@ -1,21 +1,9 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  jest,
-} from '@jest/globals';
-
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, test, jest } from '@jest/globals';
 
 import { ArgumentHistoryTracker } from '../../../src/modules/text-refs/argument-history-tracker.js';
 
 import type { Logger } from '../../../src/infra/logging/index.js';
+import type { DatabasePort } from '../../../src/shared/types/persistence.js';
 
 const createLogger = (): Logger =>
   ({
@@ -25,23 +13,24 @@ const createLogger = (): Logger =>
     error: jest.fn(),
   }) as unknown as Logger;
 
+const createMockDb = (): DatabasePort =>
+  ({
+    isInitialized: () => true,
+    initialize: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    queryOne: jest.fn().mockReturnValue(null),
+    query: jest.fn().mockReturnValue([]),
+    run: jest.fn(),
+    transaction: jest.fn(),
+    beginTransaction: jest.fn(),
+    commit: jest.fn(),
+    rollback: jest.fn(),
+  }) as unknown as DatabasePort;
+
 describe('ArgumentHistoryTracker', () => {
   let tracker: ArgumentHistoryTracker;
-  let tmpRoot: string;
-
-  beforeAll(() => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'arg-tracker-'));
-    fs.mkdirSync(path.join(tmpRoot, 'runtime-state'), { recursive: true });
-  });
-
-  afterAll(() => {
-    try {
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
-    } catch {}
-  });
 
   beforeEach(() => {
-    tracker = new ArgumentHistoryTracker(createLogger(), 10, tmpRoot);
+    tracker = new ArgumentHistoryTracker(createLogger(), 10, createMockDb());
   });
 
   afterEach(async () => {
@@ -64,7 +53,7 @@ describe('ArgumentHistoryTracker', () => {
   });
 
   test('enforces max entries per chain with FIFO semantics', async () => {
-    tracker = new ArgumentHistoryTracker(createLogger(), 2, tmpRoot);
+    tracker = new ArgumentHistoryTracker(createLogger(), 2, createMockDb());
     await tracker.trackExecution({
       promptId: 'demo',
       sessionId: 'chain-a',

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **server:** Eliminate all dependency-cruiser architecture violations and enforce at error severity
+  - Migrate 6 modules-to-infra dynamic imports to constructor injection via `DatabasePort` interface
+  - Delete 4 orphan files with zero consumers (global-resource-tracker, prompt-writer, mcp/tools/constants, skills_sync.generated)
+  - Promote `no-orphans`, `modules-infra-dynamic`, `modules-infra-type-only`, and `mcp-infra-dynamic` rules from info to error
+
 ## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
 
 

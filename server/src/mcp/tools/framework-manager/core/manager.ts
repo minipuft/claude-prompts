@@ -58,6 +58,10 @@ export class FrameworkToolHandler {
     deps.logger.debug('FrameworkToolHandler initialized');
   }
 
+  setDatabasePort(db: import('../../../../shared/types/persistence.js').DatabasePort): void {
+    this.ctx.versionHistoryService.setDatabasePort(db);
+  }
+
   /**
    * Set framework state store (called during late initialization).
    * Updates the shared context so all services see the new store.

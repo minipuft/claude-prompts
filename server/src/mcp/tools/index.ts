@@ -277,6 +277,18 @@ export class McpToolRouter {
   }
 
   /**
+   * Set database port for persistence (cascades to all sub-handlers that need DB access).
+   */
+  setDatabasePort(db: import('../../shared/types/persistence.js').DatabasePort): void {
+    this.promptExecutor.setDatabasePort(db);
+    this.promptResourceHandler.setDatabasePort(db);
+    this.gateManagerTool.setDatabasePort(db);
+    if (this.frameworkManagerTool) {
+      this.frameworkManagerTool.setDatabasePort(db);
+    }
+  }
+
+  /**
    * Set hook registry for pipeline event emissions
    */
   setHookRegistry(hookRegistry: HookRegistryPort): void {

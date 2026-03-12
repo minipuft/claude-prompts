@@ -163,8 +163,8 @@ export class PromptExecutor {
         }
       : undefined;
 
-    this.argumentHistoryTracker = new ArgumentHistoryTracker(logger, 50, this.serverRoot);
-    // Initialize async - will be ready by first use
+    this.argumentHistoryTracker = new ArgumentHistoryTracker(logger, 50);
+    // Initialize async - will be ready when DatabasePort is set via setDatabasePort
     this.argumentHistoryTracker.initialize().catch((error) => {
       logger.warn('Failed to initialize ArgumentHistoryTracker:', error);
     });
@@ -284,6 +284,13 @@ export class PromptExecutor {
 
   setAnalyticsService(analyticsService: MetricsCollector): void {
     this.analyticsService = analyticsService;
+  }
+
+  setDatabasePort(db: import('../../../../shared/types/persistence.js').DatabasePort): void {
+    this.argumentHistoryTracker.setDatabasePort(db);
+    if ('setDatabasePort' in this.chainSessionManager) {
+      (this.chainSessionManager as { setDatabasePort(db: unknown): void }).setDatabasePort(db);
+    }
   }
 
   setHookRegistry(hookRegistry: HookRegistryPort): void {
