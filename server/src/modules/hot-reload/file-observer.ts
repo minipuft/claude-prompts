@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import chokidar from 'chokidar';
+import chokidar, { type ChokidarOptions, type FSWatcher } from 'chokidar';
 
 import type { ConfigManager, Logger } from '../../shared/types/index.js';
 
@@ -160,7 +160,7 @@ const DEFAULT_CONFIG: FileObserverConfig = {
 export class FileObserver extends EventEmitter {
   protected logger: Logger;
   private config: FileObserverConfig;
-  private watchers: Map<string, chokidar.FSWatcher> = new Map();
+  private watchers: Map<string, FSWatcher> = new Map();
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
   private stats: FileObserverStats;
   private isStarted: boolean = false;
@@ -313,7 +313,7 @@ export class FileObserver extends EventEmitter {
       }
 
       // Configure chokidar options
-      const watchOptions: chokidar.WatchOptions = {
+      const watchOptions: ChokidarOptions = {
         persistent: true,
         ignoreInitial: true,
         followSymlinks: true,
@@ -341,7 +341,7 @@ export class FileObserver extends EventEmitter {
         .on('unlink', (filePath: string) => {
           this.handleChokidarEvent('unlink', directoryPath, filePath, category);
         })
-        .on('error', (error: Error) => {
+        .on('error', (error: unknown) => {
           this.handleWatcherError(directoryPath, error);
         });
 
@@ -584,15 +584,18 @@ export class FileObserver extends EventEmitter {
   /**
    * Handle watcher errors
    */
-  private handleWatcherError(directoryPath: string, error: Error): void {
-    this.logger.error(`FileObserver: Watcher error for ${directoryPath}:`, error);
+  private handleWatcherError(directoryPath: string, error: unknown): void {
+    const normalizedError =
+      error instanceof Error ? error : new Error(`Unknown watcher error: ${String(error)}`);
+
+    this.logger.error(`FileObserver: Watcher error for ${directoryPath}:`, normalizedError);
 
     // Remove failed watcher
     this.watchers.delete(directoryPath);
     this.stats.watchersActive = this.watchers.size;
 
     // Emit error event
-    this.emit('watcherError', { directoryPath, error });
+    this.emit('watcherError', { directoryPath, error: normalizedError });
 
     // Attempt to restart watcher
     if (this.retryCount < this.config.maxRetries) {
