@@ -12,6 +12,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|Bash|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/delegation-enforce.py",
+            "name": "delegation-enforce",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
