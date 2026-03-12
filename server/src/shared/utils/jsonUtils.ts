@@ -71,7 +71,7 @@ function getNunjucksEnv(): nunjucks.Environment {
     nunjucksEnv = nunjucks.configure(promptTemplatesPath, {
       autoescape: false, // We're generating plain text prompts for LLM, not HTML
       throwOnUndefined: false, // Renders undefined variables as empty string for better compatibility
-      watch: false, // Set to true for development to auto-reload templates; false for production
+      watch: false, // Hot reload is handled by FileObserver/chokidar elsewhere; do not use Nunjucks watcher
       noCache: process.env['NODE_ENV'] === 'development', // Disable cache in development, enable in production
       tags: {
         blockStart: '{%',
