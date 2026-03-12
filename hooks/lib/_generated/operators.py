@@ -7,13 +7,13 @@ These patterns are for USER CONTEXT HINTS only.
 Full parsing happens server-side in symbolic-operator-parser.ts
 """
 import re
-from typing import TypedDict, Pattern
+from typing import TypedDict
 
 
 class OperatorInfo(TypedDict):
     symbol: str
     description: str
-    pattern: Pattern[str]
+    pattern: re.Pattern[str]
     examples: list[str]
 
 
