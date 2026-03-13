@@ -296,7 +296,10 @@ Criteria the AI checks its own output against. Blocking or advisory.
 
 Failed checks can retry automatically or pause for your decision.
 
-### [Reasoning Guidance (Methodologies)](docs/guides/methodologies.md)
+> [!TIP]
+> **Define your own checks.** See the [Gates Guide](docs/guides/gates.md) for blocking vs advisory rules, retry behavior, and shell verification.
+
+### Reasoning Guidance (Methodologies)
 
 Frameworks that shape how the AI thinks through a problem — not just what it outputs. 6 built-in, or create your own.
 
@@ -305,6 +308,9 @@ Frameworks that shape how the AI thinks through a problem — not just what it o
 @ReACT      # Reason → Act → Observe loops
 @5W1H       # Who, What, Where, When, Why, How
 ```
+
+> [!TIP]
+> **Create your own framework.** See the [Methodologies Guide](docs/guides/methodologies.md) for built-in frameworks and custom authoring.
 
 ### Styles
 
@@ -379,6 +385,9 @@ Implements, runs the test, reads failures, fixes, retries. Spawns a fresh contex
 | `:full` | 5 | 5 min | CI validation |
 | `:extended` | 10 | 10 min | Large test suites |
 
+> [!TIP]
+> **Autonomous test-fix cycles.** See [Ralph Loops](docs/guides/ralph-loops.md) for presets, timeout configuration, and context-rot prevention.
+
 ### Judge Mode
 
 Let the AI pick the right resources for the task:
@@ -388,6 +397,9 @@ Let the AI pick the right resources for the task:
 ```
 
 Analyzes available templates, reasoning frameworks, validation rules, and styles — applies the best combination automatically.
+
+> [!TIP]
+> **How judge mode selects resources.** See [Judge Mode Guide](docs/guides/judge-mode.md) for scoring, overrides, and preview with `%judge`.
 
 > [!TIP]
 > Chains support conditional branching, context threading, and agent handoffs.
@@ -561,8 +573,11 @@ Command with operators → server parses and injects resources → client execut
 | Compare client profile mapping and limitations | [Client Capabilities Reference](docs/reference/client-capabilities.md) |
 | Export skills to other clients | [Skills Sync](docs/guides/skills-sync.md) |
 | Configure the server | [CLI & Configuration](docs/guides/cli.md) |
+| Let the AI pick resources automatically | [Judge Mode Guide](docs/guides/judge-mode.md) |
 | Look up MCP tool parameters | [MCP Tools Reference](docs/reference/mcp-tools.md) |
+| Look up prompt YAML fields | [Prompt YAML Schema](docs/reference/prompt-yaml-schema.md) |
 | Understand the architecture | [Architecture Overview](docs/architecture/overview.md) |
+| Fix common issues | [Troubleshooting](docs/guides/troubleshooting.md) |
 
 ---
 
