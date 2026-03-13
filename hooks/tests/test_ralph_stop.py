@@ -159,32 +159,40 @@ class TestLoadContextIsolationConfig:
         config = load_context_isolation_config()
         assert config["enabled"] is True
         assert config["inContextThreshold"] == 3
-        assert config["timeoutSeconds"] == 300
+        assert config["spawnTimeout"] == 300
 
     def test_reads_custom_config(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
-            "verification": {
-                "inContextAttempts": 5,
-                "isolation": {
-                    "mode": "on",
-                    "timeout": 600,
-                },
-            }
-        }))
+        config_file.write_text(
+            json.dumps(
+                {
+                    "verification": {
+                        "inContextAttempts": 5,
+                        "isolation": {
+                            "mode": "on",
+                            "timeout": 600,
+                        },
+                    }
+                }
+            )
+        )
         monkeypatch.setattr(hook_mod, "get_config_path", lambda: config_file)
         config = load_context_isolation_config()
         assert config["enabled"] is True
         assert config["inContextThreshold"] == 5
-        assert config["timeoutSeconds"] == 600
+        assert config["spawnTimeout"] == 600
 
     def test_disabled_mode(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps({
-            "verification": {
-                "isolation": {"mode": "off"},
-            }
-        }))
+        config_file.write_text(
+            json.dumps(
+                {
+                    "verification": {
+                        "isolation": {"enabled": False},
+                    }
+                }
+            )
+        )
         monkeypatch.setattr(hook_mod, "get_config_path", lambda: config_file)
         config = load_context_isolation_config()
         assert config["enabled"] is False
@@ -244,9 +252,17 @@ class TestMainDecisions:
             "config": {"command": "true", "maxIterations": 5, "timeout": 30000},
             "state": {"iteration": 0},
         }
-        with patch.object(hook_mod, "run_verification", return_value={
-            "passed": True, "exitCode": 0, "stdout": "", "stderr": "", "timedOut": False,
-        }):
+        with patch.object(
+            hook_mod,
+            "run_verification",
+            return_value={
+                "passed": True,
+                "exitCode": 0,
+                "stdout": "",
+                "stderr": "",
+                "timedOut": False,
+            },
+        ):
             exit_code, output = self._run_hook({}, verify_state=verify_state)
         assert exit_code == 0
 
@@ -257,14 +273,22 @@ class TestMainDecisions:
             "state": {"iteration": 0},
         }
         fail_result = {
-            "passed": False, "exitCode": 1,
-            "stdout": "", "stderr": "FAIL: test.js",
+            "passed": False,
+            "exitCode": 1,
+            "stdout": "",
+            "stderr": "FAIL: test.js",
             "timedOut": False,
         }
         with patch.object(hook_mod, "run_verification", return_value=fail_result):
-            with patch.object(hook_mod, "load_context_isolation_config", return_value={
-                "enabled": True, "inContextThreshold": 3, "timeoutSeconds": 300,
-            }):
+            with patch.object(
+                hook_mod,
+                "load_context_isolation_config",
+                return_value={
+                    "enabled": True,
+                    "inContextThreshold": 3,
+                    "timeoutSeconds": 300,
+                },
+            ):
                 exit_code, output = self._run_hook({}, verify_state=verify_state)
 
         assert exit_code == 0
@@ -272,18 +296,5 @@ class TestMainDecisions:
         assert output["decision"] == "block"
         assert "Shell Verification FAILED" in output["reason"]
 
-    def test_delegation_pending_blocks(self):
-        """Unfulfilled delegation from ==> operator blocks stop."""
-        with patch("session_state.load_session_state", return_value={
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        }):
-            exit_code, output = self._run_hook(
-                {"session_id": "test-session"},
-                verify_state=None,
-            )
-        assert exit_code == 0
-        assert output is not None
-        assert output["decision"] == "block"
-        assert "Delegation Not Completed" in output["reason"]
+    # test_delegation_pending_blocks removed — delegation handling
+    # was removed from ralph-stop.py in the delegation refactor

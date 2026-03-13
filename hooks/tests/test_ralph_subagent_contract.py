@@ -21,13 +21,7 @@ from ralph_subagent_contract import (
 
 class TestExtractQualityGates:
     def test_extracts_criteria_from_standard_section(self):
-        prompt = (
-            "Some preamble\n\n"
-            "### Quality Gates\n"
-            "- Code must compile\n"
-            "- All tests must pass\n\n"
-            "### Next Section\n"
-        )
+        prompt = "Some preamble\n\n### Quality Gates\n- Code must compile\n- All tests must pass\n\n### Next Section\n"
         result = extract_quality_gates(prompt)
         assert result is not None
         assert "Code must compile" in result
@@ -38,23 +32,14 @@ class TestExtractQualityGates:
         assert extract_quality_gates(prompt) is None
 
     def test_extracts_until_next_heading(self):
-        prompt = (
-            "### Quality Gates\n"
-            "- Criterion A\n"
-            "## Another H2 Section\n"
-            "More text"
-        )
+        prompt = "### Quality Gates\n- Criterion A\n## Another H2 Section\nMore text"
         result = extract_quality_gates(prompt)
         assert result is not None
         assert "Criterion A" in result
         assert "Another H2 Section" not in result
 
     def test_extracts_until_respond_with(self):
-        prompt = (
-            "### Quality Gates\n"
-            "- Must be correct\n"
-            "Respond with `GATE_REVIEW: PASS`\n"
-        )
+        prompt = "### Quality Gates\n- Must be correct\nRespond with `GATE_REVIEW: PASS`\n"
         result = extract_quality_gates(prompt)
         assert result is not None
         assert "Must be correct" in result
@@ -122,10 +107,7 @@ class TestParseGateReview:
 
     def test_multiple_verdicts_returns_first_match(self):
         """parse_gate_review uses .search() which finds first match."""
-        content = (
-            "GATE_REVIEW: FAIL \u2014 first attempt\n"
-            "GATE_REVIEW: PASS \u2014 second attempt"
-        )
+        content = "GATE_REVIEW: FAIL \u2014 first attempt\nGATE_REVIEW: PASS \u2014 second attempt"
         result = parse_gate_review(content)
         # .search() returns first match
         assert result == ("FAIL", "first attempt")
@@ -146,11 +128,7 @@ class TestParseMemoryUpdate:
         assert parse_memory_update(content) is None
 
     def test_multiline_content(self):
-        content = (
-            "Here is my work.\n"
-            "MEMORY_UPDATE: Documented the root cause in run-memory.md\n"
-            "Done."
-        )
+        content = "Here is my work.\nMEMORY_UPDATE: Documented the root cause in run-memory.md\nDone."
         result = parse_memory_update(content)
         assert result == "Documented the root cause in run-memory.md"
 

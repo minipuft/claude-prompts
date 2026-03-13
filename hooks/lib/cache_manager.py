@@ -5,7 +5,7 @@ Loads and queries MCP prompt/gate metadata from SQLite resource_index.
 Uses db_reader for SQLite access to runtime-state/state.db (read-only).
 """
 
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from db_reader import (
     get_prompt_by_id_from_db,
@@ -59,13 +59,11 @@ def load_gates_cache() -> dict | None:
 
 def get_prompt_by_id(prompt_id: str) -> PromptInfo | None:
     """Get a specific prompt by ID (case-insensitive lookup via SQLite)."""
-    return get_prompt_by_id_from_db(prompt_id)
+    data = get_prompt_by_id_from_db(prompt_id)
+    return cast(PromptInfo, data) if data is not None else None
 
 
-def match_prompts_to_intent(
-    user_prompt: str,
-    max_results: int = 5
-) -> list[tuple[str, PromptInfo, int]]:
+def match_prompts_to_intent(user_prompt: str, max_results: int = 5) -> list[tuple[str, PromptInfo, int]]:
     """
     Match prompts based on keywords in user's prompt.
     Returns list of (prompt_id, prompt_info, score) tuples sorted by score descending.
@@ -209,10 +207,7 @@ def levenshtein_distance(a: str, b: str) -> int:
     return previous_row[-1]
 
 
-def fuzzy_match_prompt_id(
-    query: str,
-    max_results: int = 3
-) -> list[str]:
+def fuzzy_match_prompt_id(query: str, max_results: int = 3) -> list[str]:
     """
     Find fuzzy matches for a prompt ID using multi-factor scoring.
     Same algorithm as TypeScript generatePromptSuggestions().
@@ -234,7 +229,7 @@ def fuzzy_match_prompt_id(
         return []
 
     query_lower = query.lower()
-    query_words = set(query_lower.replace('-', '_').split('_'))
+    query_words = set(query_lower.replace("-", "_").split("_"))
 
     scored: list[tuple[str, int]] = []
 
@@ -247,7 +242,7 @@ def fuzzy_match_prompt_id(
             score += 100
 
         # Word overlap (medium value - related prompts)
-        id_words = set(id_lower.replace('-', '_').split('_'))
+        id_words = set(id_lower.replace("-", "_").split("_"))
         for qw in query_words:
             for iw in id_words:
                 if qw in iw or iw in qw:

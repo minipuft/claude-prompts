@@ -33,6 +33,7 @@ from workspace import get_runtime_state_dir
 @dataclass
 class SpawnConfig:
     """Configuration for spawning a Claude CLI instance."""
+
     max_budget_usd: float = 1.00
     timeout_seconds: int = 300
     permission_mode: Literal["delegate", "prompt", "deny"] = "delegate"
@@ -43,6 +44,7 @@ class SpawnConfig:
 @dataclass
 class RetryConfig:
     """Configuration for retry with exponential backoff."""
+
     max_retries: int = 3
     base_delay_seconds: float = 1.0
     max_delay_seconds: float = 30.0
@@ -53,6 +55,7 @@ class RetryConfig:
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker pattern."""
+
     failure_threshold: int = 5  # Failures before opening circuit
     recovery_timeout_seconds: float = 60.0  # Time before attempting recovery
     half_open_max_calls: int = 1  # Calls allowed in half-open state
@@ -61,6 +64,7 @@ class CircuitBreakerConfig:
 @dataclass
 class SpawnStats:
     """Token usage and cost statistics from Claude CLI."""
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
@@ -73,6 +77,7 @@ class SpawnStats:
 @dataclass
 class SpawnResult:
     """Result from a spawned Claude CLI instance."""
+
     success: bool
     output: str
     error: str | None
@@ -87,6 +92,7 @@ class SpawnResult:
 
 class CircuitBreakerState:
     """Tracks circuit breaker state."""
+
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Failing fast, not attempting calls
     HALF_OPEN = "half_open"  # Testing if service recovered
@@ -102,6 +108,7 @@ class CircuitBreaker:
     - OPEN: Service is failing, reject calls immediately
     - HALF_OPEN: Testing recovery, allow limited calls
     """
+
     config: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
     _state: str = field(default=CircuitBreakerState.CLOSED, init=False)
     _failure_count: int = field(default=0, init=False)
@@ -179,14 +186,11 @@ def _get_ralph_tasks_dir() -> Path:
     return tasks_dir
 
 
-def _calculate_backoff_delay(
-    attempt: int,
-    config: RetryConfig
-) -> float:
+def _calculate_backoff_delay(attempt: int, config: RetryConfig) -> float:
     """Calculate delay for exponential backoff with optional jitter."""
     import random
 
-    delay = config.base_delay_seconds * (config.exponential_base ** attempt)
+    delay = config.base_delay_seconds * (config.exponential_base**attempt)
     delay = min(delay, config.max_delay_seconds)
 
     if config.jitter:
@@ -296,8 +300,7 @@ async def spawn_claude_print_async(
                 success=False,
                 output="",
                 error=(
-                    "Circuit breaker OPEN - too many failures. "
-                    f"Retry after {circuit.config.recovery_timeout_seconds}s"
+                    f"Circuit breaker OPEN - too many failures. Retry after {circuit.config.recovery_timeout_seconds}s"
                 ),
                 exit_code=-1,
                 timed_out=False,
@@ -410,11 +413,7 @@ async def spawn_claude_print_async(
 # === Synchronous Wrappers (for non-async contexts) ===
 
 
-def spawn_claude_print(
-    prompt: str,
-    config: SpawnConfig | None = None,
-    task_id: str | None = None  # noqa: ARG001 - kept for API compatibility
-) -> SpawnResult:
+def spawn_claude_print(prompt: str, config: SpawnConfig | None = None, task_id: str | None = None) -> SpawnResult:
     """
     Spawn a Claude CLI instance with full tool execution.
 

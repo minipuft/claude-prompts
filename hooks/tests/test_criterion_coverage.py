@@ -36,11 +36,7 @@ class TestParseCriterionVerdicts:
         assert parse_criterion_verdicts(content) is None
 
     def test_handles_brackets_optional(self):
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "1 PASS - Without brackets\n"
-            "2 FAIL - Also without"
-        )
+        content = "CRITERION_VERDICTS:\n1 PASS - Without brackets\n2 FAIL - Also without"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert len(result) == 2
@@ -48,40 +44,26 @@ class TestParseCriterionVerdicts:
         assert result[1] == (2, "FAIL", "Also without")
 
     def test_handles_em_dash_separator(self):
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "[1] PASS \u2014 em-dash rationale\n"
-        )
+        content = "CRITERION_VERDICTS:\n[1] PASS \u2014 em-dash rationale\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert result[0] == (1, "PASS", "em-dash rationale")
 
     def test_handles_en_dash_separator(self):
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "[1] FAIL \u2013 en-dash rationale\n"
-        )
+        content = "CRITERION_VERDICTS:\n[1] FAIL \u2013 en-dash rationale\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert result[0] == (1, "FAIL", "en-dash rationale")
 
     def test_handles_colon_separator(self):
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "[1] PASS: colon rationale\n"
-        )
+        content = "CRITERION_VERDICTS:\n[1] PASS: colon rationale\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert result[0] == (1, "PASS", "colon rationale")
 
     def test_stops_at_non_matching_line(self):
         """Regex capture group stops at first non-matching line."""
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "[1] PASS - Good\n"
-            "Not a criterion line\n"
-            "[3] FAIL - Bad\n"
-        )
+        content = "CRITERION_VERDICTS:\n[1] PASS - Good\nNot a criterion line\n[3] FAIL - Bad\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         # Regex stops capturing at the non-matching line
@@ -89,20 +71,13 @@ class TestParseCriterionVerdicts:
         assert result[0] == (1, "PASS", "Good")
 
     def test_case_insensitive_header(self):
-        content = (
-            "criterion_verdicts:\n"
-            "[1] PASS - lowercase header\n"
-        )
+        content = "criterion_verdicts:\n[1] PASS - lowercase header\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert len(result) == 1
 
     def test_case_insensitive_verdict(self):
-        content = (
-            "CRITERION_VERDICTS:\n"
-            "[1] pass - lowercase\n"
-            "[2] Pass - mixed\n"
-        )
+        content = "CRITERION_VERDICTS:\n[1] pass - lowercase\n[2] Pass - mixed\n"
         result = parse_criterion_verdicts(content)
         assert result is not None
         assert len(result) == 2

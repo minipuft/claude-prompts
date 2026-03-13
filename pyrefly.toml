@@ -2,3 +2,4 @@ python_version = "3.10"
 project_includes = ["hooks/**/*.py"]
 project_excludes = ["hooks/tests/**"]
 search_path = ["hooks/lib", "hooks/lib/_generated"]
+ignore-errors-in-generated-code = true

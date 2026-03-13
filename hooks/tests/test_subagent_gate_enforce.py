@@ -45,10 +45,7 @@ parse_hook_input = hook_mod.parse_hook_input
 class TestReadTranscript:
     def test_reads_valid_jsonl(self, tmp_path):
         path = tmp_path / "t.jsonl"
-        path.write_text(
-            '{"type":"human","content":"hello"}\n'
-            '{"type":"assistant","content":"hi"}\n'
-        )
+        path.write_text('{"type":"human","content":"hello"}\n{"type":"assistant","content":"hi"}\n')
         msgs = read_transcript(str(path))
         assert len(msgs) == 2
         assert msgs[0]["type"] == "human"
@@ -56,11 +53,7 @@ class TestReadTranscript:
 
     def test_skips_corrupt_lines(self, tmp_path):
         path = tmp_path / "t.jsonl"
-        path.write_text(
-            '{"type":"human","content":"hello"}\n'
-            "not valid json\n"
-            '{"type":"assistant","content":"hi"}\n'
-        )
+        path.write_text('{"type":"human","content":"hello"}\nnot valid json\n{"type":"assistant","content":"hi"}\n')
         msgs = read_transcript(str(path))
         assert len(msgs) == 2
 
@@ -76,12 +69,7 @@ class TestReadTranscript:
 
     def test_skips_blank_lines(self, tmp_path):
         path = tmp_path / "t.jsonl"
-        path.write_text(
-            '{"type":"human","content":"hello"}\n'
-            "\n"
-            "\n"
-            '{"type":"assistant","content":"hi"}\n'
-        )
+        path.write_text('{"type":"human","content":"hello"}\n\n\n{"type":"assistant","content":"hi"}\n')
         msgs = read_transcript(str(path))
         assert len(msgs) == 2
 
@@ -174,10 +162,7 @@ class TestFindVerdict:
             {"type": "human", "content": "Prompt"},
             {
                 "type": "assistant",
-                "content": (
-                    "GATE_REVIEW: FAIL \u2014 First\n"
-                    "GATE_REVIEW: PASS \u2014 Second"
-                ),
+                "content": ("GATE_REVIEW: FAIL \u2014 First\nGATE_REVIEW: PASS \u2014 Second"),
             },
         ]
         # find_verdict scans from end, finds this message, parse_gate_review returns first match
@@ -292,8 +277,7 @@ class TestMainHookDecisions:
 
     def test_no_gates_no_ralph_allows(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human("Just a regular prompt without gates")
+            transcript_builder.add_human("Just a regular prompt without gates")
             .add_assistant("Here is my response")
             .write()
         )
@@ -303,8 +287,7 @@ class TestMainHookDecisions:
 
     def test_gates_with_pass_allows(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human("### Quality Gates\n- Code must compile\n- Tests must pass")
+            transcript_builder.add_human("### Quality Gates\n- Code must compile\n- Tests must pass")
             .add_assistant("Done.\nGATE_REVIEW: PASS \u2014 All criteria satisfied")
             .write()
         )
@@ -314,8 +297,7 @@ class TestMainHookDecisions:
 
     def test_gates_with_fail_blocks(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human("### Quality Gates\n- Code must compile")
+            transcript_builder.add_human("### Quality Gates\n- Code must compile")
             .add_assistant("GATE_REVIEW: FAIL \u2014 Compilation error on line 42")
             .write()
         )
@@ -328,8 +310,7 @@ class TestMainHookDecisions:
 
     def test_gates_with_no_verdict_blocks(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human("### Quality Gates\n- Code must compile\n- All tests pass")
+            transcript_builder.add_human("### Quality Gates\n- Code must compile\n- All tests pass")
             .add_assistant("I finished the work. Here's what I did...")
             .write()
         )
@@ -342,8 +323,7 @@ class TestMainHookDecisions:
 
     def test_ralph_protocol_pass_without_memory_update_blocks(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human(
+            transcript_builder.add_human(
                 "## Ralph Session Protocol\n"
                 "### Quality Gates\n"
                 "- Fix the bug\n"
@@ -361,18 +341,14 @@ class TestMainHookDecisions:
 
     def test_ralph_protocol_pass_with_memory_update_allows(self, transcript_builder):
         path = (
-            transcript_builder
-            .add_human(
+            transcript_builder.add_human(
                 "## Ralph Session Protocol\n"
                 "### Quality Gates\n"
                 "- Fix the bug\n"
                 "run_memory_file: run-memory.md\n"
                 "MEMORY_UPDATE: required"
             )
-            .add_assistant(
-                "GATE_REVIEW: PASS \u2014 Fixed it\n"
-                "MEMORY_UPDATE: Documented root cause in run-memory.md"
-            )
+            .add_assistant("GATE_REVIEW: PASS \u2014 Fixed it\nMEMORY_UPDATE: Documented root cause in run-memory.md")
             .write()
         )
         exit_code, output = self._run_hook({}, path)
@@ -395,11 +371,8 @@ class TestMainHookDecisions:
     def test_ralph_protocol_no_gates_no_verdict_blocks(self, transcript_builder):
         """Ralph protocol without explicit gates still requires verdict."""
         path = (
-            transcript_builder
-            .add_human(
-                "## Ralph Session Protocol\n"
-                "run_memory_file: run-memory.md\n"
-                "MEMORY_UPDATE: required"
+            transcript_builder.add_human(
+                "## Ralph Session Protocol\nrun_memory_file: run-memory.md\nMEMORY_UPDATE: required"
             )
             .add_assistant("I finished the work.")
             .write()

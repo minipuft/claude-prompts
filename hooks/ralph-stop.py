@@ -84,7 +84,7 @@ def load_context_isolation_config() -> dict:
         "inContextThreshold": 3,
         "maxBudgetPerSpawn": 1.00,
         "spawnTimeout": 300,
-        "permissionMode": "delegate"
+        "permissionMode": "delegate",
     }
 
     if not config_path.exists():
@@ -121,7 +121,7 @@ def clear_verify_state(session_id: str | None = None) -> None:
     clear_verify_active_state(session_id)
 
 
-def run_verification(command: str, timeout: int, working_dir: str = None) -> dict:
+def run_verification(command: str, timeout: int, working_dir: str | None = None) -> dict:
     """Execute verification command and return result."""
     cwd = working_dir or os.getcwd()
 
@@ -133,9 +133,8 @@ def run_verification(command: str, timeout: int, working_dir: str = None) -> dic
             text=True,
             timeout=timeout,
             env={
-                **{k: v for k, v in os.environ.items()
-                   if k in ("PATH", "HOME", "USER", "SHELL", "NODE_ENV", "CI")},
-            }
+                **{k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "USER", "SHELL", "NODE_ENV", "CI")},
+            },
         )
 
         return {
@@ -182,15 +181,17 @@ def format_error_feedback(result: dict, verify_state: dict) -> str:
     if result["timedOut"]:
         lines.append("**Status:** Timed out")
 
-    lines.extend([
-        "",
-        "### Error Output",
-        "```",
-        error_output[:2000],
-        "```",
-        "",
-        "Please fix the issues and continue working. Verification will run again when you finish.",
-    ])
+    lines.extend(
+        [
+            "",
+            "### Error Output",
+            "```",
+            error_output[:2000],
+            "```",
+            "",
+            "Please fix the issues and continue working. Verification will run again when you finish.",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -198,6 +199,7 @@ def format_error_feedback(result: dict, verify_state: dict) -> str:
 def log_debug(message: str, data: dict | str | None = None) -> None:
     """Write debug info to ralph-debug.log for troubleshooting."""
     from datetime import datetime
+
     log_path = get_debug_log_path()
     timestamp = datetime.now().isoformat()
     with open(log_path, "a") as f:
@@ -209,12 +211,7 @@ def log_debug(message: str, data: dict | str | None = None) -> None:
                 f.write(str(data) + "\n")
 
 
-def spawn_isolated_iteration(
-    verify_state: dict,
-    last_result: dict,
-    isolation_config: dict,
-    session_id: str
-) -> dict:
+def spawn_isolated_iteration(verify_state: dict, last_result: dict, isolation_config: dict, session_id: str) -> dict:
     """
     Spawn a context-isolated CLI instance for this iteration.
 
@@ -226,10 +223,9 @@ def spawn_isolated_iteration(
 
     Returns the result from the spawned instance.
     """
-    log_debug("=== SPAWN ISOLATED ITERATION START ===", {
-        "session_id": session_id,
-        "isolation_config": isolation_config
-    })
+    log_debug(
+        "=== SPAWN ISOLATED ITERATION START ===", {"session_id": session_id, "isolation_config": isolation_config}
+    )
 
     # Import here to avoid import errors when not in isolation mode
     from cli_spawner import SpawnConfig, spawn_claude_print
@@ -247,7 +243,7 @@ def spawn_isolated_iteration(
         tracker.set_goal(
             goal=config.get("originalGoal", "Fix verification failures"),
             verification_command=config["command"],
-            working_directory=config.get("workingDir", os.getcwd())
+            working_directory=config.get("workingDir", os.getcwd()),
         )
 
     # Record the last iteration
@@ -255,7 +251,7 @@ def spawn_isolated_iteration(
     tracker.record_iteration(
         approach="Previous attempt (in-context)",
         result=f"FAIL - exit code {last_result.get('exitCode', -1)}",
-        lesson="Escalating to isolated execution"
+        lesson="Escalating to isolated execution",
     )
 
     # Create task file with rich context
@@ -266,23 +262,21 @@ def spawn_isolated_iteration(
         max_iterations=config.get("maxIterations", 10) - state.get("iteration", 0),
         timeout_seconds=isolation_config["spawnTimeout"],
         working_directory=config.get("workingDir", os.getcwd()),
-        max_budget_usd=isolation_config["maxBudgetPerSpawn"]
+        max_budget_usd=isolation_config["maxBudgetPerSpawn"],
     )
 
     # Log task file for debugging
     task_content = task_path.read_text()
-    log_debug("TASK FILE CREATED", {
-        "path": str(task_path),
-        "content_length": len(task_content)
-    })
+    log_debug("TASK FILE CREATED", {"path": str(task_path), "content_length": len(task_content)})
     log_debug("TASK FILE CONTENT", task_content[:3000])
 
     # Determine working directory - try to extract from verification command if not set
     import re
+
     working_dir = config.get("workingDir")
     if not working_dir:
         # Extract directory from file paths in the command
-        paths = re.findall(r'(/[^\s]+)', config["command"])
+        paths = re.findall(r"(/[^\s]+)", config["command"])
         if paths:
             test_path = Path(paths[0])
             if test_path.parent.exists():
@@ -293,21 +287,20 @@ def spawn_isolated_iteration(
         max_budget_usd=isolation_config["maxBudgetPerSpawn"],
         timeout_seconds=isolation_config["spawnTimeout"],
         permission_mode=isolation_config["permissionMode"],
-        working_directory=working_dir
+        working_directory=working_dir,
     )
 
-    log_debug("SPAWNING CLI", {
-        "budget": spawn_config.max_budget_usd,
-        "timeout": spawn_config.timeout_seconds,
-        "permission_mode": spawn_config.permission_mode,
-        "working_dir": spawn_config.working_directory
-    })
-
-    result = spawn_claude_print(
-        prompt=task_content,
-        config=spawn_config,
-        task_id=task_file.metadata.id
+    log_debug(
+        "SPAWNING CLI",
+        {
+            "budget": spawn_config.max_budget_usd,
+            "timeout": spawn_config.timeout_seconds,
+            "permission_mode": spawn_config.permission_mode,
+            "working_dir": spawn_config.working_directory,
+        },
     )
+
+    result = spawn_claude_print(prompt=task_content, config=spawn_config, task_id=task_file.metadata.id)
 
     # Extract stats for reporting
     stats_dict = None
@@ -322,24 +315,23 @@ def spawn_isolated_iteration(
             "num_turns": result.stats.num_turns,
         }
 
-    log_debug("SPAWN RESULT", {
-        "success": result.success,
-        "exit_code": result.exit_code,
-        "timed_out": result.timed_out,
-        "retries_used": result.retries_used,
-        "output_length": len(result.output) if result.output else 0,
-        "error": result.error[:500] if result.error else None,
-        "stats": stats_dict
-    })
+    log_debug(
+        "SPAWN RESULT",
+        {
+            "success": result.success,
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+            "retries_used": result.retries_used,
+            "output_length": len(result.output) if result.output else 0,
+            "error": result.error[:500] if result.error else None,
+            "stats": stats_dict,
+        },
+    )
     log_debug("SPAWN OUTPUT", result.output[:2000] if result.output else "(empty)")
 
     # After spawned execution, RE-RUN verification to confirm fix worked
     # Don't trust the spawned instance's text output - verify with ground truth
-    verify_result = run_verification(
-        config["command"],
-        config.get("timeout", 300000) // 1000,
-        config.get("workingDir")
-    )
+    verify_result = run_verification(config["command"], config.get("timeout", 300000) // 1000, config.get("workingDir"))
 
     if verify_result["passed"]:
         return {
@@ -414,10 +406,7 @@ def main():
                         f'  prompt_engine(chain_id="{chain_id}")'
                     )
 
-                print(json.dumps({
-                    "decision": "block",
-                    "reason": reason
-                }))
+                print(json.dumps({"decision": "block", "reason": reason}))
                 sys.stdout.flush()
                 sys.exit(0)
 
@@ -429,6 +418,7 @@ def main():
 
     # Staleness check: if state is older than 1 hour, discard and allow stop
     from datetime import datetime, timedelta, timezone
+
     started_at = state.get("startedAt", "")
     if started_at:
         try:
@@ -451,10 +441,14 @@ def main():
     if iteration >= max_iterations:
         # Max iterations reached - clear state and allow stop
         clear_verify_state(hook_session_id or None)
-        print(json.dumps({
-            "decision": None,  # Allow stop
-            "systemMessage": f"[Verify] Max iterations ({max_iterations}) reached. Stopping."
-        }))
+        print(
+            json.dumps(
+                {
+                    "decision": None,  # Allow stop
+                    "systemMessage": f"[Verify] Max iterations ({max_iterations}) reached. Stopping.",
+                }
+            )
+        )
         sys.stdout.flush()
         sys.exit(0)
 
@@ -484,16 +478,21 @@ def main():
             from hook_state_store import cleanup_stale_rows
             from session_state import cleanup_old_sessions
             from session_tracker import cleanup_old_ralph_sessions
+
             cleanup_stale_rows(max_age_hours=24)
             cleanup_old_sessions(max_age_hours=24)
             cleanup_old_ralph_sessions(max_age_hours=24)
         except Exception:
             pass  # Non-critical — don't fail verification success
 
-        print(json.dumps({
-            "decision": None,  # Allow stop
-            "systemMessage": f"[Verify] PASSED on iteration {iteration}!"
-        }))
+        print(
+            json.dumps(
+                {
+                    "decision": None,  # Allow stop
+                    "systemMessage": f"[Verify] PASSED on iteration {iteration}!",
+                }
+            )
+        )
         sys.stdout.flush()
         sys.exit(0)
 
@@ -503,10 +502,7 @@ def main():
         if os.environ.get("RALPH_SPAWNED"):
             # Already spawned - continue in-context
             reason = format_error_feedback(result, verify_state)
-            print(json.dumps({
-                "decision": "block",
-                "reason": reason
-            }))
+            print(json.dumps({"decision": "block", "reason": reason}))
             sys.stdout.flush()
             sys.exit(0)
 
@@ -538,23 +534,27 @@ def main():
                 message = f"""## ✅ Verification PASSED (Iteration {iteration})
 
 **Method:** Isolated execution (fresh context)
-**Command:** `{config.get('command', 'unknown')}`
+**Command:** `{config.get("command", "unknown")}`
 {stats_summary}
 
 ### Result
-{spawn_result['output'][:800]}"""
+{spawn_result["output"][:800]}"""
 
-                print(json.dumps({
-                    "decision": None,
-                    "systemMessage": message,
-                    "metadata": {
-                        "type": "ralph_verification",
-                        "passed": True,
-                        "iteration": iteration,
-                        "method": "isolated",
-                        "stats": stats,
-                    }
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "decision": None,
+                            "systemMessage": message,
+                            "metadata": {
+                                "type": "ralph_verification",
+                                "passed": True,
+                                "iteration": iteration,
+                                "method": "isolated",
+                                "stats": stats,
+                            },
+                        }
+                    )
+                )
                 sys.stdout.flush()
                 sys.exit(0)
             else:
@@ -576,23 +576,27 @@ The context-isolated Claude instance could not fix the issue.{stats_line}
 
 **Output from isolated instance:**
 ```
-{spawn_result['output'][:2000]}
+{spawn_result["output"][:2000]}
 ```
 
 Please review the isolated attempt and try a different approach."""
 
-                print(json.dumps({
-                    "decision": "block",
-                    "reason": reason,
-                    "metadata": {
-                        "type": "ralph_verification",
-                        "passed": False,
-                        "iteration": iteration,
-                        "max_iterations": max_iterations,
-                        "method": "isolated",
-                        "stats": stats,
-                    }
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "decision": "block",
+                            "reason": reason,
+                            "metadata": {
+                                "type": "ralph_verification",
+                                "passed": False,
+                                "iteration": iteration,
+                                "max_iterations": max_iterations,
+                                "method": "isolated",
+                                "stats": stats,
+                            },
+                        }
+                    )
+                )
                 sys.stdout.flush()
                 sys.exit(0)
 
@@ -600,10 +604,7 @@ Please review the isolated attempt and try a different approach."""
             # Libraries not available - fall back to in-context
             print(f"[Verify] Isolation libraries unavailable: {e}", file=sys.stderr)
             reason = format_error_feedback(result, verify_state)
-            print(json.dumps({
-                "decision": "block",
-                "reason": reason
-            }))
+            print(json.dumps({"decision": "block", "reason": reason}))
             sys.stdout.flush()
             sys.exit(0)
 
@@ -611,20 +612,14 @@ Please review the isolated attempt and try a different approach."""
             # Spawn failed - fall back to in-context
             print(f"[Verify] Isolation spawn failed: {e}", file=sys.stderr)
             reason = format_error_feedback(result, verify_state)
-            print(json.dumps({
-                "decision": "block",
-                "reason": reason
-            }))
+            print(json.dumps({"decision": "block", "reason": reason}))
             sys.stdout.flush()
             sys.exit(0)
 
     # In-context mode - block stop and feed error back
     reason = format_error_feedback(result, verify_state)
 
-    print(json.dumps({
-        "decision": "block",
-        "reason": reason
-    }))
+    print(json.dumps({"decision": "block", "reason": reason}))
     sys.stdout.flush()
     sys.exit(0)
 

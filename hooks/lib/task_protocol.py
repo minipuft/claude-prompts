@@ -25,6 +25,7 @@ from workspace import get_runtime_state_dir
 @dataclass
 class TaskMetadata:
     """Metadata for a Ralph task file."""
+
     id: str
     created: str
     original_request: str
@@ -39,6 +40,7 @@ class TaskMetadata:
 @dataclass
 class TaskFile:
     """Complete task file for spawned CLI instance."""
+
     metadata: TaskMetadata
     session_story: str
     diff_summary: str
@@ -51,6 +53,7 @@ class TaskFile:
 @dataclass
 class ResultMetadata:
     """Metadata for a task result file."""
+
     id: str
     completed: str
     status: Literal["PASS", "FAIL", "ERROR", "TIMEOUT"]
@@ -60,6 +63,7 @@ class ResultMetadata:
 @dataclass
 class ResultFile:
     """Result file from spawned CLI instance."""
+
     metadata: ResultMetadata
     summary: str
     changes_made: list[str] = field(default_factory=list)
@@ -88,7 +92,7 @@ def create_task_file(
     max_iterations: int = 5,
     timeout_seconds: int = 300,
     working_directory: str = "",
-    max_budget_usd: float = 1.00
+    max_budget_usd: float = 1.00,
 ) -> tuple[Path, TaskFile]:
     """
     Create a task file from session tracker state.
@@ -108,7 +112,7 @@ def create_task_file(
         current_iteration=tracker.get_iteration_count() + 1,
         timeout_seconds=timeout_seconds,
         working_directory=working_directory,
-        max_budget_usd=max_budget_usd
+        max_budget_usd=max_budget_usd,
     )
 
     # Generate sections from tracker
@@ -119,10 +123,7 @@ def create_task_file(
     # Build current state section
     changed_files = list(tracker.state.get("file_changes", {}).keys())
     if changed_files:
-        files_list = "\n".join(
-            f"- `{f}` ({len(tracker.state['file_changes'][f])} changes)"
-            for f in changed_files[:5]
-        )
+        files_list = "\n".join(f"- `{f}` ({len(tracker.state['file_changes'][f])} changes)" for f in changed_files[:5])
         current_state = f"Files to focus on:\n{files_list}"
     else:
         current_state = "No files modified yet."
@@ -150,7 +151,7 @@ IMPORTANT: You must actually EDIT the files, not just describe the fix. Use your
         current_state=current_state,
         last_failure=last_failure,
         what_to_try=what_to_try,
-        instructions=instructions
+        instructions=instructions,
     )
 
     # Write to file
@@ -185,12 +186,14 @@ def render_task_file(task: TaskFile) -> str:
     if task.diff_summary and "No file changes" not in task.diff_summary:
         sections.append(f"## Git-Style Change Summary\n\n{task.diff_summary}")
 
-    sections.extend([
-        f"## Current State\n\n{task.current_state}",
-        f"## Last Failure (Iteration {task.metadata.current_iteration - 1})\n\n{task.last_failure}",
-        f"## What To Try Next\n\n{task.what_to_try}",
-        f"## Instructions\n\n{task.instructions}"
-    ])
+    sections.extend(
+        [
+            f"## Current State\n\n{task.current_state}",
+            f"## Last Failure (Iteration {task.metadata.current_iteration - 1})\n\n{task.last_failure}",
+            f"## What To Try Next\n\n{task.what_to_try}",
+            f"## Instructions\n\n{task.instructions}",
+        ]
+    )
 
     return "\n\n".join(sections)
 
@@ -216,11 +219,11 @@ def parse_task_file(content: str) -> TaskFile | None:
         current_iteration=frontmatter.get("current_iteration", 1),
         timeout_seconds=frontmatter.get("timeout_seconds", 300),
         working_directory=frontmatter.get("working_directory", ""),
-        max_budget_usd=frontmatter.get("max_budget_usd", 1.00)
+        max_budget_usd=frontmatter.get("max_budget_usd", 1.00),
     )
 
     # Extract sections (simplified parsing)
-    body = content[frontmatter_match.end():]
+    body = content[frontmatter_match.end() :]
 
     def extract_section(name: str) -> str:
         pattern = rf"## {name}\n\n(.+?)(?=\n## |\Z)"
@@ -234,7 +237,7 @@ def parse_task_file(content: str) -> TaskFile | None:
         current_state=extract_section("Current State"),
         last_failure=extract_section(r"Last Failure \(Iteration \d+\)") or extract_section("Last Failure"),
         what_to_try=extract_section("What To Try Next"),
-        instructions=extract_section("Instructions")
+        instructions=extract_section("Instructions"),
     )
 
 
@@ -245,24 +248,19 @@ def create_result_file(
     changes_made: list[str] | None = None,
     verification_output: str = "",
     lesson_learned: str = "",
-    iterations_used: int = 1
+    iterations_used: int = 1,
 ) -> Path:
     """Create a result file for a completed task."""
     now = datetime.now().isoformat()
 
-    metadata = ResultMetadata(
-        id=task_id,
-        completed=now,
-        status=status,
-        iterations_used=iterations_used
-    )
+    metadata = ResultMetadata(id=task_id, completed=now, status=status, iterations_used=iterations_used)
 
     result = ResultFile(
         metadata=metadata,
         summary=summary,
         changes_made=changes_made or [],
         verification_output=verification_output,
-        lesson_learned=lesson_learned
+        lesson_learned=lesson_learned,
     )
 
     tasks_dir = _get_tasks_dir()
@@ -315,10 +313,10 @@ def parse_result_file(content: str) -> ResultFile | None:
         id=frontmatter.get("id", ""),
         completed=frontmatter.get("completed", ""),
         status=frontmatter.get("status", "ERROR"),
-        iterations_used=frontmatter.get("iterations_used", 1)
+        iterations_used=frontmatter.get("iterations_used", 1),
     )
 
-    body = content[frontmatter_match.end():]
+    body = content[frontmatter_match.end() :]
 
     def extract_section(name: str) -> str:
         pattern = rf"## {name}\n\n(.+?)(?=\n## |\Z)"
@@ -344,7 +342,7 @@ def parse_result_file(content: str) -> ResultFile | None:
         summary=extract_section("Summary"),
         changes_made=changes_made,
         verification_output=verification_output,
-        lesson_learned=extract_section("Lesson Learned")
+        lesson_learned=extract_section("Lesson Learned"),
     )
 
 

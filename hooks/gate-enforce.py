@@ -46,10 +46,10 @@ def main():
     # Check 1: FAIL verdict should trigger retry guidance
     if gate_verdict:
         # Parse verdict: "GATE_REVIEW: FAIL - reason" or "GATE_REVIEW: PASS - reason"
-        fail_match = re.search(r'GATE_REVIEW:\s*FAIL', gate_verdict, re.IGNORECASE)
+        fail_match = re.search(r"GATE_REVIEW:\s*FAIL", gate_verdict, re.IGNORECASE)
         if fail_match:
             # Extract the reason
-            reason_match = re.search(r'FAIL\s*[-:]\s*(.+)', gate_verdict, re.IGNORECASE)
+            reason_match = re.search(r"FAIL\s*[-:]\s*(.+)", gate_verdict, re.IGNORECASE)
             reason = reason_match.group(1).strip()[:50] if reason_match else "unspecified"
 
             hook_response = {
@@ -59,7 +59,7 @@ def main():
                     "permissionDecisionReason": (
                         f"Gate FAIL: {reason}. Review the failing criteria, "
                         "address the gaps in your output, then resubmit your verdict."
-                    )
+                    ),
                 }
             }
             print(json.dumps(hook_response))
@@ -72,15 +72,14 @@ def main():
         state = load_session_state(session_id) if session_id else None
 
         if state and state.get("pending_gate"):
-            gate = state['pending_gate']
+            gate = state["pending_gate"]
             hook_response = {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
                     "permissionDecisionReason": (
-                        f"Gate review required: {gate}. "
-                        "Review your output against the gate criteria before continuing."
-                    )
+                        f"Gate review required: {gate}. Review your output against the gate criteria before continuing."
+                    ),
                 }
             }
             print(json.dumps(hook_response))

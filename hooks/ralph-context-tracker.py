@@ -51,13 +51,13 @@ def extract_file_change_details(tool_input: dict, tool_name: str) -> dict | None
         return {
             "file": tool_input.get("file_path", "unknown"),
             "type": "modify",
-            "details": f"Edit: {tool_input.get('old_string', '')[:50]}... → {tool_input.get('new_string', '')[:50]}..."
+            "details": f"Edit: {tool_input.get('old_string', '')[:50]}... → {tool_input.get('new_string', '')[:50]}...",
         }
     elif "Write" in tool_name:
         return {
             "file": tool_input.get("file_path", "unknown"),
             "type": "add",
-            "details": f"Write: {len(tool_input.get('content', ''))} chars"
+            "details": f"Write: {len(tool_input.get('content', ''))} chars",
         }
     return None
 
@@ -78,7 +78,7 @@ def extract_bash_details(tool_input: dict, tool_response: str) -> dict | None:
     return {
         "command": cmd_summary,
         "is_verification": is_verification,
-        "output_summary": summarize_error(tool_response) if tool_response else None
+        "output_summary": summarize_error(tool_response) if tool_response else None,
     }
 
 
@@ -107,8 +107,7 @@ def main():
         content = tool_response.get("content", "")
         if isinstance(content, list):
             tool_response = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in content
+                block.get("text", "") if isinstance(block, dict) else str(block) for block in content
             )
         else:
             tool_response = str(content)
@@ -122,11 +121,7 @@ def main():
     if "Edit" in tool_name or "Write" in tool_name:
         change = extract_file_change_details(tool_input, tool_name)
         if change:
-            tracker.record_file_change(
-                file_path=change["file"],
-                change_type=change["type"],
-                details=change["details"]
-            )
+            tracker.record_file_change(file_path=change["file"], change_type=change["type"], details=change["details"])
 
     # Track Bash commands (for context about what was run)
     if "Bash" in tool_name:

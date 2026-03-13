@@ -7,9 +7,7 @@ Covers:
 - File change tracking
 - Story generation
 - Diff summary
-- Subagent result tracking
-- Memory file creation
-- Session clearing
+- Session clearing and persistence
 """
 
 import sys
@@ -24,17 +22,8 @@ class TestSessionTracker:
         from session_tracker import SessionTracker
 
         tracker = SessionTracker("test-session-001")
-        assert tracker.session_dir.exists()
-        assert tracker.session_dir.name == "test-session-001"
-
-    def test_creates_memory_files(self, patch_workspace):
-        from session_tracker import SessionTracker
-
-        tracker = SessionTracker("test-session-002")
-        assert tracker.run_memory_file.exists()
-        assert tracker.loop_memory_file.exists()
-        assert "Ralph Run Memory" in tracker.run_memory_file.read_text()
-        assert "Ralph Loop Memory" in tracker.loop_memory_file.read_text()
+        assert tracker.sessions_dir.exists()
+        assert tracker.state_file.name == "test-session-001.json"
 
     def test_initial_state(self, patch_workspace):
         from session_tracker import SessionTracker
@@ -44,7 +33,6 @@ class TestSessionTracker:
         assert tracker.state["original_goal"] == ""
         assert tracker.state["iterations"] == []
         assert tracker.state["file_changes"] == {}
-        assert tracker.state["subagent_results"] == []
 
     def test_set_goal(self, patch_workspace):
         from session_tracker import SessionTracker
@@ -96,17 +84,6 @@ class TestSessionTracker:
         assert "src/auth.ts" in tracker.state["file_changes"]
         assert len(tracker.state["file_changes"]["src/auth.ts"]) == 1
 
-    def test_record_subagent_result(self, patch_workspace):
-        from session_tracker import SessionTracker
-
-        tracker = SessionTracker("test-subagent")
-        tracker.record_subagent_result(
-            agent_type="chain-executor",
-            summary="Applied fix to auth module",
-        )
-        assert len(tracker.state["subagent_results"]) == 1
-        assert tracker.state["subagent_results"][0]["agent_type"] == "chain-executor"
-
     def test_generate_story_no_iterations(self, patch_workspace):
         from session_tracker import SessionTracker
 
@@ -147,31 +124,6 @@ class TestSessionTracker:
         assert "src/test.ts" in summary
         assert "```diff" in summary
 
-    def test_append_run_memory(self, patch_workspace):
-        from session_tracker import SessionTracker
-
-        tracker = SessionTracker("test-run-mem")
-        tracker.append_run_memory("Found the root cause")
-        content = tracker.run_memory_file.read_text()
-        assert "Found the root cause" in content
-
-    def test_append_loop_memory(self, patch_workspace):
-        from session_tracker import SessionTracker
-
-        tracker = SessionTracker("test-loop-mem")
-        tracker.append_loop_memory("Iteration 3 delegated to sub-agent")
-        content = tracker.loop_memory_file.read_text()
-        assert "Iteration 3 delegated" in content
-
-    def test_append_empty_memory_is_noop(self, patch_workspace):
-        from session_tracker import SessionTracker
-
-        tracker = SessionTracker("test-empty-mem")
-        initial = tracker.run_memory_file.read_text()
-        tracker.append_run_memory("")
-        tracker.append_run_memory("   ")
-        assert tracker.run_memory_file.read_text() == initial
-
     def test_get_iteration_count(self, patch_workspace):
         from session_tracker import SessionTracker
 
@@ -192,6 +144,7 @@ class TestSessionTracker:
 
         # State should be cleared from SQLite
         from hook_state_store import TABLE_RALPH_SESSION_STATE, load_state
+
         state = load_state(TABLE_RALPH_SESSION_STATE, "test-clear")
         assert state is None
 
@@ -244,4 +197,5 @@ class TestClearRalphSession:
         clear_ralph_session("clear-test")
 
         from hook_state_store import TABLE_RALPH_SESSION_STATE, load_state
+
         assert load_state(TABLE_RALPH_SESSION_STATE, "clear-test") is None

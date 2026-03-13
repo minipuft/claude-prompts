@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent / "lib"))
 sys.path.insert(0, str(Path(__file__).parent / "lib" / "_generated"))
 
 from cache_manager import (
+    ArgumentInfo,
+    PromptInfo,
     fuzzy_match_prompt_id,
     get_chains_only,
     get_prompt_by_id,
@@ -34,15 +36,17 @@ from cache_manager import (
 )
 from config_loader import is_expanded_output
 from db_reader import load_active_chain_state
-from session_state import format_chain_reminder, load_session_state
+from session_state import ChainState, format_chain_reminder, load_session_state
 
 # Import generated operator patterns (SSOT: server/tooling/contracts/operators.json)
 try:
     from operators import OPERATORS, detect_operator
+
     HAS_GENERATED_OPERATORS = True
 except ImportError:
     HAS_GENERATED_OPERATORS = False
     OPERATORS = {}
+
 
 def format_arguments(prompt_id: str) -> dict[str, str]:
     """
@@ -92,13 +96,13 @@ def detect_prompt_invocation(message: str) -> str | None:
         #analytical >>report -> "report"
     """
     # Try exact start first
-    match = re.match(r'^>>\s*([a-zA-Z0-9_-]+)', message.strip())
+    match = re.match(r"^>>\s*([a-zA-Z0-9_-]+)", message.strip())
     if match:
         # Normalize to lowercase for case-insensitive matching (aligns with MCP server)
         return match.group(1).lower()
 
     # Also check for >> after operators (@framework, #style)
-    match = re.search(r'>>\s*([a-zA-Z0-9_-]+)', message)
+    match = re.search(r">>\s*([a-zA-Z0-9_-]+)", message)
     if match:
         # Normalize to lowercase for case-insensitive matching (aligns with MCP server)
         return match.group(1).lower()
@@ -109,13 +113,13 @@ def detect_prompt_invocation(message: str) -> str | None:
 def detect_explicit_request(message: str) -> bool:
     """Detect explicit prompt suggestion requests."""
     triggers = [
-        r'\bsuggest\s+prompts?\b',
-        r'\blist\s+prompts?\b',
-        r'\bavailable\s+prompts?\b',
-        r'\bshow\s+prompts?\b',
-        r'\bwhat\s+prompts?\b',
-        r'\bprompt\s+suggestions?\b',
-        r'\brecommend\s+prompts?\b',
+        r"\bsuggest\s+prompts?\b",
+        r"\blist\s+prompts?\b",
+        r"\bavailable\s+prompts?\b",
+        r"\bshow\s+prompts?\b",
+        r"\bwhat\s+prompts?\b",
+        r"\bprompt\s+suggestions?\b",
+        r"\brecommend\s+prompts?\b",
     ]
     message_lower = message.lower()
     return any(re.search(trigger, message_lower) for trigger in triggers)
@@ -130,17 +134,17 @@ def detect_chain_syntax(message: str) -> list[str]:
     Example with gate: >>a --> >>b :: "criteria"
     """
     # Match: >>prompt_id --> >>prompt_id pattern
-    chain_pattern = r'>>\s*([a-zA-Z0-9_-]+)\s*(?:-->|→)'
+    chain_pattern = r">>\s*([a-zA-Z0-9_-]+)\s*(?:-->|→)"
     raw_matches = re.findall(chain_pattern, message)
     # Normalize to lowercase for case-insensitive matching (aligns with MCP server)
     matches = [m.lower() for m in raw_matches]
 
     # Get the last prompt (after final -->) by splitting on chain operators
     # then extracting the prompt ID from the last segment
-    parts = re.split(r'\s*(?:-->|→)\s*', message)
+    parts = re.split(r"\s*(?:-->|→)\s*", message)
     if len(parts) > 1:
         last_part = parts[-1]
-        last_match = re.match(r'>>\s*([a-zA-Z0-9_-]+)', last_part)
+        last_match = re.match(r">>\s*([a-zA-Z0-9_-]+)", last_part)
         if last_match:
             matches.append(last_match.group(1).lower())
 
@@ -161,7 +165,7 @@ def detect_inline_gates(message: str) -> list[str]:
     """
     # Always use semantic patterns - generated pattern returns operator symbol too
     quoted_pattern = r'::\s*[\'"]([^\'"]+)[\'"]'
-    id_pattern = r'::\s*([a-zA-Z][a-zA-Z0-9_-]*)\b'
+    id_pattern = r"::\s*([a-zA-Z][a-zA-Z0-9_-]*)\b"
 
     quoted = re.findall(quoted_pattern, message)
     ids = re.findall(id_pattern, message)
@@ -181,12 +185,12 @@ def detect_framework(message: str) -> str | None:
     Note: Framework IDs are normalized to lowercase to align with MCP server storage.
     """
     if HAS_GENERATED_OPERATORS:
-        matches = detect_operator(message, 'framework')
+        matches = detect_operator(message, "framework")
         # Normalize to lowercase (MCP server stores framework keys as lowercase)
         return matches[0].lower() if matches else None
 
     # Fallback: hardcoded pattern
-    match = re.search(r'(?:^|\s)@([A-Za-z0-9_-]+)(?=\s|$)', message)
+    match = re.search(r"(?:^|\s)@([A-Za-z0-9_-]+)(?=\s|$)", message)
     return match.group(1).lower() if match else None
 
 
@@ -200,11 +204,11 @@ def detect_repetition(message: str) -> int | None:
         >>analyze * 5 --> >>summarize -> 5
     """
     if HAS_GENERATED_OPERATORS:
-        matches = detect_operator(message, 'repetition')
+        matches = detect_operator(message, "repetition")
         return int(matches[0]) if matches else None
 
     # Fallback: hardcoded pattern
-    match = re.search(r'\s+\*\s*(\d+)(?=\s|$|-->)', message)
+    match = re.search(r"\s+\*\s*(\d+)(?=\s|$|-->)", message)
     return int(match.group(1)) if match else None
 
 
@@ -222,7 +226,7 @@ def parse_inline_args(message: str) -> dict[str, str]:
     return dict(matches)
 
 
-def get_required_args(prompt_info: dict | None, parsed_args: dict[str, str]) -> list[str]:
+def get_required_args(prompt_info: PromptInfo | None, parsed_args: dict[str, str]) -> list[str]:
     """
     Get list of required arguments that haven't been provided.
 
@@ -248,7 +252,7 @@ def get_required_args(prompt_info: dict | None, parsed_args: dict[str, str]) -> 
 
 def get_chain_step_args(
     prompt_ids: list[str],
-) -> list[tuple[str, list[dict]]]:
+) -> list[tuple[str, list[ArgumentInfo]]]:
     """Fetch arguments for each prompt in a chain.
 
     Args:
@@ -257,7 +261,7 @@ def get_chain_step_args(
     Returns:
         List of (prompt_id, arguments) tuples
     """
-    result = []
+    result: list[tuple[str, list[ArgumentInfo]]] = []
     for pid in prompt_ids:
         info = get_prompt_by_id(pid)
         args = info.get("arguments", []) if info else []
@@ -265,7 +269,7 @@ def get_chain_step_args(
     return result
 
 
-def format_arg_signature(arg: dict, include_desc: bool = False) -> str:
+def format_arg_signature(arg: ArgumentInfo, include_desc: bool = False) -> str:
     """Format a single argument for display.
 
     Args:
@@ -291,7 +295,7 @@ def format_arg_signature(arg: dict, include_desc: bool = False) -> str:
 
 
 def format_chain_step_args(
-    step_data: list[tuple[str, list[dict]]],
+    step_data: list[tuple[str, list[ArgumentInfo]]],
     current_step: int = 1,
     total_steps: int = 0,
 ) -> list[str]:
@@ -325,7 +329,7 @@ def format_chain_step_args(
 
 
 def format_chain_preview(
-    prompt_info: dict | None = None,
+    prompt_info: PromptInfo | None = None,
     adhoc_chain: list[str] | None = None,
 ) -> list[str]:
     """
@@ -385,10 +389,10 @@ def format_tool_call(prompt_id: str, info: dict) -> str:
     return f'prompt_engine(command:">>{prompt_id}", options:{{{options_str}}})'
 
 
-def format_prompt_suggestion(prompt_id: str, info: dict, score: int = 0) -> str:
+def format_prompt_suggestion(prompt_id: str, info: PromptInfo, score: int = 0) -> str:
     """Format a single prompt suggestion. Compact single-line format."""
     chain_tag = f" [{info.get('chain_steps', 0)}]" if info.get("is_chain") else ""
-    desc = info.get('description', '')[:60]
+    desc = info.get("description", "")[:60]
     return f"  >>{prompt_id}{chain_tag}: {desc}"
 
 
@@ -398,7 +402,7 @@ def format_user_message(
     operators: dict[str, list[str]],
     arguments: dict[str, str] | None = None,
     expanded: bool = False,
-    prompt_info: dict | None = None,
+    prompt_info: PromptInfo | None = None,
 ) -> str:
     """
     Format user-visible confirmation message.
@@ -417,7 +421,7 @@ def format_user_message(
     """
     # Extract prompt ID from command (handle @framework >>prompt syntax)
     # Normalize to lowercase for case-insensitive matching (aligns with MCP server)
-    match = re.search(r'>>\s*([a-zA-Z0-9_-]+)', command)
+    match = re.search(r">>\s*([a-zA-Z0-9_-]+)", command)
     prompt_id = match.group(1).lower() if match else command.lower()
 
     if expanded:
@@ -464,7 +468,7 @@ def _format_expanded_message(
     parsed_args: dict[str, str],
     operators: dict[str, list[str]],
     arguments: dict[str, str] | None = None,
-    prompt_info: dict | None = None,
+    prompt_info: PromptInfo | None = None,
 ) -> str:
     """
     Format expanded multi-line user message with full details.
@@ -487,16 +491,16 @@ def _format_expanded_message(
         if operators.get("style"):
             op_parts.append(f"#{operators['style'][0]}")
         if operators.get("repetition"):
-            op_parts.append(f"repeat ×{operators['repetition'][0]}")
+            op_parts.append(f"repeat x{operators['repetition'][0]}")
         if operators.get("gate"):
-            gate_list = ", ".join(operators['gate'][:2])
+            gate_list = ", ".join(operators["gate"][:2])
             op_parts.append(f"gates: {gate_list}")
         if op_parts:
             lines.append(f"  Operators: {' | '.join(op_parts)}")
 
     # Show arguments with types (always show, even if empty)
     arg_strs = [f"{k}: {v}" for k, v in list((arguments or {}).items())[:4]]
-    args_line = ', '.join(arg_strs) if arg_strs else "(none)"
+    args_line = ", ".join(arg_strs) if arg_strs else "(none)"
     lines.append(f"  Arguments: {args_line}")
 
     # Show provided options
@@ -513,7 +517,7 @@ def format_directive(
     required_args: list[str],
     operators: dict[str, list[str]],
     arguments: dict[str, str] | None = None,
-    prompt_info: dict | None = None,
+    prompt_info: PromptInfo | None = None,
 ) -> str:
     """
     Format token-efficient tool directive for Claude.
@@ -606,21 +610,21 @@ def main():
         # Only include operators with VALID values (registered in server)
         if HAS_GENERATED_OPERATORS:
             # Framework - only include if registered in server methodologies
-            fw_matches = detect_operator(user_message, 'framework')
+            fw_matches = detect_operator(user_message, "framework")
             if fw_matches:
                 valid_fws = [fw for fw in fw_matches if is_valid_framework(fw)]
                 if valid_fws:
                     operators["framework"] = valid_fws
 
             # Style - only include if registered in server styles
-            style_matches = detect_operator(user_message, 'style')
+            style_matches = detect_operator(user_message, "style")
             if style_matches:
                 valid_styles = [s for s in style_matches if is_valid_style(s)]
                 if valid_styles:
                     operators["style"] = valid_styles
 
             # Repetition - no validation needed (it's a number)
-            rep_matches = detect_operator(user_message, 'repetition')
+            rep_matches = detect_operator(user_message, "repetition")
             if rep_matches:
                 operators["repetition"] = rep_matches
         else:
@@ -651,10 +655,7 @@ def main():
             # Return message WITHOUT directive (no tool call needed)
             hook_response = {
                 "systemMessage": message,
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": message
-                }
+                "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": message},
             }
             print(json.dumps(hook_response))
             sys.exit(0)
@@ -672,26 +673,22 @@ def main():
         # Format outputs (check config for expanded mode)
         # Pass prompt_info for chain workflow visibility
         expanded = is_expanded_output()
-        system_message = format_user_message(
-            command, parsed_args, operators, arguments, expanded, prompt_info
-        )
-        directive = format_directive(
-            command, parsed_args, required_args, operators, arguments, prompt_info
-        )
+        system_message = format_user_message(command, parsed_args, operators, arguments, expanded, prompt_info)
+        directive = format_directive(command, parsed_args, required_args, operators, arguments, prompt_info)
 
         hook_response = {
             "systemMessage": system_message,  # Compact user confirmation
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
-                "additionalContext": directive  # Structured directive for Claude
-            }
+                "additionalContext": directive,  # Structured directive for Claude
+            },
         }
         print(json.dumps(hook_response))
         sys.exit(0)
 
     # === CHAIN ENFORCEMENT: Active chain needs continuation ===
     # SSOT: read from server's state.db (works without PostToolUse hook)
-    session_state = load_active_chain_state()
+    session_state: ChainState | None = load_active_chain_state()  # type: ignore[assignment]
     # Fallback: hooks-state.db (if PostToolUse populated it)
     if not session_state and session_id:
         session_state = load_session_state(session_id)
@@ -708,25 +705,21 @@ def main():
             # Build imperative directive matching >>syntax pattern
             if pending_gate:
                 directive = (
-                    f'<GATE-REVIEW>chain_id="{chain_id}" '
-                    f'gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
+                    f'<GATE-REVIEW>chain_id="{chain_id}" gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
                 )
             else:
                 directive = (
-                    f'<CALL-TOOL>\n'
+                    f"<CALL-TOOL>\n"
                     f'prompt_engine | chain_id:"{chain_id}"\n'
-                    f'REQUIRED: Continue active chain (step {step}/{total}). '
-                    f'Do not respond without advancing.\n'
-                    f'</CALL-TOOL>'
+                    f"REQUIRED: Continue active chain (step {step}/{total}). "
+                    f"Do not respond without advancing.\n"
+                    f"</CALL-TOOL>"
                 )
 
             system_msg = format_chain_reminder(session_state, mode="inline")
             hook_response = {
                 "systemMessage": system_msg,
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": directive
-                }
+                "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": directive},
             }
             print(json.dumps(hook_response))
             sys.exit(0)
@@ -755,10 +748,7 @@ def main():
         output = "\n".join(output_lines)
         hook_response = {
             "systemMessage": output,
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": output
-            }
+            "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": output},
         }
         print(json.dumps(hook_response))
         sys.exit(0)

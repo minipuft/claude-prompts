@@ -19,23 +19,26 @@ from workspace import get_runtime_state_dir
 
 class IterationRecord(TypedDict):
     """Record of a single verification iteration."""
+
     number: int
     approach: str  # "Tried URL-encoding the password"
-    result: str    # "FAIL - broke existing tests"
-    lesson: str    # "Encoding must happen after validation"
+    result: str  # "FAIL - broke existing tests"
+    lesson: str  # "Encoding must happen after validation"
     timestamp: str
     files_changed: list[str]
 
 
 class FileChange(TypedDict):
     """Record of a file change."""
-    type: str       # "add", "remove", "modify"
-    details: str    # "line 23: const encoded = ..."
+
+    type: str  # "add", "remove", "modify"
+    details: str  # "line 23: const encoded = ..."
     iteration: int
 
 
 class RalphSessionState(TypedDict):
     """Complete state for a Ralph verification session."""
+
     session_id: str
     original_goal: str
     verification_command: str
@@ -82,7 +85,7 @@ class SessionTracker:
             "iterations": [],
             "file_changes": {},
             "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().isoformat(),
         }
 
     def _save(self) -> None:
@@ -101,41 +104,30 @@ class SessionTracker:
         self.state["working_directory"] = working_directory
         self._save()
 
-    def record_iteration(
-        self,
-        approach: str,
-        result: str,
-        lesson: str,
-        files_changed: list[str] | None = None
-    ) -> None:
+    def record_iteration(self, approach: str, result: str, lesson: str, files_changed: list[str] | None = None) -> None:
         """Record what was tried and what was learned."""
         iteration_num = len(self.state["iterations"]) + 1
-        self.state["iterations"].append({
-            "number": iteration_num,
-            "approach": approach,
-            "result": result,
-            "lesson": lesson,
-            "timestamp": datetime.now().isoformat(),
-            "files_changed": files_changed or []
-        })
+        self.state["iterations"].append(
+            {
+                "number": iteration_num,
+                "approach": approach,
+                "result": result,
+                "lesson": lesson,
+                "timestamp": datetime.now().isoformat(),
+                "files_changed": files_changed or [],
+            }
+        )
         self._save()
 
-    def record_file_change(
-        self,
-        file_path: str,
-        change_type: str,
-        details: str
-    ) -> None:
+    def record_file_change(self, file_path: str, change_type: str, details: str) -> None:
         """Track git-style changes made during session."""
         if file_path not in self.state["file_changes"]:
             self.state["file_changes"][file_path] = []
 
         current_iteration = len(self.state["iterations"]) + 1
-        self.state["file_changes"][file_path].append({
-            "type": change_type,
-            "details": details,
-            "iteration": current_iteration
-        })
+        self.state["file_changes"][file_path].append(
+            {"type": change_type, "details": details, "iteration": current_iteration}
+        )
         self._save()
 
     def get_iteration_count(self) -> int:
@@ -147,10 +139,7 @@ class SessionTracker:
         if not self.state["iterations"]:
             return "No iterations recorded yet."
 
-        story_parts = [
-            f"This task started with: {self.state['original_goal']}\n",
-            "Here's what's been tried:\n"
-        ]
+        story_parts = [f"This task started with: {self.state['original_goal']}\n", "Here's what's been tried:\n"]
 
         for it in self.state["iterations"]:
             story_parts.append(
@@ -186,10 +175,12 @@ class SessionTracker:
         dir_hint = ""
         if cmd:
             import re
+
             # Look for file paths in the command
-            paths = re.findall(r'(/[^\s]+)', cmd)
+            paths = re.findall(r"(/[^\s]+)", cmd)
             if paths:
                 from pathlib import Path
+
                 test_path = Path(paths[0])
                 if test_path.parent.exists():
                     dir_hint = f"\n- Look in `{test_path.parent}/` for source files to fix"
@@ -201,14 +192,10 @@ class SessionTracker:
         lessons = [it["lesson"] for it in self.state["iterations"]]
 
         # Build suggestion based on accumulated lessons
-        suggestion_parts = [
-            f"Based on the session story ({len(self.state['iterations'])} iterations so far):\n"
-        ]
+        suggestion_parts = [f"Based on the session story ({len(self.state['iterations'])} iterations so far):\n"]
 
         if len(lessons) >= 2:
-            suggestion_parts.append(
-                f"- Previous approaches have revealed: {'; '.join(lessons[-3:])}\n"
-            )
+            suggestion_parts.append(f"- Previous approaches have revealed: {'; '.join(lessons[-3:])}\n")
 
         suggestion_parts.append(
             f"- The last failure was: {last_iteration['result']}\n"
@@ -234,17 +221,13 @@ class SessionTracker:
         # Current State
         changed_files = list(self.state["file_changes"].keys())
         if changed_files:
-            files_list = "\n".join(f"- `{f}` ({len(self.state['file_changes'][f])} changes)"
-                                   for f in changed_files[:5])
+            files_list = "\n".join(f"- `{f}` ({len(self.state['file_changes'][f])} changes)" for f in changed_files[:5])
             sections.append(f"## Current State\n\nFiles to focus on:\n{files_list}")
 
         # Last Failure
         if last_failure_output:
             iteration_num = len(self.state["iterations"])
-            sections.append(
-                f"## Last Failure (Iteration {iteration_num})\n\n"
-                f"```\n{last_failure_output[:2000]}\n```"
-            )
+            sections.append(f"## Last Failure (Iteration {iteration_num})\n\n```\n{last_failure_output[:2000]}\n```")
 
         # What To Try Next
         sections.append(f"## What To Try Next\n\n{self.generate_what_to_try()}")
@@ -282,6 +265,7 @@ def clear_ralph_session(session_id: str) -> None:
 def cleanup_old_ralph_sessions(max_age_hours: int = 24) -> int:
     """Delete ralph-sessions JSON files older than max_age. Returns count deleted."""
     import time
+
     sessions_dir = _get_ralph_sessions_dir()
     if not sessions_dir.exists():
         return 0

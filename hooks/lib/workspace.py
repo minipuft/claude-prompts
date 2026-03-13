@@ -46,7 +46,7 @@ def get_workspace_root() -> Path | None:
     #   - hooks/lib/workspace.py (development: lib -> hooks -> project_root)
     #   - .claude-plugin/hooks/lib/workspace.py (packaged: lib -> hooks -> .claude-plugin -> project_root)
     script_dir = Path(__file__).resolve().parent  # lib/
-    hooks_dir = script_dir.parent                  # hooks/
+    hooks_dir = script_dir.parent  # hooks/
 
     # Try development structure first (hooks at project root)
     project_root = hooks_dir.parent

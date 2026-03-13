@@ -36,9 +36,7 @@ GATE_REVIEW_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"GATE_REVIEW:\s*(PASS|FAIL)\s*[\u2014\u2013\-:]\s*(.*?)(?:\n|$)"
 )
 
-MEMORY_UPDATE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"MEMORY_UPDATE:\s*(.*?)(?:\n|$)", re.DOTALL
-)
+MEMORY_UPDATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"MEMORY_UPDATE:\s*(.*?)(?:\n|$)", re.DOTALL)
 
 CRITERION_VERDICTS_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"CRITERION_VERDICTS:\s*\n((?:\[?\d+\]?\s*(?:PASS|FAIL).*\n?)*)",
@@ -91,15 +89,15 @@ def parse_criterion_verdicts(content: str) -> list[tuple[int, str, str]] | None:
 
     results = []
     for line in match.group(1).strip().splitlines():
-        line_match = re.match(
-            r"\[?(\d+)\]?\s*(PASS|FAIL)\s*[-\u2013\u2014:]\s*(.*)", line, re.IGNORECASE
-        )
+        line_match = re.match(r"\[?(\d+)\]?\s*(PASS|FAIL)\s*[-\u2013\u2014:]\s*(.*)", line, re.IGNORECASE)
         if line_match:
-            results.append((
-                int(line_match.group(1)),
-                line_match.group(2).upper(),
-                line_match.group(3).strip(),
-            ))
+            results.append(
+                (
+                    int(line_match.group(1)),
+                    line_match.group(2).upper(),
+                    line_match.group(3).strip(),
+                )
+            )
     return results
 
 

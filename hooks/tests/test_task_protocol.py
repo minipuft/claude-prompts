@@ -41,12 +41,11 @@ class TestTaskFileRoundTrip:
         parsed = parse_task_file(content)
         assert parsed is not None
         assert parsed.metadata.verification_command == "npm test"
-        assert parsed.metadata.session_id == "roundtrip-test"
         assert parsed.metadata.max_iterations == 5
         assert parsed.metadata.timeout_seconds == 300
         assert parsed.metadata.working_directory == "/home/user/project"
 
-    def test_task_file_contains_protocol_section(self, patch_workspace):
+    def test_task_file_contains_required_sections(self, patch_workspace):
         from session_tracker import SessionTracker
         from task_protocol import create_task_file
 
@@ -59,10 +58,9 @@ class TestTaskFileRoundTrip:
         )
 
         content = path.read_text()
-        assert "## Ralph Session Protocol" in content
-        assert "### Quality Gates" in content
-        assert "GATE_REVIEW:" in content
-        assert "MEMORY_UPDATE:" in content
+        assert "## Original Goal" in content
+        assert "## Session Story" in content
+        assert "## Instructions" in content
 
     def test_task_file_yaml_frontmatter(self, patch_workspace):
         import re
@@ -86,7 +84,6 @@ class TestTaskFileRoundTrip:
         fm = yaml.safe_load(frontmatter_match.group(1))
         assert fm["id"].startswith("task-")
         assert fm["verification_command"] == "echo test"
-        assert fm["session_id"] == "yaml-test"
 
     def test_task_file_includes_session_story(self, patch_workspace):
         from session_tracker import SessionTracker
@@ -112,7 +109,6 @@ class TestRenderTaskFile:
             created="2024-01-01T00:00:00",
             original_request="Fix the bug",
             verification_command="npm test",
-            session_id="render-test",
         )
         task = TaskFile(
             metadata=metadata,
@@ -206,7 +202,6 @@ class TestResultFile:
             changes_made=["Modified src/auth.ts", "Added test"],
             verification_output="All tests passed",
             lesson_learned="Always check imports first",
-            session_id="result-test",
         )
 
         assert result_path.exists()
@@ -234,7 +229,6 @@ class TestResultFile:
             task_id=task_file.metadata.id,
             status="FAIL",
             summary="Could not fix within iterations",
-            session_id="fail-result-test",
         )
 
         content = result_path.read_text()

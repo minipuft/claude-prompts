@@ -49,10 +49,7 @@ def main():
         content = tool_response.get("content", "")
         # Handle array of content blocks
         if isinstance(content, list):
-            content = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in content
-            )
+            content = " ".join(block.get("text", "") if isinstance(block, dict) else str(block) for block in content)
     else:
         content = str(tool_response)
 
@@ -86,30 +83,20 @@ def main():
         # User sees server's "Gate Review Required" message in tool response
         directive = f'<GATE-REVIEW>chain_id="{chain_id}" gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
 
-        hook_response = {
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "additionalContext": directive
-            }
-        }
+        hook_response = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": directive}}
         print(json.dumps(hook_response))
         sys.exit(0)
 
     # Imperative directive: force Claude to continue chain
     if step > 0 and total > 0 and step < total:
         directive = (
-            f'<CALL-TOOL>\n'
+            f"<CALL-TOOL>\n"
             f'prompt_engine | chain_id:"{chain_id}"\n'
-            f'REQUIRED: Continue active chain (step {step}/{total}). '
-            f'Do not respond without advancing.\n'
-            f'</CALL-TOOL>'
+            f"REQUIRED: Continue active chain (step {step}/{total}). "
+            f"Do not respond without advancing.\n"
+            f"</CALL-TOOL>"
         )
-        hook_response = {
-            "hookSpecificOutput": {
-                "hookEventName": "PostToolUse",
-                "additionalContext": directive
-            }
-        }
+        hook_response = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": directive}}
         print(json.dumps(hook_response))
         sys.exit(0)
 

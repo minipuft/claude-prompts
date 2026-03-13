@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 class ExtractedLesson(NamedTuple):
     """Extracted lesson with confidence and source."""
+
     insight: str
     confidence: float  # 0.0 - 1.0
     pattern_matched: str | None
@@ -24,18 +25,19 @@ LESSON_PATTERNS = [
     (r"I (?:now )?(?:realize|understand|see) (?:that |now )?(.+?)(?:\.|$)", 0.9, "realization"),
     (r"(?:The )?(?:root )?(?:cause|issue|problem|bug|error) (?:is|was|seems to be) (.+?)(?:\.|$)", 0.9, "root_cause"),
     (r"(?:This|That) (?:means|indicates|suggests|implies) (.+?)(?:\.|$)", 0.85, "implication"),
-
     # Medium confidence: conclusions
     (r"(?:So|Therefore|Thus|Hence),? (.+?)(?:\.|$)", 0.75, "conclusion"),
     (r"(?:It )?(?:turns out|appears) (?:that )?(.+?)(?:\.|$)", 0.75, "discovery"),
     (r"(?:The )?(?:solution|fix|answer) (?:is|was|requires) (.+?)(?:\.|$)", 0.8, "solution"),
-
     # Medium confidence: observations
     (r"(?:I )?(?:notice|noticed|found|discovered) (?:that )?(.+?)(?:\.|$)", 0.7, "observation"),
     (r"(?:Looking at|After examining|Upon inspection)[^,]*,? (.+?)(?:\.|$)", 0.65, "inspection"),
-
     # Lower confidence: warnings/errors
-    (r"(?:The )?(?:test|build|lint|check) (?:fails|failed|errors?) (?:because|due to|with) (.+?)(?:\.|$)", 0.6, "failure_reason"),
+    (
+        r"(?:The )?(?:test|build|lint|check) (?:fails|failed|errors?) (?:because|due to|with) (.+?)(?:\.|$)",
+        0.6,
+        "failure_reason",
+    ),
     (r"(?:Error|Warning|Issue): (.+?)(?:\.|$)", 0.5, "error_message"),
 ]
 
@@ -73,7 +75,7 @@ def extract_lesson(claude_response: str) -> ExtractedLesson:
 def _clean_insight(insight: str) -> str:
     """Clean and normalize an extracted insight."""
     # Remove leading/trailing whitespace and quotes
-    insight = insight.strip().strip('"\'')
+    insight = insight.strip().strip("\"'")
 
     # Remove common filler phrases
     filler_patterns = [
@@ -111,7 +113,7 @@ def _extract_fallback_lesson(response: str) -> str:
         last_para = paragraphs[-2]
 
     # Get the last sentence
-    sentences = re.split(r'(?<=[.!?])\s+', last_para)
+    sentences = re.split(r"(?<=[.!?])\s+", last_para)
     sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 20]
 
     if sentences:
@@ -189,7 +191,7 @@ def summarize_error(error_output: str, max_length: int = 150) -> str:
         if any(ind in line_lower for ind in error_indicators):
             clean_line = line.strip()
             if len(clean_line) > max_length:
-                return clean_line[:max_length - 3] + "..."
+                return clean_line[: max_length - 3] + "..."
             return clean_line
 
     # Fallback: return first non-empty line
@@ -197,7 +199,7 @@ def summarize_error(error_output: str, max_length: int = 150) -> str:
         if line.strip():
             clean_line = line.strip()
             if len(clean_line) > max_length:
-                return clean_line[:max_length - 3] + "..."
+                return clean_line[: max_length - 3] + "..."
             return clean_line
 
     return "Error details unavailable"

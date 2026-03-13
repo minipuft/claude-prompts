@@ -31,9 +31,7 @@ sys.path.insert(0, str(HOOKS_DIR))
 sys.path.insert(0, str(HOOKS_DIR / "lib"))
 
 # Import ralph-stop.py (hyphenated filename)
-_ralph_stop_spec = importlib.util.spec_from_file_location(
-    "ralph_stop", HOOKS_DIR / "ralph-stop.py"
-)
+_ralph_stop_spec = importlib.util.spec_from_file_location("ralph_stop", HOOKS_DIR / "ralph-stop.py")
 ralph_stop = importlib.util.module_from_spec(_ralph_stop_spec)
 _ralph_stop_spec.loader.exec_module(ralph_stop)
 
@@ -48,8 +46,9 @@ _gate_enforce_spec.loader.exec_module(gate_enforce)
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def run_ralph_stop(hook_input: dict, verify_state=None, run_verification_result=None,
-                   isolation_config=None) -> tuple[int, dict | None]:
+def run_ralph_stop(
+    hook_input: dict, verify_state=None, run_verification_result=None, isolation_config=None
+) -> tuple[int, dict | None]:
     """Simulate a ralph-stop.py invocation with controlled state.
 
     Returns (exit_code, parsed_json_output).
@@ -57,21 +56,30 @@ def run_ralph_stop(hook_input: dict, verify_state=None, run_verification_result=
     captured = io.StringIO()
 
     default_isolation = {
-        "enabled": True, "inContextThreshold": 3, "timeoutSeconds": 300,
+        "enabled": True,
+        "inContextThreshold": 3,
+        "timeoutSeconds": 300,
     }
 
     with patch("sys.stdin", io.StringIO(json.dumps(hook_input))):
         with patch.object(ralph_stop, "load_verify_state", return_value=verify_state):
             with patch.object(ralph_stop, "save_verify_state") as mock_save:
                 with patch.object(ralph_stop, "clear_verify_state"):
-                    with patch.object(ralph_stop, "load_context_isolation_config",
-                                      return_value=isolation_config or default_isolation):
-                        with patch.object(ralph_stop, "run_verification",
-                                          return_value=run_verification_result or {
-                                              "passed": False, "exitCode": 1,
-                                              "stdout": "", "stderr": "FAIL",
-                                              "timedOut": False,
-                                          }):
+                    with patch.object(
+                        ralph_stop, "load_context_isolation_config", return_value=isolation_config or default_isolation
+                    ):
+                        with patch.object(
+                            ralph_stop,
+                            "run_verification",
+                            return_value=run_verification_result
+                            or {
+                                "passed": False,
+                                "exitCode": 1,
+                                "stdout": "",
+                                "stderr": "FAIL",
+                                "timedOut": False,
+                            },
+                        ):
                             with redirect_stdout(captured):
                                 with pytest.raises(SystemExit) as exc:
                                     ralph_stop.main()
@@ -99,8 +107,9 @@ def run_subagent_gate_enforce(hook_input: dict) -> tuple[int, dict | None]:
     return exit_code, parsed
 
 
-def make_verify_state(command="false", iteration=0, max_iterations=10,
-                      timeout_ms=30000, session_id=None, delegation=None):
+def make_verify_state(
+    command="false", iteration=0, max_iterations=10, timeout_ms=30000, session_id=None, delegation=None
+):
     """Build a verify state dict matching MCP server format."""
     state = {"iteration": iteration}
     if session_id:
@@ -138,8 +147,10 @@ class TestDelegationReEntryLoop:
     def test_in_context_failures_block_without_delegation(self):
         """Iterations 1-3 (within threshold) produce in-context error feedback, not delegation."""
         fail_result = {
-            "passed": False, "exitCode": 1,
-            "stdout": "", "stderr": "AssertionError: expected 42",
+            "passed": False,
+            "exitCode": 1,
+            "stdout": "",
+            "stderr": "AssertionError: expected 42",
             "timedOut": False,
         }
         isolation = {"enabled": True, "inContextThreshold": 3, "timeoutSeconds": 300}
@@ -147,7 +158,8 @@ class TestDelegationReEntryLoop:
         for iteration in range(3):  # iterations 0, 1, 2 → become 1, 2, 3 after +1
             vs = make_verify_state(command="npm test", iteration=iteration, max_iterations=10)
             _, output, _ = run_ralph_stop(
-                {}, verify_state=vs,
+                {},
+                verify_state=vs,
                 run_verification_result=fail_result,
                 isolation_config=isolation,
             )
@@ -157,42 +169,45 @@ class TestDelegationReEntryLoop:
             # Should NOT have delegation markers
             assert "Sub-Agent Delegation" not in output.get("reason", "")
 
-    def test_iteration_past_threshold_triggers_delegation(self):
-        """Iteration 4 (past threshold of 3) triggers delegation payload."""
+    def test_iteration_past_threshold_triggers_isolation(self):
+        """Iteration 4 (past threshold of 3) triggers spawn_isolated_iteration."""
         fail_result = {
-            "passed": False, "exitCode": 1,
-            "stdout": "", "stderr": "FAIL: test still broken",
+            "passed": False,
+            "exitCode": 1,
+            "stdout": "",
+            "stderr": "FAIL: test still broken",
             "timedOut": False,
         }
-        isolation = {"enabled": True, "inContextThreshold": 3, "timeoutSeconds": 300}
+        isolation = {"enabled": True, "inContextThreshold": 3, "spawnTimeout": 300, "permissionMode": "delegate"}
 
-        # iteration=3 → incremented to 4 inside main(), which is > threshold 3
+        # iteration=4 in state → 4 > 3 threshold → triggers isolation
         vs = make_verify_state(
-            command="npm test", iteration=3, max_iterations=10,
+            command="npm test",
+            iteration=4,
+            max_iterations=10,
             session_id="ralph-reentry-test",
         )
 
-        with patch.object(ralph_stop, "build_subagent_delegation_payload",
-                          return_value={
-                              "decision": "block",
-                              "reason": "## Ralph Sub-Agent Delegation Required",
-                              "metadata": {
-                                  "type": "ralph_verification",
-                                  "method": "subagent_delegation",
-                                  "task_id": "task-abc12345",
-                                  "session_id": "ralph-reentry-test",
-                              },
-                          }) as mock_delegate:
+        with patch.object(
+            ralph_stop,
+            "spawn_isolated_iteration",
+            return_value={
+                "passed": False,
+                "output": "Spawned instance could not fix the issue.",
+                "stats": None,
+            },
+        ) as mock_spawn:
             _, output, _ = run_ralph_stop(
-                {}, verify_state=vs,
+                {},
+                verify_state=vs,
                 run_verification_result=fail_result,
                 isolation_config=isolation,
             )
 
         assert output is not None
         assert output["decision"] == "block"
-        assert "Delegation" in output["reason"]
-        mock_delegate.assert_called_once()
+        assert "Isolated Execution FAILED" in output["reason"]
+        mock_spawn.assert_called_once()
 
     def test_subagent_pass_clears_delegation_state(self, tmp_path, patch_workspace):
         """After sub-agent emits GATE_REVIEW: PASS, delegation state is cleared."""
@@ -200,19 +215,22 @@ class TestDelegationReEntryLoop:
         from session_state import load_session_state, save_session_state
 
         session_id = "ralph-reentry-test"
-        save_session_state(session_id, {
-            "chain_id": "",
-            "current_step": 0,
-            "total_steps": 0,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            session_id,
+            {
+                "chain_id": "",
+                "current_step": 0,
+                "total_steps": 0,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": None,
+            },
+        )
 
         # Verify delegation is set
         state = load_session_state(session_id)
@@ -226,10 +244,12 @@ class TestDelegationReEntryLoop:
         )
 
         # Run subagent-gate-enforce — should PASS and clear delegation
-        exit_code, output = run_subagent_gate_enforce({
-            "agent_transcript_path": transcript_path,
-            "session_id": session_id,
-        })
+        exit_code, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": transcript_path,
+                "session_id": session_id,
+            }
+        )
 
         assert exit_code == 0
         assert output is None  # PASS = no output (silent allow)
@@ -250,8 +270,10 @@ class TestDelegationReEntryLoop:
 
         session_id = "ralph-full-cycle"
         fail_result = {
-            "passed": False, "exitCode": 1,
-            "stdout": "", "stderr": "FAIL: auth module broken",
+            "passed": False,
+            "exitCode": 1,
+            "stdout": "",
+            "stderr": "FAIL: auth module broken",
             "timedOut": False,
         }
         isolation = {"enabled": True, "inContextThreshold": 2, "timeoutSeconds": 300}
@@ -260,52 +282,58 @@ class TestDelegationReEntryLoop:
         for iteration in range(2):
             vs = make_verify_state(command="npm test", iteration=iteration, max_iterations=10)
             _, output, _ = run_ralph_stop(
-                {}, verify_state=vs,
+                {},
+                verify_state=vs,
                 run_verification_result=fail_result,
                 isolation_config=isolation,
             )
             assert output["decision"] == "block"
-            assert "Shell Verification FAILED" in output["reason"], \
+            assert "Shell Verification FAILED" in output["reason"], (
                 f"Iteration {iteration}: expected in-context feedback"
+            )
 
-        # ── Phase 2: Delegation triggered (iteration 3, past threshold 2) ─────
+        # ── Phase 2: Isolation triggered (iteration 3 > threshold 2) ─────
         vs = make_verify_state(
-            command="npm test", iteration=2, max_iterations=10,
+            command="npm test",
+            iteration=3,
+            max_iterations=10,
             session_id=session_id,
         )
-        with patch.object(ralph_stop, "build_subagent_delegation_payload",
-                          return_value={
-                              "decision": "block",
-                              "reason": "## Ralph Sub-Agent Delegation Required (Iteration 3/10)",
-                              "metadata": {
-                                  "type": "ralph_verification",
-                                  "method": "subagent_delegation",
-                                  "task_id": "task-first",
-                                  "session_id": session_id,
-                              },
-                          }):
+        with patch.object(
+            ralph_stop,
+            "spawn_isolated_iteration",
+            return_value={
+                "passed": False,
+                "output": "Spawned instance could not fix the issue.",
+                "stats": None,
+            },
+        ):
             _, output, _ = run_ralph_stop(
-                {}, verify_state=vs,
+                {},
+                verify_state=vs,
                 run_verification_result=fail_result,
                 isolation_config=isolation,
             )
         assert output["decision"] == "block"
-        assert "Delegation" in output["reason"]
+        assert "Isolated Execution FAILED" in output["reason"]
 
-        # Simulate: delegation state is set (ralph-stop normally does this inside build_subagent_delegation_payload)
-        save_session_state(session_id, {
-            "chain_id": "",
-            "current_step": 0,
-            "total_steps": 0,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": "npm test",
-            "shell_verify_attempts": 3,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        })
+        # Simulate: delegation state is set (ralph-stop sets this during spawn_isolated_iteration, mocked above)
+        save_session_state(
+            session_id,
+            {
+                "chain_id": "",
+                "current_step": 0,
+                "total_steps": 0,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": "npm test",
+                "shell_verify_attempts": 3,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": None,
+            },
+        )
 
         # ── Phase 3: Sub-agent completes with PASS ───────────────────────────
         transcript_path = build_transcript(
@@ -323,10 +351,12 @@ class TestDelegationReEntryLoop:
             path=tmp_path / "cycle1_transcript.jsonl",
         )
 
-        exit_code, output = run_subagent_gate_enforce({
-            "agent_transcript_path": str(transcript_path),
-            "session_id": session_id,
-        })
+        exit_code, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": str(transcript_path),
+                "session_id": session_id,
+            }
+        )
         assert exit_code == 0
         assert output is None  # PASS = silent allow
 
@@ -338,7 +368,8 @@ class TestDelegationReEntryLoop:
         # Reset iteration counter (server would set this based on its own state)
         vs = make_verify_state(command="npm test", iteration=3, max_iterations=10)
         _, output, _ = run_ralph_stop(
-            {}, verify_state=vs,
+            {},
+            verify_state=vs,
             run_verification_result=fail_result,
             isolation_config=isolation,
         )
@@ -352,19 +383,22 @@ class TestDelegationReEntryLoop:
         from session_state import load_session_state, save_session_state
 
         session_id = "ralph-fail-test"
-        save_session_state(session_id, {
-            "chain_id": "",
-            "current_step": 0,
-            "total_steps": 0,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            session_id,
+            {
+                "chain_id": "",
+                "current_step": 0,
+                "total_steps": 0,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": None,
+            },
+        )
 
         transcript_path = build_transcript(
             prompt_text="### Quality Gates\n- All tests must pass",
@@ -372,10 +406,12 @@ class TestDelegationReEntryLoop:
             path=tmp_path / "fail_transcript.jsonl",
         )
 
-        exit_code, output = run_subagent_gate_enforce({
-            "agent_transcript_path": str(transcript_path),
-            "session_id": session_id,
-        })
+        exit_code, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": str(transcript_path),
+                "session_id": session_id,
+            }
+        )
 
         assert exit_code == 0
         assert output is not None
@@ -391,19 +427,22 @@ class TestDelegationReEntryLoop:
         from session_state import load_session_state, save_session_state
 
         session_id = "ralph-no-verdict"
-        save_session_state(session_id, {
-            "chain_id": "",
-            "current_step": 0,
-            "total_steps": 0,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            session_id,
+            {
+                "chain_id": "",
+                "current_step": 0,
+                "total_steps": 0,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": None,
+            },
+        )
 
         transcript_path = build_transcript(
             prompt_text="### Quality Gates\n- All tests must pass",
@@ -411,10 +450,12 @@ class TestDelegationReEntryLoop:
             path=tmp_path / "no_verdict_transcript.jsonl",
         )
 
-        exit_code, output = run_subagent_gate_enforce({
-            "agent_transcript_path": str(transcript_path),
-            "session_id": session_id,
-        })
+        exit_code, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": str(transcript_path),
+                "session_id": session_id,
+            }
+        )
 
         assert exit_code == 0
         assert output is not None
@@ -442,34 +483,40 @@ class TestConcurrentSessionIsolation:
         from session_state import clear_delegation_state, load_session_state, save_session_state
 
         # Set up session A: delegation pending
-        save_session_state("session-A", {
-            "chain_id": "chain-A",
-            "current_step": 2,
-            "total_steps": 5,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "prompt-A",
-            "pending_shell_verify": "npm test",
-            "shell_verify_attempts": 3,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": "sonnet",
-        })
+        save_session_state(
+            "session-A",
+            {
+                "chain_id": "chain-A",
+                "current_step": 2,
+                "total_steps": 5,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "prompt-A",
+                "pending_shell_verify": "npm test",
+                "shell_verify_attempts": 3,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": "sonnet",
+            },
+        )
 
         # Set up session B: different chain, no delegation
-        save_session_state("session-B", {
-            "chain_id": "chain-B",
-            "current_step": 1,
-            "total_steps": 3,
-            "pending_gate": "code-quality",
-            "gate_criteria": ["No lint errors"],
-            "last_prompt_id": "prompt-B",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": False,
-            "delegation_agent_type": None,
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            "session-B",
+            {
+                "chain_id": "chain-B",
+                "current_step": 1,
+                "total_steps": 3,
+                "pending_gate": "code-quality",
+                "gate_criteria": ["No lint errors"],
+                "last_prompt_id": "prompt-B",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": False,
+                "delegation_agent_type": None,
+                "delegation_model_hint": None,
+            },
+        )
 
         # Verify isolation: each session has its own state
         state_a = load_session_state("session-A")
@@ -514,10 +561,10 @@ class TestConcurrentSessionIsolation:
         assert "auth" in story_a.lower() or "import" in story_a.lower()
         assert "API" in story_b or "error handler" in story_b
 
-        # Verify separate session directories
-        assert tracker_a.session_dir != tracker_b.session_dir
-        assert tracker_a.session_dir.exists()
-        assert tracker_b.session_dir.exists()
+        # Verify separate state files within shared sessions directory
+        assert tracker_a.state_file != tracker_b.state_file
+        assert tracker_a.sessions_dir.exists()
+        assert tracker_b.sessions_dir.exists()
 
     def test_session_state_survives_other_session_deletion(self, patch_workspace):
         """Deleting one session doesn't affect the other."""
@@ -527,32 +574,38 @@ class TestConcurrentSessionIsolation:
             save_session_state,
         )
 
-        save_session_state("session-keep", {
-            "chain_id": "chain-keep",
-            "current_step": 1,
-            "total_steps": 2,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": False,
-            "delegation_agent_type": None,
-            "delegation_model_hint": None,
-        })
-        save_session_state("session-delete", {
-            "chain_id": "chain-delete",
-            "current_step": 1,
-            "total_steps": 2,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": False,
-            "delegation_agent_type": None,
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            "session-keep",
+            {
+                "chain_id": "chain-keep",
+                "current_step": 1,
+                "total_steps": 2,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": False,
+                "delegation_agent_type": None,
+                "delegation_model_hint": None,
+            },
+        )
+        save_session_state(
+            "session-delete",
+            {
+                "chain_id": "chain-delete",
+                "current_step": 1,
+                "total_steps": 2,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": False,
+                "delegation_agent_type": None,
+                "delegation_model_hint": None,
+            },
+        )
 
         # Delete one session
         clear_session_state("session-delete")
@@ -571,19 +624,22 @@ class TestConcurrentSessionIsolation:
 
         # Both sessions have pending delegation
         for sid in ("concurrent-A", "concurrent-B"):
-            save_session_state(sid, {
-                "chain_id": "",
-                "current_step": 0,
-                "total_steps": 0,
-                "pending_gate": None,
-                "gate_criteria": [],
-                "last_prompt_id": "",
-                "pending_shell_verify": None,
-                "shell_verify_attempts": 0,
-                "pending_delegation": True,
-                "delegation_agent_type": "chain-executor",
-                "delegation_model_hint": None,
-            })
+            save_session_state(
+                sid,
+                {
+                    "chain_id": "",
+                    "current_step": 0,
+                    "total_steps": 0,
+                    "pending_gate": None,
+                    "gate_criteria": [],
+                    "last_prompt_id": "",
+                    "pending_shell_verify": None,
+                    "shell_verify_attempts": 0,
+                    "pending_delegation": True,
+                    "delegation_agent_type": "chain-executor",
+                    "delegation_model_hint": None,
+                },
+            )
 
         # Session A's sub-agent finishes with PASS
         transcript_a = build_transcript(
@@ -591,10 +647,12 @@ class TestConcurrentSessionIsolation:
             assistant_text="Fixed.\n\nGATE_REVIEW: PASS \u2014 Compiles cleanly",
             path=tmp_path / "transcript_a.jsonl",
         )
-        run_subagent_gate_enforce({
-            "agent_transcript_path": transcript_a,
-            "session_id": "concurrent-A",
-        })
+        run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": transcript_a,
+                "session_id": "concurrent-A",
+            }
+        )
 
         # Session A delegation cleared, session B still pending
         state_a = load_session_state("concurrent-A")
@@ -609,10 +667,12 @@ class TestConcurrentSessionIsolation:
             assistant_text="All green.\n\nGATE_REVIEW: PASS \u2014 All tests passing",
             path=tmp_path / "transcript_b.jsonl",
         )
-        run_subagent_gate_enforce({
-            "agent_transcript_path": transcript_b,
-            "session_id": "concurrent-B",
-        })
+        run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": transcript_b,
+                "session_id": "concurrent-B",
+            }
+        )
 
         state_b = load_session_state("concurrent-B")
         assert state_b["pending_delegation"] is False, "Session B should now be cleared"
@@ -672,7 +732,9 @@ class TestVerifyStateSingleSlot:
         )
 
         state = make_verify_state(
-            command="npm test", iteration=4, session_id="ralph-persist",
+            command="npm test",
+            iteration=4,
+            session_id="ralph-persist",
             delegation={
                 "method": "subagent_delegation",
                 "requested_at_iteration": 4,
@@ -696,8 +758,10 @@ class TestEdgeCases:
     def test_delegation_with_isolation_disabled_stays_in_context(self):
         """When isolation is disabled, failures always stay in-context (no delegation)."""
         fail_result = {
-            "passed": False, "exitCode": 1,
-            "stdout": "", "stderr": "FAIL",
+            "passed": False,
+            "exitCode": 1,
+            "stdout": "",
+            "stderr": "FAIL",
             "timedOut": False,
         }
         isolation = {"enabled": False, "inContextThreshold": 3, "timeoutSeconds": 300}
@@ -705,7 +769,8 @@ class TestEdgeCases:
         # Even past the threshold (iteration=5), isolation disabled means in-context
         vs = make_verify_state(command="npm test", iteration=5, max_iterations=10)
         _, output, _ = run_ralph_stop(
-            {}, verify_state=vs,
+            {},
+            verify_state=vs,
             run_verification_result=fail_result,
             isolation_config=isolation,
         )
@@ -716,13 +781,16 @@ class TestEdgeCases:
     def test_pass_on_first_try_clears_state(self):
         """Verification passing on first attempt clears state and allows stop."""
         pass_result = {
-            "passed": True, "exitCode": 0,
-            "stdout": "All 42 tests passed", "stderr": "",
+            "passed": True,
+            "exitCode": 0,
+            "stdout": "All 42 tests passed",
+            "stderr": "",
             "timedOut": False,
         }
         vs = make_verify_state(command="npm test", iteration=0, max_iterations=10)
         _, output, _ = run_ralph_stop(
-            {}, verify_state=vs,
+            {},
+            verify_state=vs,
             run_verification_result=pass_result,
         )
         # Pass means allow (output may contain systemMessage but no "block")
@@ -743,36 +811,38 @@ class TestEdgeCases:
         """Ralph protocol prompt: PASS verdict but missing MEMORY_UPDATE should block."""
         from session_state import save_session_state
 
-        save_session_state("ralph-protocol-test", {
-            "chain_id": "",
-            "current_step": 0,
-            "total_steps": 0,
-            "pending_gate": None,
-            "gate_criteria": [],
-            "last_prompt_id": "",
-            "pending_shell_verify": None,
-            "shell_verify_attempts": 0,
-            "pending_delegation": True,
-            "delegation_agent_type": "chain-executor",
-            "delegation_model_hint": None,
-        })
+        save_session_state(
+            "ralph-protocol-test",
+            {
+                "chain_id": "",
+                "current_step": 0,
+                "total_steps": 0,
+                "pending_gate": None,
+                "gate_criteria": [],
+                "last_prompt_id": "",
+                "pending_shell_verify": None,
+                "shell_verify_attempts": 0,
+                "pending_delegation": True,
+                "delegation_agent_type": "chain-executor",
+                "delegation_model_hint": None,
+            },
+        )
 
         transcript_path = build_transcript(
             prompt_text=(
-                "## Ralph Session Protocol\n"
-                "run_memory_file: run-memory.md\n\n"
-                "### Quality Gates\n"
-                "- Tests must pass\n"
+                "## Ralph Session Protocol\nrun_memory_file: run-memory.md\n\n### Quality Gates\n- Tests must pass\n"
             ),
             assistant_text="I fixed it.\n\nGATE_REVIEW: PASS \u2014 Tests passing",
             # Note: NO MEMORY_UPDATE line
             path=tmp_path / "no_memory.jsonl",
         )
 
-        _, output = run_subagent_gate_enforce({
-            "agent_transcript_path": str(transcript_path),
-            "session_id": "ralph-protocol-test",
-        })
+        _, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": str(transcript_path),
+                "session_id": "ralph-protocol-test",
+            }
+        )
 
         assert output is not None
         assert output["decision"] == "block"
@@ -783,29 +853,51 @@ class TestEdgeCases:
         transcript_path = tmp_path / "multi_verdict.jsonl"
         with open(transcript_path, "w") as f:
             # Prompt with gates
-            f.write(json.dumps({
-                "type": "human",
-                "content": "### Quality Gates\n- Tests pass\n- No lint errors",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "human",
+                        "content": "### Quality Gates\n- Tests pass\n- No lint errors",
+                    }
+                )
+                + "\n"
+            )
             # First attempt: FAIL
-            f.write(json.dumps({
-                "type": "assistant",
-                "content": "First try failed.\n\nGATE_REVIEW: FAIL \u2014 Lint errors remain",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "content": "First try failed.\n\nGATE_REVIEW: FAIL \u2014 Lint errors remain",
+                    }
+                )
+                + "\n"
+            )
             # Human feedback
-            f.write(json.dumps({
-                "type": "human",
-                "content": "Fix the lint errors and try again.",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "human",
+                        "content": "Fix the lint errors and try again.",
+                    }
+                )
+                + "\n"
+            )
             # Second attempt: PASS (this should win — it's the last assistant message)
-            f.write(json.dumps({
-                "type": "assistant",
-                "content": "Fixed lint.\n\nGATE_REVIEW: PASS \u2014 All clean now",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "content": "Fixed lint.\n\nGATE_REVIEW: PASS \u2014 All clean now",
+                    }
+                )
+                + "\n"
+            )
 
-        _, output = run_subagent_gate_enforce({
-            "agent_transcript_path": str(transcript_path),
-        })
+        _, output = run_subagent_gate_enforce(
+            {
+                "agent_transcript_path": str(transcript_path),
+            }
+        )
 
         # Last verdict (PASS) wins — should allow
         assert output is None  # PASS = silent allow

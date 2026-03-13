@@ -42,8 +42,7 @@ def load_prompts() -> dict | None:
 
     try:
         cursor = conn.execute(
-            "SELECT id, name, category, description, metadata_json "
-            "FROM resource_index WHERE type = 'prompt'"
+            "SELECT id, name, category, description, metadata_json FROM resource_index WHERE type = 'prompt'"
         )
         prompts = {}
         for row in cursor:
@@ -124,10 +123,7 @@ def load_gates() -> dict | None:
         return None
 
     try:
-        cursor = conn.execute(
-            "SELECT id, name, description, metadata_json "
-            "FROM resource_index WHERE type = 'gate'"
-        )
+        cursor = conn.execute("SELECT id, name, description, metadata_json FROM resource_index WHERE type = 'gate'")
         gates = {}
         for row in cursor:
             meta = _parse_metadata(row["metadata_json"])
@@ -156,9 +152,7 @@ def get_valid_styles_from_db(conn: sqlite3.Connection | None = None) -> list[str
         return []
 
     try:
-        cursor = conn.execute(
-            "SELECT LOWER(id) as id FROM resource_index WHERE type = 'style' ORDER BY id"
-        )
+        cursor = conn.execute("SELECT LOWER(id) as id FROM resource_index WHERE type = 'style' ORDER BY id")
         return [row["id"] for row in cursor]
     except sqlite3.Error:
         return []
@@ -177,9 +171,7 @@ def get_valid_frameworks_from_db(conn: sqlite3.Connection | None = None) -> list
         return []
 
     try:
-        cursor = conn.execute(
-            "SELECT LOWER(id) as id FROM resource_index WHERE type = 'methodology' ORDER BY id"
-        )
+        cursor = conn.execute("SELECT LOWER(id) as id FROM resource_index WHERE type = 'methodology' ORDER BY id")
         return [row["id"] for row in cursor]
     except sqlite3.Error:
         return []
@@ -228,9 +220,7 @@ def load_active_chain_state() -> dict | None:
 def _load_from_session_table(conn: sqlite3.Connection) -> dict | None:
     """Query chain_sessions per-row table. Returns session for a live PID, or None."""
     try:
-        cursor = conn.execute(
-            "SELECT tenant_id, chain_id, state FROM chain_sessions ORDER BY updated_at DESC"
-        )
+        cursor = conn.execute("SELECT tenant_id, chain_id, state FROM chain_sessions ORDER BY updated_at DESC")
         rows = cursor.fetchall()
     except sqlite3.OperationalError:
         return None
@@ -319,11 +309,7 @@ def _session_to_hook_state(session: dict) -> dict | None:
     has_pending_review = bool(session.get("pendingGateReview"))
     has_pending_verify = bool(session.get("pendingShellVerification"))
     in_progress = current > 0 and current < total
-    pending_at_final = (
-        current > 0
-        and current == total
-        and (has_pending_review or has_pending_verify)
-    )
+    pending_at_final = current > 0 and current == total and (has_pending_review or has_pending_verify)
 
     if not in_progress and not pending_at_final:
         return None

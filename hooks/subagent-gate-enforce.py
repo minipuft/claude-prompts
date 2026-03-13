@@ -183,7 +183,7 @@ def main():
                 f"**Required criteria**:\n{required_criteria}\n\n"
                 "Evaluate your work against each criterion and respond with:\n"
                 "`GATE_REVIEW: PASS \u2014 [rationale]` or `GATE_REVIEW: FAIL \u2014 [rationale]`"
-            )
+            ),
         }
         print(json.dumps(response))
         sys.exit(0)
@@ -201,7 +201,7 @@ def main():
                 f"**Gate criteria**:\n{criteria}\n\n"
                 "Address the failing criteria and emit a new verdict:\n"
                 "`GATE_REVIEW: PASS \u2014 [rationale]`"
-            )
+            ),
         }
         print(json.dumps(response))
         sys.exit(0)
@@ -219,7 +219,7 @@ def main():
                     "`MEMORY_UPDATE: [what you wrote to run-memory.md]`\n\n"
                     "Then re-emit your verdict:\n"
                     "`GATE_REVIEW: PASS — [rationale]`"
-                )
+                ),
             }
             print(json.dumps(response))
             sys.exit(0)
@@ -234,8 +234,7 @@ def main():
             msg_content = msg.get("content", "")
             if isinstance(msg_content, list):
                 msg_content = "\n".join(
-                    block.get("text", "") if isinstance(block, dict) else str(block)
-                    for block in msg_content
+                    block.get("text", "") if isinstance(block, dict) else str(block) for block in msg_content
                 )
             criterion_results = parse_criterion_verdicts(str(msg_content))
             if criterion_results is None:
@@ -248,6 +247,7 @@ def main():
     if session_id:
         try:
             from session_state import clear_delegation_state
+
             clear_delegation_state(session_id)
         except ImportError:
             pass  # session_state not available — skip cleanup

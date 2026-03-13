@@ -4,7 +4,7 @@ Tracks chain/gate state per conversation session via SQLite (hooks-state.db).
 """
 
 import re
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from hook_state_store import (
     TABLE_CHAIN_SESSION_STATE,
@@ -15,7 +15,7 @@ from hook_state_store import (
 )
 
 
-class ChainState(TypedDict):
+class ChainState(TypedDict, total=False):
     chain_id: str
     current_step: int
     total_steps: int
@@ -23,18 +23,23 @@ class ChainState(TypedDict):
     gate_criteria: list[str]
     last_prompt_id: str
     # Shell verification (Ralph mode)
-    pending_shell_verify: str | None  # The command being verified
-    shell_verify_attempts: int        # Current attempt count
+    pending_shell_verify: str | None
+    shell_verify_attempts: int
+    # Delegation state (set by post-prompt-engine hook)
+    pending_delegation: bool
+    delegation_agent_type: str
+    delegation_model_hint: str
 
 
 def load_session_state(session_id: str) -> ChainState | None:
     """Load chain state for a session from SQLite."""
-    return load_state(TABLE_CHAIN_SESSION_STATE, session_id)
+    data = load_state(TABLE_CHAIN_SESSION_STATE, session_id)
+    return cast(ChainState, data) if data is not None else None
 
 
 def save_session_state(session_id: str, state: ChainState) -> None:
     """Save chain state for a session to SQLite."""
-    save_state(TABLE_CHAIN_SESSION_STATE, session_id, state)
+    save_state(TABLE_CHAIN_SESSION_STATE, session_id, cast(dict[str, Any], state))
 
 
 def clear_session_state(session_id: str) -> None:
@@ -85,19 +90,19 @@ def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
         "gate_criteria": [],
         "last_prompt_id": "",
         "pending_shell_verify": None,
-        "shell_verify_attempts": 0
+        "shell_verify_attempts": 0,
     }
 
     # Detect step indicators: "Step 1 of 3", "step 2/4", "Progress 1/2",
     # "Chain complete (2/2)", "complete (2/2)", etc.
-    step_match = re.search(r'(?:[Ss]tep|[Pp]rogress|[Cc]omplete)\s*\(?(\d+)\s*(?:of|/)\s*(\d+)', content)
+    step_match = re.search(r"(?:[Ss]tep|[Pp]rogress|[Cc]omplete)\s*\(?(\d+)\s*(?:of|/)\s*(\d+)", content)
     if step_match:
         state["current_step"] = int(step_match.group(1))
         state["total_steps"] = int(step_match.group(2))
 
     # Detect chain_id from resume token pattern: "chain-<name>#<run>"
     # Must start with "chain-" (hyphen) to avoid matching literal "chain_id" parameter names
-    chain_match = re.search(r'(chain-[a-zA-Z0-9_#-]+)', content)
+    chain_match = re.search(r"(chain-[a-zA-Z0-9_#-]+)", content)
     if chain_match:
         state["chain_id"] = chain_match.group(1)
 
@@ -108,10 +113,8 @@ def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
     #   **Structural Review Required** (attempt X/Y) (legacy)
     #   **Structural + Gate Review Required**        (legacy)
     # Followed by: **Gates**: gate-id-1, gate-id-2
-    gate_review_match = re.search(
-        r'\*\*(?:Structural \+ Gate |Structural |Gate )?Review Required\*\*', content
-    )
-    gates_list_match = re.search(r'\*\*Gates\*\*:\s*(.+?)(?:\n|$)', content)
+    gate_review_match = re.search(r"\*\*(?:Structural \+ Gate |Structural |Gate )?Review Required\*\*", content)
+    gates_list_match = re.search(r"\*\*Gates\*\*:\s*(.+?)(?:\n|$)", content)
 
     if gate_review_match or gates_list_match:
         # Extract gate IDs from **Gates**: id1, id2
@@ -121,14 +124,14 @@ def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
 
         # Fallback: extract gate names from GATE_VERDICTS template in CTA
         if not state["pending_gate"]:
-            verdicts_match = re.search(r'GATE_VERDICTS:\s*\n((?:\[\d+\].*\n?)+)', content)
+            verdicts_match = re.search(r"GATE_VERDICTS:\s*\n((?:\[\d+\].*\n?)+)", content)
             if verdicts_match:
-                gate_labels = re.findall(r'\[\d+\]\s*(?:PASS|FAIL)\s*-\s*([^:]+)', verdicts_match.group(1))
+                gate_labels = re.findall(r"\[\d+\]\s*(?:PASS|FAIL)\s*-\s*([^:]+)", verdicts_match.group(1))
                 if gate_labels:
                     state["pending_gate"] = ", ".join(g.strip() for g in gate_labels)
 
         # Extract attempt info: (attempt X/Y)
-        attempt_match = re.search(r'\(attempt\s+(\d+)/(\d+)\)', content)
+        attempt_match = re.search(r"\(attempt\s+(\d+)/(\d+)\)", content)
         if attempt_match:
             # Store attempt count in shell_verify_attempts for now (reusing field)
             state["shell_verify_attempts"] = int(attempt_match.group(1))
@@ -136,21 +139,21 @@ def parse_prompt_engine_response(response: str | dict) -> ChainState | None:
     # Fallback: Detect legacy inline gates section
     elif "## Inline Gates" in content:
         # Extract gate names from legacy format
-        gate_names = re.findall(r'###\s*([A-Za-z][A-Za-z0-9 _-]+)\n', content)
+        gate_names = re.findall(r"###\s*([A-Za-z][A-Za-z0-9 _-]+)\n", content)
         if gate_names:
             state["pending_gate"] = gate_names[0].strip()
 
         # Extract gate criteria
-        criteria = re.findall(r'[-•]\s*(.+?)(?:\n|$)', content)
+        criteria = re.findall(r"[-•]\s*(.+?)(?:\n|$)", content)
         state["gate_criteria"] = [c.strip() for c in criteria[:5] if c.strip()]
 
     # Detect shell verification: "Shell verification: npm test"
-    verify_match = re.search(r'Shell verification:\s*(.+?)(?:\n|$)', content)
+    verify_match = re.search(r"Shell verification:\s*(.+?)(?:\n|$)", content)
     if verify_match:
         state["pending_shell_verify"] = verify_match.group(1).strip()
 
     # Detect attempt count: "Attempt 2/5" or "(Attempt 2/5)"
-    attempt_match = re.search(r'Attempt\s+(\d+)/(\d+)', content)
+    attempt_match = re.search(r"Attempt\s+(\d+)/(\d+)", content)
     if attempt_match:
         state["shell_verify_attempts"] = int(attempt_match.group(1))
 
@@ -193,7 +196,7 @@ def format_chain_reminder(state: ChainState, mode: str = "full") -> str:
         elif gate:
             line2 = '→ gate_verdict="GATE_REVIEW: PASS|FAIL - <reason>"'
         elif step > 0 and step < total:
-            line2 = f"→ prompt_engine(chain_id:\"{chain_id}\") to continue"
+            line2 = f'→ prompt_engine(chain_id:"{chain_id}") to continue'
         else:
             line2 = ""
 

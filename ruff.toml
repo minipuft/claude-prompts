@@ -1,17 +1,19 @@
 target-version = "py310"
 src = ["hooks"]
 line-length = 120
+cache-dir = ".cache/ruff"
 
 [lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
-# E=pycodestyle, F=pyflakes, W=warnings, I=isort,
-# UP=pyupgrade, B=bugbear, SIM=simplify, C4=comprehensions
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "N"]
+# E=pycodestyle, F=pyflakes, W=warnings, I=isort, UP=pyupgrade,
+# B=bugbear, SIM=simplify, C4=comprehensions, RUF=ruff-specific, N=pep8-naming
 ignore = [
     "SIM102",   # collapsible-if — readability preference in hooks
     "SIM105",   # suppressible-exception — try/except/pass is clearer in lock cleanup
     "SIM108",   # if-else-block-instead-of-ternary — readability over brevity
     "SIM112",   # uncapitalized-env-vars — env var names match external conventions
     "SIM118",   # in-dict-keys — .keys() is explicit and harmless
+    "RUF059",   # unused-unpacked-variable — intentional destructuring in hooks
 ]
 
 [lint.per-file-ignores]

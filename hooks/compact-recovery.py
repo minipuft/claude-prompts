@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from db_reader import load_active_chain_state
-from session_state import format_chain_reminder, load_session_state
+from session_state import ChainState, format_chain_reminder, load_session_state
 
 
 def parse_hook_input() -> dict:
@@ -37,7 +37,7 @@ def main():
     session_id = hook_input.get("session_id", "")
 
     # SSOT: read from server's state.db (works without PostToolUse hook)
-    state = load_active_chain_state()
+    state: ChainState | None = load_active_chain_state()  # type: ignore[assignment]
 
     # Fallback: hooks-state.db (if PostToolUse populated it)
     if not state and session_id:
@@ -64,25 +64,22 @@ def main():
     reminder = format_chain_reminder(state, mode="full")
 
     if pending_gate:
-        directive = (
-            f'<GATE-REVIEW>chain_id="{chain_id}" '
-            f'gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
-        )
+        directive = f'<GATE-REVIEW>chain_id="{chain_id}" gates="{pending_gate}" → Submit gate_verdict</GATE-REVIEW>'
     elif pending_verify:
         directive = (
-            f'<CALL-TOOL>\n'
+            f"<CALL-TOOL>\n"
             f'prompt_engine | chain_id:"{chain_id}"\n'
-            f'REQUIRED: Shell verification pending. Run implementation, '
-            f'then prompt_engine validates.\n'
-            f'</CALL-TOOL>'
+            f"REQUIRED: Shell verification pending. Run implementation, "
+            f"then prompt_engine validates.\n"
+            f"</CALL-TOOL>"
         )
     elif step > 0 and step <= total:
         directive = (
-            f'<CALL-TOOL>\n'
+            f"<CALL-TOOL>\n"
             f'prompt_engine | chain_id:"{chain_id}"\n'
-            f'REQUIRED: Continue active chain (step {step}/{total}). '
-            f'Do not respond without advancing.\n'
-            f'</CALL-TOOL>'
+            f"REQUIRED: Continue active chain (step {step}/{total}). "
+            f"Do not respond without advancing.\n"
+            f"</CALL-TOOL>"
         )
     else:
         directive = ""
