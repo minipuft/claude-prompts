@@ -84,6 +84,9 @@ server/graphs/*
 runtime-state/
 server/runtime-state/
 
+# Root-level resources (stale if MCP_WORKSPACE pointed to repo root)
+/resources/
+
 # Crash Dumps and Diagnostics
 *.dmp
 report.*.json
@@ -119,6 +122,9 @@ opencodetmp/
 __pycache__/
 *.pyc
 *.pyo
+.cache/
+.pytest_cache/
+.ruff_cache/
 
 # Future planning
 plans/future/

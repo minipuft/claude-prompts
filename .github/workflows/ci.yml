@@ -75,6 +75,12 @@ jobs:
         with:
           src: ./hooks
 
+      - name: Format Python hooks (Ruff)
+        uses: astral-sh/ruff-action@v3
+        with:
+          src: ./hooks
+          args: format --check
+
       - name: Typecheck Python hooks (Pyrefly)
         working-directory: .
         run: |
