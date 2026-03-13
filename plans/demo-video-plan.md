@@ -2,7 +2,7 @@
 
 ## Format Decision
 
-**Multiple short clips** embedded as GIFs in the README, not one long video.
+**Multiple short clips** embedded as WebP in the README, not one long video.
 Each clip shows ONE feature clearly in 10-30s.
 
 ## Recording Setup
@@ -12,47 +12,83 @@ Each clip shows ONE feature clearly in 10-30s.
 - **Resolution**: 1424x1298 (native terminal size)
 - **Model**: Use `haiku` for speed/cost where possible, `opus` only where output quality matters for the demo
 - **Source format**: MP4 from ShareX
-- **Target format**: GIF for README inline (convert with ffmpeg)
-- **File size target**: <5MB per GIF (GitHub renders inline up to 10MB)
+- **Target format**: Animated WebP for README inline (convert with ffmpeg)
+- **File size target**: <5MB per clip (GitHub renders inline up to 10MB)
 
 ## Post-Processing (ffmpeg)
 
 ### Standard Pipeline (all clips)
 
-Every GIF uses this base filter chain:
+Every clip uses this WebP filter chain:
 1. `crop=iw:ih-50:0:50` — remove Windows Terminal tab bar (50px)
-2. `geq` blue-excess clamp — surgical fix for acrylic transparency bleed
-3. Speed adjustment (`setpts`)
-4. `fps=10`, `scale=580:-1:flags=lanczos` — consistent dimensions
-5. `palettegen=max_colors=48:stats_mode=diff` + `paletteuse=dither=bayer:bayer_scale=5`
+2. Speed adjustment (`setpts`)
+3. `fps=20`, `scale=720:-1:flags=lanczos` — native display size
+4. `libwebp` encoder with quality 60
 
 ```bash
-# The geq filter (reusable variable)
-GEQ="geq=r='r(X,Y)':g='g(X,Y)':b='if(gt(b(X,Y),(r(X,Y)+g(X,Y))/2+12),(r(X,Y)+g(X,Y))/2+8,b(X,Y))'"
-
 # Simple clip (single speed)
-ffmpeg -i input.mp4 -filter_complex "
-  [0:v]trim=start=S:end=E,setpts=(PTS-STARTPTS),
-  crop=iw:ih-50:0:50,${GEQ},
-  setpts=0.5*PTS,fps=10,scale=580:-1:flags=lanczos,split[s0][s1];
-  [s0]palettegen=max_colors=48:stats_mode=diff[p];
-  [s1][p]paletteuse=dither=bayer:bayer_scale=5
-" -loop 0 output.gif
+ffmpeg -i input.mp4 -vf "
+  trim=start=S:end=E,setpts=(PTS-STARTPTS),
+  crop=iw:ih-50:0:50,
+  setpts=0.5*PTS,
+  fps=20,
+  scale=720:-1:flags=lanczos
+" -c:v libwebp -quality 60 -loop 0 output.webp
 
 # Variable speed (split into segments, concat)
-# See Clip 2 in plan for full example
+ffmpeg -i input.mp4 -filter_complex "
+  [0:v]split=2[a][b];
+  [a]trim=start=S1:end=E1,setpts=(PTS-STARTPTS)*0.5[seg1];
+  [b]trim=start=S2:end=E2,setpts=(PTS-STARTPTS)*0.33[seg2];
+  [seg1][seg2]concat=n=2:v=1[joined];
+  [joined]crop=iw:ih-50:0:50,fps=20,scale=720:-1:flags=lanczos
+" -c:v libwebp -quality 60 -loop 0 output.webp
 ```
 
-### Why these settings
-- **crop 50px**: Tab bar gradient poisons GIF palette
-- **geq blue clamp**: Windows Terminal acrylic lets desktop bleed through. The `geq` filter checks each pixel: if blue exceeds avg(R,G) by >12, cap it at avg(R,G)+8. This preserves the natural dark blue-grey theme color (excess +6 to +10) while killing acrylic contamination (excess +15 to +65). No yellow tint because it doesn't boost red/green — unlike `colorchannelmixer` which redistributes.
-- **10fps / 580px / 48 colors**: Sweet spot for <5MB with readable text
-- **bayer_scale=5**: Aggressive dithering compresses well for terminal content
+### Why WebP over GIF
 
-### Color correction history
-1. `colorchannelmixer=bb=0.72:rb=0.04:gb=0.04` — killed blue but introduced yellow tint (redistributes blue into R/G)
-2. `curves` on blue shadows — not aggressive enough, blue rectangle persisted
-3. `geq` pixel-level clamp (current) — surgical, no tint shift, preserves theme color
+The v1 GIFs suffered from compounding quality issues:
+
+| Problem | Root Cause | WebP Fix |
+|---------|-----------|----------|
+| Blurry text | 580px rendered at `width="720"` (33% upscale) | Render at 720px native |
+| Visible banding | 48-color palette limit | Full 16.7M colors |
+| Dithering grid | bayer_scale=5 aggressive dithering | No dithering needed |
+| Blue/purple artifacts | Acrylic transparency + 48-color palette | Full color absorbs bleed |
+| Choppy playback | 10fps + 6-12x speed | 20fps + 2-3x speed |
+| Large file size despite low quality | GIF LZW compression | VP8 video-grade compression |
+
+**Eliminated from pipeline**: `geq` blue clamp, `palettegen`/`paletteuse`, bayer dithering, `colorchannelmixer`. Full-color WebP makes all palette workarounds unnecessary.
+
+### Speed Standards
+
+| Speed | When to Use |
+|-------|-------------|
+| **1x** | Key payoff moment (PASS/FAIL verdict, final output) |
+| **1.5x** | Output the viewer should read and absorb |
+| **2x** | Standard comfortable speedup (default) |
+| **3x** | Typing, loading, boilerplate — nothing critical to read |
+| **4x+** | Avoid — trim the boring parts instead |
+
+### v1 GIF Settings (archived)
+
+<details>
+<summary>Previous GIF pipeline (deprecated)</summary>
+
+v1 used aggressive GIF optimization to hit <5MB:
+- `fps=10`, `scale=580:-1`, `max_colors=48`, `bayer_scale=5`
+- `geq` blue-excess clamp for acrylic transparency bleed
+- `colorchannelmixer` (abandoned — yellow tint), `curves` (abandoned — insufficient)
+- Speed: 3x-12x with variable-speed segment concat
+
+Color correction history:
+1. `colorchannelmixer=bb=0.72:rb=0.04:gb=0.04` — killed blue but introduced yellow tint
+2. `curves` on blue shadows — not aggressive enough
+3. `geq` pixel-level clamp — surgical, no tint shift, but compounds with low palette
+
+All issues traced to the 48-color GIF palette constraint. WebP eliminates the root cause.
+
+</details>
 
 ---
 
@@ -61,6 +97,7 @@ ffmpeg -i input.mp4 -filter_complex "
 - [ ] Fresh `claude` session (no prior context)
 - [ ] Terminal font set to Fira Code
 - [ ] Terminal sized consistently (same width across all clips)
+- [ ] Windows Terminal acrylic transparency OFF (or minimal) — reduces post-processing artifacts
 - [ ] Plugin loaded (status bar shows MCP server)
 - [ ] Start ShareX BEFORE typing
 - [ ] Trim dead time from start/end after recording
@@ -69,62 +106,65 @@ ffmpeg -i input.mp4 -filter_complex "
 
 ## Clip List
 
-### Clip 1: System Status — RECORDED + INTEGRATED
-- **Source**: `WindowsTerminal_qWBilRChm0.mp4`
-- **GIF**: `assets/demos/status-demo-3x.gif` (3x speed)
+All clips need fresh recordings. v1 source MP4s are no longer available.
+
+### Clip 1: System Status — NEEDS RE-RECORDING
+- **v1 source**: `WindowsTerminal_qWBilRChm0.mp4` (lost)
+- **v1 output**: `assets/demos/status-demo-3x.gif` (720x656, 12fps, 48 colors)
+- **Target**: `assets/demos/status-demo.webp`
+- **Prompt**: `system_control(action:"status")`
+- **Shows**: Loaded resources, active configuration, server health
+- **Target duration**: 10-15s source, render at 2x
 - **README placement**: `<details>` dropdown between Quick Start and What You Get
-  ```html
-  <details>
-  <summary><strong>See it running</strong> — system status overview</summary>
-  <img src="assets/demos/status-demo-3x.gif" ... />
-  </details>
-  ```
 
-### Clip 2: Hero Demo — Chain + Gate + Delegation — RECORDED + INTEGRATED
-- **Source**: `WindowsTerminal_DLI4sJn0tS.mp4` (4:12, 1370x1084)
-- **Split into 2 GIFs** (source too long for single GIF):
-  - **GIF A**: `assets/demos/hero-demo.gif` (4.3MB, ~21s playback)
-    - 0:05-0:34 hooks + template @ 6x speed
-    - 0:34-1:40 chain execution @ 12x speed
-    - 1:40-2:13 gate fail→pass @ 3x speed (key feature, slower for readability)
-  - **GIF B**: `assets/demos/hero-chain-demo.gif` (4.3MB, ~13s playback)
-    - 2:13-3:50 phases 3-4 back-to-back @ 10x speed
-    - 3:50-4:04 final render @ 4x speed
-- **README placement**:
-  - GIF A: Hero position right after tagline (the "aha" moment)
-  - GIF B: `<details>` dropdown in "Compose Workflows" section
+### Clip 2: Hero Demo — Chain + Gate + Delegation — NEEDS RE-RECORDING
+- **v1 source**: `WindowsTerminal_DLI4sJn0tS.mp4` (4:12, lost)
+- **v1 output**: `assets/demos/hero-demo.gif` (580x438, 10fps) + `assets/demos/hero-chain-demo.gif`
+- **Target**: `assets/demos/hero-demo.webp` + `assets/demos/hero-chain-demo.webp`
+- **Prompt**: `>>code_review_test` chain (or similar multi-step with gate)
+- **Split into 2 clips** (source too long for single file):
+  - **WebP A**: Hook detection + template load + gate fail→pass
+    - Typing/loading @ 3x, gate verdict moments @ 1.5x
+  - **WebP B**: Remaining chain phases + final render
+    - Chain execution @ 2-3x, final output @ 1.5x
 - **Notes**:
-  - Recorded with haiku model (cheapest) to demonstrate gate improvement on less capable models
-  - Gate catches missing field on first attempt, passes after self-correction
-  - Phases 3-4 compound reasoning — each step builds on previous validated output
-- **Rendering**: Variable speed via ffmpeg segment concat, 600px width, 7-8fps, 64-color palette with bayer dithering
+  - Use haiku — cheaper, more likely to fail first gate attempt
+  - Gate FAIL→PASS is the visual payoff — keep at 1-1.5x
+  - Phases compound reasoning — each step builds on previous validated output
+- **README placement**:
+  - WebP A: Hero position right after tagline
+  - WebP B: `<details>` dropdown in "Compose Workflows" section
 
-### Clip 3: Resource Discovery — RECORDED + INTEGRATED
-- **Source**: `WindowsTerminal_2JMxV8xaKk.mp4` (17.5s, 1370x1084)
-- **GIF**: `assets/demos/resource-list-demo.gif` (444KB, ~7s playback)
-- **Processing**: trim 3-17s, 2x speed, 12fps, crop 50px top, colorchannelmixer, 580px, 48 colors
+### Clip 3: Resource Discovery — NEEDS RE-RECORDING
+- **v1 source**: `WindowsTerminal_2JMxV8xaKk.mp4` (17.5s, lost)
+- **v1 output**: `assets/demos/resource-list-demo.gif` (580x438, 12fps, 444KB)
+- **Target**: `assets/demos/resource-list-demo.webp`
+- **Prompt**: `resource_manager(resource_type:"prompt", action:"list")`
+- **Shows**: Full prompt catalog — prompts across categories
+- **Target duration**: 15-20s source, render at 2x
 - **README placement**: `<details>` dropdown in "What You Get" section
-- **Shows**: Full prompt catalog — 90 prompts across 11 categories
 
-### Clip 4: Chain Workflow — RECORDED + INTEGRATED
-- **Source**: `WindowsTerminal_FigL75A7Ol.mp4` (2:36, 1368x1116)
-- **GIF**: `assets/demos/chain-workflow-demo.gif` (2.7MB, ~12s playback)
-- **Processing**: Two segments (50-70s @ 6x, 138-156s @ 2x), 10fps, geq blue fix, 580px, 48 colors
-- **README placement**: Second `<details>` dropdown in "Compose Workflows" (after hero-chain-demo)
-- **Shows**: `>>tech_evaluation_chain` with context7 research delegation, producing scored assessment table with security/performance/DX/integration/ecosystem ratings and sourced recommendations
+### Clip 4: Chain Workflow — NEEDS RE-RECORDING
+- **v1 source**: `WindowsTerminal_FigL75A7Ol.mp4` (2:36, lost)
+- **v1 output**: `assets/demos/chain-workflow-demo.gif` (580x452, 10fps, 2.7MB)
+- **Target**: `assets/demos/chain-workflow-demo.webp`
+- **Prompt**: `>>tech_evaluation_chain library:'zod' context:'API validation'`
+- **Shows**: Multi-step chain with context7 research delegation, scored assessment table
+- **Target duration**: 30-45s source, render at 2-3x
+- **README placement**: `<details>` dropdown in "Compose Workflows" section
 
-### Clip 5: Verification Loop
-- **Status**: NOT recorded
+### Clip 5: Verification Loop — NOT RECORDED
+- **Target**: `assets/demos/verify-loop-demo.webp`
 - **Prompt**: `>>test_default count:'5' :: verify:"echo 'test passed'" :fast`
 - **Shows**: Shell verification — prompt runs, verify command executes, passes
-- **Target duration**: 15-20s
+- **Target duration**: 15-20s source, render at 2x
 - **README placement**: "Verification Loops" section
 
-### Clip 6: Gate Validation Showcase
-- **Status**: NOT recorded
+### Clip 6: Gate Validation Showcase — NOT RECORDED
+- **Target**: `assets/demos/gate-validation-demo.webp`
 - **Goal**: Dedicated demo of gates as the star feature — not buried inside a chain
-- **Prompt options** (pick one that produces a visible FAIL → retry → PASS cycle):
-  - `>>code_review target:'src/runtime/' :: 'must include severity ratings' :: 'cite specific line numbers'` — two inline gates, likely to fail on first attempt with haiku
+- **Prompt** (pick one that produces a visible FAIL → retry → PASS cycle):
+  - `>>code_review target:'src/runtime/' :: 'must include severity ratings' :: 'cite specific line numbers'` — two inline gates + prompt's own configured gates, likely to fail on haiku
   - `>>quick_analysis topic:'error handling patterns' :: 'include code examples for every recommendation'` — demanding gate that forces structured output
 - **What to capture**:
   1. The gate criteria appearing in the prompt (shows what's being enforced)
@@ -132,21 +172,24 @@ ffmpeg -i input.mp4 -filter_complex "
   3. `GATE_REVIEW: FAIL` verdict with the specific failure reason
   4. Retry with corrected output
   5. `GATE_REVIEW: PASS` verdict
-- **Key visual moments**: The FAIL/PASS verdicts with colored indicators — this is the payoff
-- **Target duration**: 20-30s source (use haiku for cheaper/faster, more likely to fail first attempt)
-- **Speed**: 3x on generation, 2x on verdict moments (let viewer read FAIL/PASS)
+- **Key visual moments**: The FAIL/PASS verdicts — this is the payoff
+- **Speed**: 2-3x on generation, 1-1.5x on verdict moments (let viewer read FAIL/PASS)
+- **Target duration**: 20-30s source
 - **README placement**: `<details>` dropdown in "What You Get" section under Validation Rules (Gates)
 - **Tips**:
-  - Use haiku — it's more likely to miss a gate criterion on first pass, making the demo more compelling
+  - Use haiku — more likely to miss a gate criterion on first pass
   - Two inline `::` gates are better than one — shows composability
-  - The hero GIF already shows a gate in context of a chain; this clip isolates the gate mechanism itself
+  - `code_review` prompt already ships with `code-quality` + custom gates in its YAML — inline `::` stacks on top
+  - The hero GIF shows a gate in a chain; this clip isolates the gate mechanism itself
 
-### Clip 7: Skills Export (CLI — no API cost) — RECORDED + INTEGRATED
-- **Source**: `WindowsTerminal_xdywH7e01M.mp4` (25.8s, 1368x1116)
-- **GIF**: `assets/demos/skills-export-demo.gif` (1.5MB, ~12s playback)
-- **Processing**: trim 2-25.5s, 2x speed, 10fps, crop 50px top, colorchannelmixer, 580px, 48 colors
+### Clip 7: Skills Export (CLI — no API cost) — NEEDS RE-RECORDING
+- **v1 source**: `WindowsTerminal_xdywH7e01M.mp4` (25.8s, lost)
+- **v1 output**: `assets/demos/skills-export-demo.gif` (580x452, 10fps, 1.5MB)
+- **Target**: `assets/demos/skills-export-demo.webp`
+- **Prompt**: `npm run skills:export -- --dry-run` (terminal command, no API cost)
+- **Shows**: Compilation + `bat` preview of generated review skill with phases, gates, and arguments
+- **Target duration**: 20-25s source, render at 2x
 - **README placement**: `<details>` dropdown in "Run Anywhere" section
-- **Shows**: `npm run skills:export -- --dry-run` compilation + `bat` preview of generated review skill with phases, gates, and arguments
 
 ---
 
@@ -154,12 +197,13 @@ ffmpeg -i input.mp4 -filter_complex "
 
 Record in this order (highest README impact first):
 
-1. **Clip 2** (Hero) — the single most important visual
-2. **Clip 4** (Chain) — the signature differentiator
-3. **Clip 7** (Skills Export) — zero API cost, easy win
-4. **Clip 5** (Verification) — shows ground-truth validation
-5. **Clip 3** (Resource List) — shows breadth of templates
-6. **Clip 6** (Judge) — nice to have, shows AI-driven selection
+1. **Clip 2** (Hero) — the single most important visual, gate fail→pass payoff
+2. **Clip 6** (Gate Validation) — star feature isolated, FAIL→PASS cycle
+3. **Clip 4** (Chain) — signature differentiator, context7 delegation
+4. **Clip 7** (Skills Export) — zero API cost, easy win
+5. **Clip 5** (Verification) — ground-truth shell validation
+6. **Clip 3** (Resource List) — breadth of templates
+7. **Clip 1** (Status) — lowest priority, simple dashboard
 
 ## README Placement Map
 
@@ -168,43 +212,58 @@ Record in this order (highest README impact first):
 [logo + badges]
 [tagline]
 
-[HERO GIF A — Clip 2]             ← DONE: hero-demo.gif (gate validation)
+[HERO WebP A — Clip 2]             ← gate fail→pass in chain context
+                                      hero-demo.webp
 
 ## Quick Start
 ...
-                                  ← DONE: Clip 1 in <details> dropdown
-<details>See it running</details> ← status-demo-3x.gif (recorded, integrated)
+<details>See it running</details>   ← Clip 1: status-demo.webp
 
 ## What You Get
-[Clip 3 — resource list]         ← DONE: resource-list-demo.gif in <details>
+[Clip 3 — resource list]           ← resource-list-demo.webp in <details>
+[Clip 6 — gate validation]         ← gate-validation-demo.webp in <details>
 
 ## Compose Workflows
-[HERO GIF B — Clip 2]            ← DONE: hero-chain-demo.gif (compound reasoning)
-[Clip 4 — chain workflow]        ← DONE: chain-workflow-demo.gif in <details>
+[HERO WebP B — Clip 2]             ← hero-chain-demo.webp (compound reasoning)
+[Clip 4 — chain workflow]          ← chain-workflow-demo.webp in <details>
 
 ### Verification Loops
-[Clip 5 — verify loop]           ← shows ground-truth validation
+[Clip 5 — verify loop]             ← verify-loop-demo.webp
 
 ### Judge Mode
-[Clip 6 — gate validation]       ← shows FAIL → retry → PASS cycle
+(text description only — no clip planned)
 
 ## Run Anywhere
-[Clip 7 — skills export]         ← DONE: skills-export-demo.gif in <details>
+[Clip 7 — skills export]           ← skills-export-demo.webp in <details>
 ```
 
 ## Workflow
 
 1. You record with ShareX (MP4)
 2. Share the MP4 path
-3. I speed up (3x default), trim where you say, convert to GIF
-4. Store GIF in `assets/demos/`
-5. Integrate into README
+3. I convert: trim, speed (2x default), crop, WebP encode
+4. Store WebP in `assets/demos/`
+5. Update README `<img>` tags (`.gif` → `.webp`)
+
+## README Migration
+
+When first WebP clip is ready, update all README `<img>` tags:
+- `hero-demo.gif` → `hero-demo.webp`
+- `hero-chain-demo.gif` → `hero-chain-demo.webp`
+- `status-demo-3x.gif` → `status-demo.webp`
+- `resource-list-demo.gif` → `resource-list-demo.webp`
+- `chain-workflow-demo.gif` → `chain-workflow-demo.webp`
+- `skills-export-demo.gif` → `skills-export-demo.webp`
+
+Old GIF files can be deleted after all WebP replacements are integrated.
 
 ## Notes
 
 - VHS tapes abandoned — unreliable with API calls, ShareX is faster
-- `skills-export.tape` kept as a command reference only
-- If any clip exceeds 5MB as GIF, reduce fps to 10 or scale down
+- v1 GIFs suffered from 48-color palette, 580px upscaling, 10fps choppiness — all fixed by WebP
+- If any clip exceeds 5MB as WebP, reduce quality to 50 or trim duration
 - The `>>` syntax hook detection is visible in the recording — that's a feature, not a bug
 - `code_review_test` chain created specifically for the hero demo
 - `research_docs` prompt created for context7-based library research
+- `code_review` prompt ships with `code-quality` + custom inline gates — good for Clip 6
+- 14 pre-built gates exist in `server/resources/gates/` — Clip 6 can reference by name (`:: code-quality`)
