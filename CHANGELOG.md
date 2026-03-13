@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Migrate 6 modules-to-infra dynamic imports to constructor injection via `DatabasePort` interface
   - Delete 4 orphan files with zero consumers (global-resource-tracker, prompt-writer, mcp/tools/constants, skills_sync.generated)
   - Promote `no-orphans`, `modules-infra-dynamic`, `modules-infra-type-only`, and `mcp-infra-dynamic` rules from info to error
+- **runtime:** Replace multi-strategy `ServerRootDetector` with single-pass `resolvePackageRoot()` function
+  - Add `--server-root` CLI flag for explicit override in containers and edge cases
+  - Derive package root from `import.meta.url` bundle location instead of 4-strategy fallback chain
+- **hooks:** Improve Python hook type safety and reduce pyrefly baseline to near-zero
+
+### Fixed
+
+- **parsers:** Strip leading delegation operators (`==>`) before argument extraction to prevent parse failures
+
+### Removed
+
+- Delete stale OpenCode skills, completed plans, and unused development prompt templates
 
 ## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
 
