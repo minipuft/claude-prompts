@@ -331,7 +331,11 @@ export class UnifiedCommandParser {
         // Strip style selector to avoid polluting base args
         cleanCommand = stripStyleOperators(cleanCommand);
 
-        const baseSegment = cleanCommand.split(/-->|\+|\?/)[0]?.trim() ?? '';
+        const baseSegment =
+          cleanCommand
+            .replace(/^\s*(?:==>\s*)+/, '')
+            .split(/-->|\+|\?/)[0]
+            ?.trim() ?? '';
         const firstPromptMatch = baseSegment.match(/^(?:>>)?([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/);
         if (!firstPromptMatch) {
           return null;
