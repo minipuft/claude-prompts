@@ -1,8 +1,15 @@
 import { describe, expect, test, jest } from '@jest/globals';
+import * as path from 'node:path';
+import { fileURLToPath } from 'url';
 
 import { createSimpleLogger } from '../../../src/infra/logging/index.js';
 import { PromptAssetManager } from '../../../src/modules/prompts/index.js';
 import { Application } from '../../../src/runtime/application.js';
+import type { RuntimeLaunchOptions } from '../../../src/runtime/options.js';
+
+// Resolve the actual server root for test context (Jest's import.meta.url differs from dist/)
+const __filename = fileURLToPath(import.meta.url);
+const SERVER_ROOT = path.resolve(path.dirname(__filename), '..', '..', '..');
 
 describe('Application startup (prompt loading)', () => {
   test('loads configuration and prompts when loadAndConvertPrompts is stubbed', async () => {
@@ -40,7 +47,19 @@ describe('Application startup (prompt loading)', () => {
         convertedPrompts: [convertedStub],
       });
 
-    const app = new Application(createSimpleLogger('stdio'));
+    const runtimeOptions: Partial<RuntimeLaunchOptions> = {
+      serverRoot: SERVER_ROOT,
+      args: [],
+      verbose: false,
+      quiet: true,
+      startupTest: false,
+      testEnvironment: true,
+      paths: {},
+    };
+    const app = new Application(
+      createSimpleLogger('stdio'),
+      runtimeOptions as RuntimeLaunchOptions
+    );
 
     try {
       await app.loadConfiguration();

@@ -1,302 +1,146 @@
-// @lifecycle canonical - Handles early startup diagnostics and rollback wiring.
+// @lifecycle canonical - Package root resolution for MCP server startup.
 /**
- * Server Root Detection and Startup Utilities
- * Robust server root directory detection for different execution contexts:
- * - Local development (node dist/index.js)
- * - Claude Desktop (absolute path invocation)
- * - Global npm install (npm install -g)
- * - npx execution (temporary install)
- * - Local npm install (node_modules/.bin/)
+ * Package Root Resolution
+ *
+ * Resolves the server's package root from the bundled entry point.
+ * The bundle is always at dist/index.js — package root is one dirname above.
+ *
+ * Priority:
+ *   1. --server-root CLI flag (explicit override for containers/edge cases)
+ *   2. Derive from import.meta.url (dist/index.js → package root)
+ *
+ * No CWD guessing, no multi-strategy fallbacks.
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'url';
 
-interface DetectionStrategy {
-  name: string;
-  priority: 'high' | 'medium' | 'low';
-  fn: () => Promise<string | null>;
-}
+const ACCEPTED_PACKAGE_NAMES = ['claude-prompts', 'claude-prompts-mcp'];
 
-interface ValidationResult {
-  valid: boolean;
-  missing: string[];
-  root: string;
+interface PackageRootOptions {
+  cliOverride?: string;
+  verbose?: boolean;
 }
 
 /**
- * Server Root Detector
- * Handles robust server root directory detection using multiple strategies
- * optimized for different execution contexts (npm install, Claude Desktop, development)
+ * Resolve the package root directory.
+ *
+ * The esbuild bundle lives at dist/index.js — one dirname up is the package root.
+ * Validates that config.json and a prompts directory exist before returning.
  */
-export class ServerRootDetector {
-  private isVerbose = false;
-  private isQuiet = false;
-  private hasWarnedEnvDeprecation = false;
+export async function resolvePackageRoot(options?: PackageRootOptions): Promise<string> {
+  const verbose = options?.verbose ?? false;
+  const cliOverride = options?.cliOverride;
 
-  /**
-   * Determine the server root directory using multiple strategies
-   * Priority order:
-   * 1. Package Resolution - Find package.json with matching name (npm installs)
-   * 2. Script Entry Point - Resolve symlinks from process.argv[1]
-   * 3. Module URL - Walk up from import.meta.url
-   * 4. CWD Fallback - process.cwd() patterns (last resort)
-   */
-  async determineServerRoot(): Promise<string> {
-    const args = process.argv.slice(2);
-    this.isVerbose = args.includes('--verbose') || args.includes('--debug-startup');
-    this.isQuiet = args.includes('--quiet');
-
-    const strategies: DetectionStrategy[] = [
-      {
-        name: 'package-resolution',
-        priority: 'high',
-        fn: () => this.resolveFromPackage(),
-      },
-      {
-        name: 'script-entry-point',
-        priority: 'high',
-        fn: () => this.resolveFromScriptPath(),
-      },
-      {
-        name: 'module-url',
-        priority: 'medium',
-        fn: () => this.resolveFromModuleUrl(),
-      },
-      {
-        name: 'cwd-fallback',
-        priority: 'low',
-        fn: () => this.resolveFromCwd(),
-      },
-    ];
-
-    if (this.isVerbose) {
-      this.logDiagnosticInfo();
+  // 1. CLI override — trust the caller
+  if (cliOverride != null && cliOverride.length > 0) {
+    const root = path.resolve(cliOverride);
+    if (verbose) {
+      console.error(`[package-root] Using CLI override: ${root}`);
     }
-
-    for (const strategy of strategies) {
-      try {
-        const result = await strategy.fn();
-        if (result) {
-          const validation = await this.validateServerRoot(result);
-          if (validation.valid) {
-            if (this.isVerbose) {
-              console.error(`✓ SUCCESS: ${strategy.name}`);
-              console.error(`  Path: ${result}`);
-              console.error(`  Priority: ${strategy.priority}`);
-            }
-            return result;
-          } else if (this.isVerbose) {
-            console.error(`⚠ PARTIAL: ${strategy.name} found ${result}`);
-            console.error(`  Missing: ${validation.missing.join(', ')}`);
-          }
-        } else if (this.isVerbose) {
-          console.error(`✗ SKIP: ${strategy.name} returned null`);
-        }
-      } catch (error) {
-        if (this.isVerbose) {
-          console.error(`✗ FAILED: ${strategy.name}`);
-          console.error(`  Error: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-
-    throw new Error(this.generateErrorMessage());
+    await validatePackageRoot(root);
+    return root;
   }
 
-  /**
-   * Strategy 1: Package Resolution (Primary for npm installs)
-   * Walks up from the current module to find package.json with matching name
-   */
-  private async resolveFromPackage(): Promise<string | null> {
-    try {
-      const __filename = fileURLToPath(import.meta.url);
-      let dir = path.dirname(__filename);
+  // 2. Derive from bundle location: dist/index.js → dist/ → package root
+  const entryFile = fileURLToPath(import.meta.url);
+  const packageRoot = path.dirname(path.dirname(entryFile));
 
-      // Walk up to find package.json (max 5 levels for dist/runtime/startup.js)
-      for (let i = 0; i < 5; i++) {
-        const pkgPath = path.join(dir, 'package.json');
-        try {
-          const content = await fs.readFile(pkgPath, 'utf8');
-          const pkg = JSON.parse(content);
-          if (pkg.name === 'claude-prompts') {
-            if (this.isVerbose) {
-              console.error(`  Found package.json at: ${pkgPath}`);
-              console.error(`  Package name matches: ${pkg.name}`);
-            }
-            return dir;
-          }
-        } catch {
-          // Not found at this level, continue walking up
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir) break; // Reached filesystem root
-        dir = parent;
-      }
-    } catch {
-      // Strategy failed
-    }
-    return null;
+  if (verbose) {
+    console.error(`[package-root] Entry: ${entryFile}`);
+    console.error(`[package-root] Resolved: ${packageRoot}`);
   }
 
-  /**
-   * Strategy 2: Script Entry Point (Claude Desktop, direct node)
-   * Resolves symlinks to find actual package location
-   */
-  private async resolveFromScriptPath(): Promise<string | null> {
-    if (!process.argv[1]) return null;
+  await verifyPackageIdentity(packageRoot, entryFile, verbose);
+  await validatePackageRoot(packageRoot);
+  return packageRoot;
+}
 
-    try {
-      // Resolve symlinks to get actual file location
-      // This handles: /usr/local/bin/claude-prompts -> actual package
-      const realPath = await fs.realpath(process.argv[1]);
-      const scriptDir = path.dirname(realPath);
+/**
+ * Verify that the resolved directory contains our package.json.
+ */
+async function verifyPackageIdentity(
+  packageRoot: string,
+  entryFile: string,
+  verbose: boolean
+): Promise<void> {
+  const pkgPath = path.join(packageRoot, 'package.json');
 
-      // Script is in dist/, go up one level to server root
-      const serverRoot = path.dirname(scriptDir);
-
-      if (this.isVerbose) {
-        console.error(`  process.argv[1]: ${process.argv[1]}`);
-        console.error(`  Resolved to: ${realPath}`);
-        console.error(`  Server root: ${serverRoot}`);
-      }
-
-      // Validate config.json exists
-      const configPath = path.join(serverRoot, 'config.json');
-      await fs.access(configPath);
-      return serverRoot;
-    } catch {
-      return null;
-    }
+  let content: string;
+  try {
+    content = await fs.readFile(pkgPath, 'utf8');
+  } catch {
+    throw new Error(generateRootError(packageRoot, entryFile));
   }
 
-  /**
-   * Strategy 3: Module URL Resolution
-   * Uses import.meta.url to find package root
-   */
-  private async resolveFromModuleUrl(): Promise<string | null> {
-    try {
-      const __filename = fileURLToPath(import.meta.url);
-      // startup.ts is at dist/runtime/startup.js
-      // Need to go up 2 levels: runtime -> dist -> server root
-      const serverRoot = path.resolve(path.dirname(__filename), '..', '..');
+  const pkg: Record<string, unknown> = JSON.parse(content) as Record<string, unknown>;
+  const pkgName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
 
-      if (this.isVerbose) {
-        console.error(`  Module location: ${__filename}`);
-        console.error(`  Resolved root: ${serverRoot}`);
-      }
-
-      const configPath = path.join(serverRoot, 'config.json');
-      await fs.access(configPath);
-      return serverRoot;
-    } catch {
-      return null;
-    }
+  if (!ACCEPTED_PACKAGE_NAMES.includes(pkgName)) {
+    throw new Error(
+      `Found package.json at ${pkgPath} but name "${pkgName}" does not match expected names: ${ACCEPTED_PACKAGE_NAMES.join(', ')}`
+    );
   }
 
-  /**
-   * Strategy 4: CWD Fallback (Last resort, development only)
-   */
-  private async resolveFromCwd(): Promise<string | null> {
-    const candidates = [process.cwd(), path.join(process.cwd(), 'server')];
+  if (verbose) {
+    const pkgVersion = typeof pkg['version'] === 'string' ? pkg['version'] : 'unknown';
+    console.error(`[package-root] Verified package: ${pkgName}@${pkgVersion}`);
+  }
+}
 
-    for (const candidate of candidates) {
-      try {
-        const configPath = path.join(candidate, 'config.json');
-        await fs.access(configPath);
+/**
+ * Validate that a directory contains the required server assets.
+ */
+async function validatePackageRoot(root: string): Promise<void> {
+  const missing: string[] = [];
 
-        if (this.isVerbose) {
-          console.error(`  Found via cwd: ${candidate}`);
-        }
-        return candidate;
-      } catch {
-        // Try next candidate
-      }
-    }
-
-    return null;
+  // config.json is required
+  if (!(await pathExists(path.join(root, 'config.json')))) {
+    missing.push('config.json');
   }
 
-  /**
-   * Validate that a directory is a valid server root
-   * Checks for required files and directories
-   */
-  private async validateServerRoot(root: string): Promise<ValidationResult> {
-    const missing: string[] = [];
-
-    // config.json is always required
-    try {
-      await fs.access(path.join(root, 'config.json'));
-    } catch {
-      missing.push('config.json');
-    }
-
-    // Prompts: check resources/prompts (new structure) OR prompts (legacy)
-    const hasResourcesPrompts = await this.pathExists(path.join(root, 'resources', 'prompts'));
-    const hasLegacyPrompts = await this.pathExists(path.join(root, 'prompts'));
-    if (!hasResourcesPrompts && !hasLegacyPrompts) {
-      missing.push('prompts (or resources/prompts)');
-    }
-
-    // gates directory is optional (may be bundled differently in some deployments)
-    // No need to check - it's not required for validation
-
-    return {
-      valid: missing.length === 0,
-      missing,
-      root,
-    };
+  // Prompts directory: resources/prompts (current) or prompts (legacy)
+  const hasResourcesPrompts = await pathExists(path.join(root, 'resources', 'prompts'));
+  const hasLegacyPrompts = await pathExists(path.join(root, 'prompts'));
+  if (!hasResourcesPrompts && !hasLegacyPrompts) {
+    missing.push('prompts directory (resources/prompts/ or prompts/)');
   }
 
-  /**
-   * Check if a path exists (file or directory)
-   */
-  private async pathExists(filePath: string): Promise<boolean> {
-    try {
-      await fs.access(filePath);
-      return true;
-    } catch {
-      return false;
-    }
+  if (missing.length > 0) {
+    throw new Error(
+      `Invalid package root: ${root}\nMissing: ${missing.join(', ')}\n\n` +
+        'Use --server-root=/path/to/server to override, or run with --verbose for diagnostics.'
+    );
   }
+}
 
-  /**
-   * Log diagnostic information for troubleshooting
-   */
-  private logDiagnosticInfo(): void {
-    console.error('=== SERVER ROOT DETECTION ===');
-    console.error(`process.cwd(): ${process.cwd()}`);
-    console.error(`process.argv[0]: ${process.argv[0]}`);
-    console.error(`process.argv[1]: ${process.argv[1] || 'undefined'}`);
-    console.error(`import.meta.url: ${import.meta.url}`);
-    console.error(`MCP_WORKSPACE: ${process.env['MCP_WORKSPACE'] || 'undefined'}`);
-    console.error('');
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  /**
-   * Generate actionable error message when all strategies fail
-   */
-  private generateErrorMessage(): string {
-    return `
+function generateRootError(resolvedRoot: string, entryFile: string): string {
+  return `
 Unable to detect server root directory.
+
+Resolved root: ${resolvedRoot}
+Entry file: ${entryFile}
 
 This usually happens when:
 1. The package was not installed correctly
-2. Required files are missing (config.json, resources/prompts/ or prompts/)
-3. Running from an unexpected directory
+2. Required files are missing (config.json, resources/prompts/)
 
 SOLUTIONS:
 
-If running from source:
-  cd /path/to/claude-prompts/server
-  node dist/index.js
+Use --server-root to specify the package root explicitly:
+  node dist/index.js --server-root=/path/to/server
 
-If installed via npm:
-  npm uninstall -g claude-prompts
-  npm install -g claude-prompts
-
-For Claude Desktop, ensure claude_desktop_config.json uses absolute paths:
+For Claude Desktop / Claude Code, ensure config uses absolute paths:
   {
     "mcpServers": {
       "claude-prompts": {
@@ -306,7 +150,6 @@ For Claude Desktop, ensure claude_desktop_config.json uses absolute paths:
     }
   }
 
-For debugging, run with --verbose flag to see detection details.
+For debugging, run with --verbose flag.
 `;
-  }
 }

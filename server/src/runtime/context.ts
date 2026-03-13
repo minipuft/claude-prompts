@@ -11,7 +11,7 @@ import * as path from 'node:path';
 
 import { resolveRuntimeLaunchOptions, RuntimeLaunchOptions } from './options.js';
 import { PathResolver } from './paths.js';
-import { ServerRootDetector } from './startup.js';
+import { resolvePackageRoot } from './startup.js';
 import { ConfigLoader } from '../infra/config/index.js';
 import { TransportRouter } from '../infra/http/index.js';
 import { createLogger, EnhancedLoggingConfig, Logger } from '../infra/logging/index.js';
@@ -71,8 +71,11 @@ export async function createRuntimeFoundation(
 ): Promise<RuntimeFoundation> {
   const options = runtimeOptions ?? resolveRuntimeLaunchOptions();
 
-  // Determine server root (package root) using existing detection
-  const serverRoot = await new ServerRootDetector().determineServerRoot();
+  // Determine server root (package root) from bundle location
+  const serverRoot = await resolvePackageRoot({
+    cliOverride: options.serverRoot,
+    verbose: options.verbose,
+  });
 
   // Create PathResolver with pre-parsed CLI path options and package root
   const pathResolver =

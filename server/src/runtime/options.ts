@@ -43,6 +43,8 @@ export interface RuntimeLaunchOptions {
   identityMode?: IdentityPolicyMode;
   /** Launch-time identity defaults from identity and client CLI flags */
   identityDefaults?: IdentityLaunchDefaults;
+  /** Explicit server root override from --server-root flag */
+  serverRoot?: string;
 }
 
 const TEST_ARG_HINTS = ['test', 'jest', 'mocha'];
@@ -223,6 +225,10 @@ export function resolveRuntimeLaunchOptions(
 
   // Wire identity and client-profile CLI flags
   Object.assign(runtimeOptions, resolveIdentityLaunchOptions(cli));
+
+  if (cli.serverRoot !== undefined) {
+    runtimeOptions.serverRoot = cli.serverRoot;
+  }
 
   return runtimeOptions;
 }

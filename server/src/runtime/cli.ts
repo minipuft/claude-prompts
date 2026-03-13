@@ -23,6 +23,7 @@ export interface ServerCliArgs {
   organizationId?: string;
   identityMode?: string;
   client?: string;
+  serverRoot?: string;
 }
 
 export function parseServerCliArgs(args: string[] = process.argv.slice(2)): ServerCliArgs {
@@ -50,6 +51,7 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
       'organization-id': { type: 'string' },
       'identity-mode': { type: 'string' },
       client: { type: 'string' },
+      'server-root': { type: 'string' },
     },
     strict: false,
     allowPositionals: true,
@@ -77,5 +79,6 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
     organizationId: values['organization-id'] as string | undefined,
     identityMode: values['identity-mode'] as string | undefined,
     client: values.client as string | undefined,
+    serverRoot: values['server-root'] as string | undefined,
   };
 }
