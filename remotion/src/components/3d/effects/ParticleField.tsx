@@ -137,15 +137,11 @@ export const ParticleField: React.FC<ParticleFieldProps> = ({
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          count={count}
-          array={animatedPositions}
-          itemSize={3}
+          args={[animatedPositions, 3]}
         />
         <bufferAttribute
           attach="attributes-color"
-          count={count}
-          array={colorArray}
-          itemSize={3}
+          args={[colorArray, 3]}
         />
       </bufferGeometry>
       <pointsMaterial

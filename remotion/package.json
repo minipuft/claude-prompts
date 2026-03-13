@@ -12,24 +12,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-three/drei": "^9.88.17",
-    "@react-three/fiber": "^8.15.19",
-    "@react-three/postprocessing": "^2.16.3",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@react-three/postprocessing": "^3.0.4",
     "@remotion/cli": "^4.0.0",
     "@remotion/google-fonts": "^4.0.0",
     "@remotion/player": "^4.0.0",
     "@remotion/three": "^4.0.409",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "remotion": "^4.0.0",
-    "three": "^0.160.0",
+    "three": "^0.183.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.160.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/three": "^0.183.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
