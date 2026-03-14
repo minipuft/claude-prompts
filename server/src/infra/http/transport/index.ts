@@ -179,7 +179,8 @@ export class TransportRouter {
         let lastError = null;
 
         // Get sessionId from query params - SSEServerTransport includes it in the endpoint URL
-        const sessionId = req.query['sessionId'] as string | undefined;
+        const sessionIdParam = req.query['sessionId'];
+        const sessionId = Array.isArray(sessionIdParam) ? sessionIdParam[0] : sessionIdParam;
 
         for (const transport of transports) {
           try {
