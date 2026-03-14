@@ -22,14 +22,14 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remotion": "^4.0.0",
-    "three": "^0.160.0",
+    "three": "^0.183.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.160.0",
+    "@types/three": "^0.183.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
