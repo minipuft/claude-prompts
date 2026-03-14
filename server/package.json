@@ -152,7 +152,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-prettier": "^5.5.5",
-    "eslint-plugin-sonarjs": "^3.0.6",
+    "eslint-plugin-sonarjs": "^4.0.0",
     "jest": "^30.0.0",
     "knip": "^5.82.1",
     "lint-staged": "^16.2.7",
