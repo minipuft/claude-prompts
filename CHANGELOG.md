@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/minipuft/claude-prompts/compare/v2.0.0...v2.0.1) (2026-03-14)
+
+
+### Fixed
+
+* **ci:** centralize downstream version sync in extension-publish ([e8c25e0](https://github.com/minipuft/claude-prompts/commit/e8c25e0d7bb925ce517c2aa72e226d4c4ebf0be0))
+* **deps:** update dependency chokidar to v5 ([b10476f](https://github.com/minipuft/claude-prompts/commit/b10476f3547051ea5c7296e275c69f2d0561eb5b))
+* **hooks:** register delegation-enforce.py in PreToolUse hooks ([0c7c3a4](https://github.com/minipuft/claude-prompts/commit/0c7c3a4f3ebd78527bacbe821991c248214ad8c5))
+* **hooks:** resolve generated operators Ruff typing issue ([a956fb2](https://github.com/minipuft/claude-prompts/commit/a956fb2a7df0f0439d5bd39f7343c3dfb071a452))
+* **hot-reload:** support chokidar 5 upgrade ([1db39c8](https://github.com/minipuft/claude-prompts/commit/1db39c8982706e36d70b2eec1580631594d99fa3))
+* **parsers:** strip leading delegation operators before argument extraction ([07ed2ee](https://github.com/minipuft/claude-prompts/commit/07ed2ee7498956b5690fa555c94bf63db95acbe0))
+* **scripts:** check dependency range instead of package version for opencode ([3f3fa9e](https://github.com/minipuft/claude-prompts/commit/3f3fa9e6fd4089c0202e3bee74ce4f8cd379790c))
+* **scripts:** generate Ruff-compatible Python operator types ([aa201d7](https://github.com/minipuft/claude-prompts/commit/aa201d7166d35dd7b91cc6fa0eded6ea848e10c9))
+
+
+### Changed
+
+* **hooks:** improve Python hook type safety and reduce pyrefly baseline ([69cc281](https://github.com/minipuft/claude-prompts/commit/69cc281d4b6ab3d137b0713b4730be55ffac4288))
+* **runtime:** replace ServerRootDetector with resolvePackageRoot() ([3c2bd7f](https://github.com/minipuft/claude-prompts/commit/3c2bd7ffb1c04c4949397119cb1680126481f3e2))
+* **server:** enforce architecture boundaries via DatabasePort injection ([5b39be0](https://github.com/minipuft/claude-prompts/commit/5b39be009cad1221ad3d2471c243282897d11723))
+
+
+### Documentation
+
+* **cleanup:** record chokidar post-upgrade rationale ([b6740e2](https://github.com/minipuft/claude-prompts/commit/b6740e21d11bf20a324c3e511a97ad67c28924c9))
+* record open PR validation wave ([81d383a](https://github.com/minipuft/claude-prompts/commit/81d383a51191570cf4314caeec29e7d9dcbb540c))
+* record package wave results ([0e7de90](https://github.com/minipuft/claude-prompts/commit/0e7de90a611b5151f6e4a095ed4e49bfa49ba9ff))
+* record remaining package wave ([d398fe5](https://github.com/minipuft/claude-prompts/commit/d398fe54b37d279dc23616453033350a5d1784d8))
+* remove orphaned [Unreleased] section from pre-v2.0.0 changelog ([73ad697](https://github.com/minipuft/claude-prompts/commit/73ad69785c60ddccdd6decf52b6f86f57701ac74))
+* standardize inline doc links with TIP callouts across README ([ebd6241](https://github.com/minipuft/claude-prompts/commit/ebd62412b08b03a0f335b12850750f8d0546144e))
+* update changelog for unreleased changes ([25c659e](https://github.com/minipuft/claude-prompts/commit/25c659e21230b1adca71789541dadd1ac1416996))
+* update demo video plan to WebP format and re-recording schedule ([b87aef7](https://github.com/minipuft/claude-prompts/commit/b87aef7f106f7502ee1e2e253deb05606b4b5d4c))
+
 ## [Unreleased]
 
 ## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
