@@ -141,7 +141,8 @@ export class ApiRouter {
 
     // Get prompts by category
     app.get('/categories/:categoryId/prompts', (req: Request, res: Response) => {
-      const categoryId = req.params['categoryId'];
+      const categoryIdParam = req.params['categoryId'];
+      const categoryId = Array.isArray(categoryIdParam) ? categoryIdParam[0] : categoryIdParam;
       const categoryPrompts = this.promptsData.filter((prompt) => prompt.category === categoryId);
 
       if (categoryPrompts.length === 0) {
@@ -306,7 +307,8 @@ export class ApiRouter {
    */
   private async handleDeletePrompt(req: Request, res: Response): Promise<void> {
     try {
-      const id = req.params['id'];
+      const idParam = req.params['id'];
+      const id = Array.isArray(idParam) ? idParam[0] : idParam;
       this.logger.info(`API request to delete prompt: ${id}`);
 
       if (!id) {
