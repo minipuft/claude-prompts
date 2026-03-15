@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Tier 5 File Size Decomposition**: Three oversized files decomposed to meet 500-line service advisory
+  - `loader.ts` (896→544): Extracted markdown parsing to `markdown-prompt-parser.ts`; consolidated ~30 verbose info-level logs
+  - `tool-description-loader.ts` (741→489): Extracted methodology/style overlay resolution to `tool-description-overlays.ts`
+  - `file-operations.ts` (517→345): Removed 3 dead diagnostic methods with zero consumers
 - **MCP Tool Schemas**: Hand-written Zod schema factories replace codegen `mcp-schemas.ts`, enabling methodology-aware description overlays without generated code
 - **Operator Patterns**: Loaded from JSON registry at import time via esbuild inlining, eliminating the `generate-operators` codegen step and Python hook codegen
 - **Style Guidance**: Served exclusively from YAML definitions via StyleManager, removing hardcoded legacy fallback

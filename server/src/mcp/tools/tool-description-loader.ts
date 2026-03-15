@@ -1,28 +1,28 @@
 // @lifecycle canonical - Manages MCP tool descriptions and discovery metadata.
 /**
- * Tool Description Manager
+ * Tool Description Loader
  *
  * Manages externalized tool descriptions with methodology-aware overlays.
- * Methodology-specific overlays are sourced solely from runtime YAML definitions (SOT); config
- * may define baseline/non-methodology text but methodology entries are ignored (warned).
- *
  * Base descriptions loaded from generated contracts (tool-descriptions.contracts.json).
- * Methodology overlays applied in-memory from YAML guides. No file persistence needed —
- * the in-memory descriptions Map is the runtime source of truth.
+ * Overlay resolution delegated to tool-description-overlays.ts.
+ *
+ * No file persistence — the in-memory descriptions Map is the runtime source of truth.
  */
 
 import { EventEmitter } from 'events';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { FrameworkStateStore } from '../../engine/frameworks/framework-state-store.js';
 import {
-  getDefaultRuntimeLoader,
-  createGenericGuide,
-} from '../../engine/frameworks/methodology/index.js';
-import { MethodologyToolDescriptions } from '../../engine/frameworks/types/index.js';
-import { getDefaultStyleDefinitionLoader } from '../../modules/formatting/core/style-definition-loader.js';
+  cloneToolDescription,
+  normalizeMethodologyKey,
+  preloadMethodologyDescriptions,
+  preloadStyleDescriptions,
+  buildActiveConfig,
+} from './tool-description-overlays.js';
+import { FrameworkStateStore } from '../../engine/frameworks/framework-state-store.js';
 
+import type { MethodologyToolDescriptions } from '../../engine/frameworks/types/index.js';
 import type { StyleToolDescriptionYaml } from '../../modules/formatting/core/style-schema.js';
 import type {
   ConfigManager,
@@ -36,7 +36,6 @@ import type {
  * @deprecated Emergency fallback only - do not edit.
  * Primary source of truth is tool-descriptions.contracts.json generated from mcp-contracts/schemas/*.json.
  * Run `npm run generate:contracts` to regenerate from contracts.
- * These defaults exist only as emergency fallback when generated artifacts are missing.
  */
 const DEFAULT_TOOL_DESCRIPTION_ENTRIES: Array<[string, ToolDescription]> = [
   [
@@ -68,37 +67,6 @@ const DEFAULT_TOOL_DESCRIPTION_ENTRIES: Array<[string, ToolDescription]> = [
   ],
 ];
 
-function cloneToolDescription(description: ToolDescription): ToolDescription {
-  const cloned: ToolDescription = { ...description };
-
-  if (description.parameters) {
-    cloned.parameters = { ...description.parameters };
-  }
-
-  if (description.frameworkAware) {
-    const frameworkAware = { ...description.frameworkAware };
-
-    if (description.frameworkAware.methodologies) {
-      frameworkAware.methodologies = { ...description.frameworkAware.methodologies };
-    }
-    if (description.frameworkAware.parametersEnabled) {
-      frameworkAware.parametersEnabled = { ...description.frameworkAware.parametersEnabled };
-    }
-    if (description.frameworkAware.parametersDisabled) {
-      frameworkAware.parametersDisabled = { ...description.frameworkAware.parametersDisabled };
-    }
-    if (description.frameworkAware.methodologyParameters) {
-      frameworkAware.methodologyParameters = {
-        ...description.frameworkAware.methodologyParameters,
-      };
-    }
-
-    cloned.frameworkAware = frameworkAware;
-  }
-
-  return cloned;
-}
-
 function createDefaultToolDescriptionMap(): Map<string, ToolDescription> {
   return new Map(
     DEFAULT_TOOL_DESCRIPTION_ENTRIES.map(([name, description]) => [
@@ -118,8 +86,6 @@ export function getDefaultToolDescription(toolName: string): ToolDescription | u
  *
  * Load flow:
  *   contracts JSON → in-memory Map → methodology overlays applied → getDescription() serves result
- *
- * No file persistence — the Map IS the runtime state.
  */
 export class ToolDescriptionLoader extends EventEmitter {
   private logger: Logger;
@@ -149,7 +115,6 @@ export class ToolDescriptionLoader extends EventEmitter {
     this.logger = logger;
     this.configManager = configManager;
     const serverRoot = configManager.getServerRoot();
-    // Generated from contracts - single source of truth
     this.configPath = path.join(
       serverRoot,
       'src',
@@ -159,7 +124,7 @@ export class ToolDescriptionLoader extends EventEmitter {
       'tool-descriptions.contracts.json'
     );
     this.descriptions = new Map();
-    this.defaults = this.createDefaults();
+    this.defaults = createDefaultToolDescriptionMap();
     this.methodologyDescriptions = new Map();
     this.styleDescriptions = new Map();
     this.frameworksConfig = this.configManager.getFrameworksConfig();
@@ -179,95 +144,12 @@ export class ToolDescriptionLoader extends EventEmitter {
     this.configManager.on('frameworksConfigChanged', this.frameworksConfigListener);
   }
 
-  /**
-   * Normalize methodology keys for consistent lookup (case-insensitive)
-   */
-  private normalizeMethodologyKey(methodology?: string): string | undefined {
-    if (!methodology) return undefined;
-    return methodology.trim().toUpperCase();
-  }
-
-  /**
-   * Create default descriptions as fallback
-   */
-  private createDefaults(): Map<string, ToolDescription> {
-    return createDefaultToolDescriptionMap();
-  }
-
-  /**
-   * Warn if config attempts to define methodology-specific overlays (YAML is SOT for methodology).
-   */
   private warnOnMethodologyConfigLeak(toolName: string, description: ToolDescription): void {
     const hasMethodologyDesc = Boolean(description.frameworkAware?.methodologies);
     const hasMethodologyParams = Boolean(description.frameworkAware?.methodologyParameters);
     if (hasMethodologyDesc || hasMethodologyParams) {
       this.logger.warn(
         `[ToolDescriptionLoader] Config contains methodology-specific entries for ${toolName}; YAML overlays are the sole source of truth. Config methodology entries are ignored.`
-      );
-    }
-  }
-
-  /**
-   * Pre-load all methodology descriptions for dynamic switching
-   * Uses RuntimeMethodologyLoader for YAML-based methodology loading
-   */
-  private preloadMethodologyDescriptions(): void {
-    try {
-      this.methodologyDescriptions.clear();
-      const loader = getDefaultRuntimeLoader();
-      const methodologyIds = loader.discoverMethodologies();
-
-      for (const id of methodologyIds) {
-        const definition = loader.loadMethodology(id);
-        if (!definition) continue;
-
-        const guide = createGenericGuide(definition);
-        const descriptions = guide.getToolDescriptions?.() || {};
-        const methodologyKey = this.normalizeMethodologyKey(guide.type);
-        const frameworkKey = this.normalizeMethodologyKey(guide.frameworkId);
-
-        if (methodologyKey) {
-          this.methodologyDescriptions.set(methodologyKey, descriptions);
-        }
-
-        if (frameworkKey) {
-          this.methodologyDescriptions.set(frameworkKey, descriptions);
-        }
-      }
-
-      this.logger.info(
-        `Pre-loaded tool descriptions for ${this.methodologyDescriptions.size} methodologies from YAML (SOT)`
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to pre-load methodology descriptions: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  /**
-   * Pre-load style tool descriptions for responseFormat overlay.
-   * Uses the default StyleDefinitionLoader singleton.
-   */
-  private preloadStyleDescriptions(): void {
-    try {
-      this.styleDescriptions.clear();
-      const loader = getDefaultStyleDefinitionLoader();
-      const styleIds = loader.discoverStyles();
-
-      for (const id of styleIds) {
-        const definition = loader.loadStyle(id);
-        const toolDescs = definition?.toolDescriptions;
-        if (toolDescs == null) continue;
-        this.styleDescriptions.set(id.toLowerCase(), toolDescs);
-      }
-
-      this.logger.info(
-        `Pre-loaded tool descriptions for ${this.styleDescriptions.size} styles from YAML`
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to pre-load style descriptions: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -296,40 +178,31 @@ export class ToolDescriptionLoader extends EventEmitter {
     }
   }
 
-  private createConfigFromMap(
-    sourceMap: Map<string, ToolDescription>,
-    source: 'defaults'
-  ): ToolDescriptionsConfig {
-    return {
-      version: '2.0.0',
-      lastUpdated: new Date().toISOString(),
-      generatedFrom: source,
-      tools: Object.fromEntries(
-        Array.from(sourceMap.entries()).map(([name, description]) => [
-          name,
-          cloneToolDescription(description),
-        ])
-      ),
-    };
-  }
-
   private async loadBaseConfig(): Promise<{
     config: ToolDescriptionsConfig;
     source: 'contracts' | 'defaults';
   }> {
-    // Load from generated tool-descriptions.contracts.json (contracts are SSOT)
     const generated = await this.readToolDescriptionsConfig(this.configPath);
     if (generated) {
       return { config: generated, source: 'contracts' };
     }
 
-    // Fallback to in-memory defaults if generated file missing
     this.logger.warn(
       `[ToolDescriptionLoader] Generated tool-descriptions.contracts.json not found at ${this.configPath}. ` +
         `Run 'npm run generate:contracts' to generate from contracts. Using in-memory defaults.`
     );
     return {
-      config: this.createConfigFromMap(this.defaults, 'defaults'),
+      config: {
+        version: '2.0.0',
+        lastUpdated: new Date().toISOString(),
+        generatedFrom: 'defaults',
+        tools: Object.fromEntries(
+          Array.from(this.defaults.entries()).map(([name, description]) => [
+            name,
+            cloneToolDescription(description),
+          ])
+        ),
+      },
       source: 'defaults',
     };
   }
@@ -370,104 +243,14 @@ export class ToolDescriptionLoader extends EventEmitter {
     }
   }
 
-  private buildActiveConfig(
-    baseConfig: ToolDescriptionsConfig,
-    activeContext: {
-      activeFramework?: string;
-      activeMethodology?: string;
-      frameworkSystemEnabled?: boolean;
-    }
-  ): ToolDescriptionsConfig {
-    const methodologyKey = this.normalizeMethodologyKey(
-      activeContext.activeMethodology ?? activeContext.activeFramework
-    );
-    const dynamicDescriptionsEnabled =
-      this.frameworksConfig.dynamicToolDescriptions &&
-      (activeContext.frameworkSystemEnabled ?? true);
-
-    const tools: Record<string, ToolDescription> = {};
-    for (const [name, description] of Object.entries(baseConfig.tools)) {
-      const baseDescription = cloneToolDescription(description);
-
-      if (dynamicDescriptionsEnabled && methodologyKey) {
-        const methodologyDescs = this.methodologyDescriptions.get(methodologyKey);
-        const methodologyTool =
-          methodologyDescs?.[name as keyof MethodologyToolDescriptions] || undefined;
-
-        if (methodologyTool?.description) {
-          baseDescription.description = methodologyTool.description;
-        }
-
-        if (methodologyTool?.parameters) {
-          baseDescription.parameters = {
-            ...baseDescription.parameters,
-            ...methodologyTool.parameters,
-          };
-        }
-
-        // Methodology responseFormat woven into tool description (highest priority)
-        if (methodologyTool?.responseFormat) {
-          baseDescription.description = this.weaveResponseFormat(
-            baseDescription.description,
-            methodologyTool.responseFormat
-          );
-        }
-      }
-
-      tools[name] = baseDescription;
-    }
-
-    const generatedConfig: ToolDescriptionsConfig = {
-      ...baseConfig,
-      tools,
-      generatedAt: new Date().toISOString(),
-      generatedFrom: baseConfig.generatedFrom ?? 'contracts',
-    };
-
-    if (activeContext.activeFramework) {
-      generatedConfig.activeFramework = activeContext.activeFramework;
-    }
-    if (activeContext.activeMethodology) {
-      generatedConfig.activeMethodology = activeContext.activeMethodology;
-    }
-
-    return generatedConfig;
-  }
-
-  /**
-   * Weave responseFormat guidance into the tool description text.
-   * Appended as a dedicated section so the LLM reads it before invocation.
-   */
-  private weaveResponseFormat(description: string, responseFormat: string): string {
-    if (description.includes(responseFormat)) {
-      return description; // Already contains this guidance
-    }
-    return `${description}\n\n**Response Format:** ${responseFormat}`;
-  }
-
-  /**
-   * Get the responseFormat for a specific tool from the active style.
-   * Used by Stage 06b to decide whether to inject style guidance into system prompt.
-   *
-   * @param toolName - The MCP tool name (e.g., 'prompt_engine')
-   * @param styleId - The active style ID (e.g., 'analytical')
-   * @returns The responseFormat text or undefined if none defined
-   */
   getStyleResponseFormat(toolName: string, styleId: string): string | undefined {
     const styleDescs = this.styleDescriptions.get(styleId.toLowerCase());
     return styleDescs?.[toolName]?.responseFormat;
   }
 
-  /**
-   * Check if the active methodology already provides a responseFormat for a tool.
-   * Used by Stage 06b to skip redundant style injection.
-   *
-   * @param toolName - The MCP tool name
-   * @returns true if the tool description already has a methodology responseFormat woven in
-   */
   hasMethodologyResponseFormat(toolName: string): boolean {
     const context = this.getActiveFrameworkContext();
-    const methodologyKey = this.normalizeMethodologyKey(
+    const methodologyKey = normalizeMethodologyKey(
       context.activeMethodology ?? context.activeFramework
     );
     if (!methodologyKey) return false;
@@ -477,17 +260,22 @@ export class ToolDescriptionLoader extends EventEmitter {
     return Boolean(tool?.responseFormat);
   }
 
-  /**
-   * Synchronize in-memory descriptions from contracts + methodology overlays.
-   */
   private async synchronize(reason: string, options?: { emitChange?: boolean }): Promise<void> {
     try {
       const base = await this.loadBaseConfig();
       this.lastLoadSource = base.source;
-      this.preloadMethodologyDescriptions();
-      this.preloadStyleDescriptions();
+      this.methodologyDescriptions = preloadMethodologyDescriptions(this.logger);
+      this.styleDescriptions = preloadStyleDescriptions(this.logger);
       const activeContext = this.getActiveFrameworkContext();
-      const activeConfig = this.buildActiveConfig(base.config, activeContext);
+      const dynamicEnabled =
+        this.frameworksConfig.dynamicToolDescriptions &&
+        (activeContext.frameworkSystemEnabled ?? true);
+      const activeConfig = buildActiveConfig(
+        base.config,
+        activeContext,
+        this.methodologyDescriptions,
+        dynamicEnabled
+      );
       activeConfig.generatedFrom = base.source;
 
       this.setDescriptionsFromConfig(activeConfig);
@@ -520,7 +308,6 @@ export class ToolDescriptionLoader extends EventEmitter {
       return;
     }
 
-    // Clean up old listeners if re-binding
     if (this.frameworkStateStore && this.frameworkSwitchedListener) {
       this.frameworkStateStore.off('framework-switched', this.frameworkSwitchedListener);
     }
@@ -541,16 +328,10 @@ export class ToolDescriptionLoader extends EventEmitter {
     this.frameworkStateStore.on('framework-system-toggled', this.frameworkToggledListener);
   }
 
-  /**
-   * Initialize by loading descriptions from contracts and applying methodology overlays
-   */
   async initialize(): Promise<void> {
     await this.synchronize('initial load', { emitChange: false });
   }
 
-  /**
-   * Get description for a specific tool with corrected priority hierarchy
-   */
   getDescription(
     toolName: string,
     frameworkEnabled?: boolean,
@@ -574,44 +355,34 @@ export class ToolDescriptionLoader extends EventEmitter {
     this.logger.debug(
       `Getting description for ${toolName} (framework: ${frameworkEnabled}, methodology: ${activeMethodology})`
     );
-    const methodologyKey = this.normalizeMethodologyKey(activeMethodology);
-    const methodologyLogName = activeMethodology ?? methodologyKey;
+    const methodologyKey = normalizeMethodologyKey(activeMethodology);
 
-    // PRIORITY 1: Methodology-specific descriptions from YAML guides (SOT, HIGHEST PRIORITY)
+    // PRIORITY 1: Methodology-specific descriptions from YAML guides (SOT)
     if (applyMethodologyOverride && methodologyKey) {
       const methodologyDescs = this.methodologyDescriptions.get(methodologyKey);
       if (methodologyDescs?.[toolName as keyof MethodologyToolDescriptions]?.description) {
         const methodologyDesc =
           methodologyDescs[toolName as keyof MethodologyToolDescriptions]!.description!;
         this.logger.debug(
-          `Using methodology-specific description from ${methodologyLogName} guide for ${toolName}`
+          `Using methodology-specific description from ${activeMethodology ?? methodologyKey} guide for ${toolName}`
         );
         return methodologyDesc;
       }
-      this.logger.debug(
-        `No methodology-specific description found for ${toolName} in ${methodologyLogName} guide`
-      );
     }
 
-    // PRIORITY 2: Framework-aware descriptions from config (if methodology desc not available)
+    // PRIORITY 2: Framework-aware descriptions from config
     if (frameworkEnabled !== undefined && toolDesc.frameworkAware) {
       if (frameworkEnabled && toolDesc.frameworkAware.enabled) {
-        this.logger.debug(`Using framework-aware enabled description from config for ${toolName}`);
         return toolDesc.frameworkAware.enabled;
       } else if (!frameworkEnabled && toolDesc.frameworkAware.disabled) {
-        this.logger.debug(`Using framework-aware disabled description from config for ${toolName}`);
         return toolDesc.frameworkAware.disabled;
       }
     }
 
-    // PRIORITY 3: Basic config file descriptions (LOWER PRIORITY)
-    this.logger.debug(`Using basic config/default description for ${toolName}`);
+    // PRIORITY 3: Base config descriptions
     return toolDesc.description;
   }
 
-  /**
-   * Get parameter description for a specific tool parameter
-   */
   getParameterDescription(
     toolName: string,
     paramName: string,
@@ -631,9 +402,8 @@ export class ToolDescriptionLoader extends EventEmitter {
 
     const applyMethodologyOverride = options?.applyMethodologyOverride ?? true;
     if (!toolDesc.parameters) return undefined;
-    const methodologyKey = this.normalizeMethodologyKey(activeMethodology);
+    const methodologyKey = normalizeMethodologyKey(activeMethodology);
 
-    // Check for methodology-specific parameter descriptions first (from YAML SOT cache)
     if (applyMethodologyOverride && methodologyKey) {
       const methodologyDescs = this.methodologyDescriptions.get(methodologyKey);
       const methodologyTool = methodologyDescs?.[toolName as keyof MethodologyToolDescriptions];
@@ -643,7 +413,6 @@ export class ToolDescriptionLoader extends EventEmitter {
       }
     }
 
-    // Check for framework-aware parameter descriptions
     if (frameworkEnabled !== undefined && toolDesc.frameworkAware) {
       const frameworkParams = frameworkEnabled
         ? toolDesc.frameworkAware.parametersEnabled
@@ -655,35 +424,22 @@ export class ToolDescriptionLoader extends EventEmitter {
       }
     }
 
-    // Fall back to default parameters
     const param = toolDesc.parameters[paramName];
     return typeof param === 'string' ? param : param?.description;
   }
 
-  /**
-   * Get all available tool names
-   */
   getAvailableTools(): string[] {
     return Array.from(this.descriptions.keys());
   }
 
-  /**
-   * Check if manager is properly initialized
-   */
   isReady(): boolean {
     return this.isInitialized;
   }
 
-  /**
-   * Get contracts source path for debugging
-   */
   getConfigPath(): string {
     return this.configPath;
   }
 
-  /**
-   * Get statistics about loaded descriptions
-   */
   getStats(): {
     totalDescriptions: number;
     loadedFromFile: number;
@@ -706,16 +462,10 @@ export class ToolDescriptionLoader extends EventEmitter {
     };
   }
 
-  /**
-   * Reload descriptions from contracts and reapply methodology overlays
-   */
   async reload(): Promise<void> {
     await this.synchronize('reload');
   }
 
-  /**
-   * Cleanup resources on shutdown
-   */
   shutdown(): void {
     if (this.frameworksConfigListener) {
       this.configManager.off('frameworksConfigChanged', this.frameworksConfigListener);
@@ -730,9 +480,6 @@ export class ToolDescriptionLoader extends EventEmitter {
   }
 }
 
-/**
- * Factory function following established pattern
- */
 export function createToolDescriptionLoader(
   logger: Logger,
   configManager: ConfigManager
