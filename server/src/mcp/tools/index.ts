@@ -18,10 +18,6 @@
 
 import * as path from 'node:path';
 
-import { z } from 'zod';
-
-// Import generated Zod schemas from contracts (SSOT for parameter validation)
-
 import { FrameworkToolHandler, createFrameworkToolHandler } from './framework-manager/index.js';
 import { GateToolHandler, createGateToolHandler } from './gate-manager/index.js';
 import { PromptExecutor, createPromptExecutor } from './prompt-engine/index.js';
@@ -30,6 +26,15 @@ import {
   PromptResourceHandler,
   createPromptResourceHandler,
 } from './resource-manager/prompt/index.js';
+// Hand-written Zod schemas — SSOT for parameter validation (replaced codegen)
+import {
+  buildPromptEngineSchema,
+  buildSystemControlSchema,
+  resourceManagerInputSchema,
+  type PromptEngineInput,
+  type SystemControlInput,
+  type ResourceManagerInput as ResourceManagerSchemaInput,
+} from './schemas/index.js';
 import {
   ConsolidatedSystemControl,
   createConsolidatedSystemControl,
@@ -59,14 +64,7 @@ import {
   type McpNotificationEmitterPort,
   ToolResponse,
 } from '../../shared/types/index.js';
-import {
-  promptEngineSchema,
-  systemControlSchema,
-  resourceManagerSchema,
-  type promptEngineInput,
-  type systemControlInput,
-  type resourceManagerInput,
-} from '../contracts/schemas/_generated/mcp-schemas.js';
+// Schemas now hand-written in ./schemas/ (replaced generated mcp-schemas.ts)
 
 import type { FrameworkManagerDependencies } from './framework-manager/core/types.js';
 import type { ResourceManagerInput } from './resource-manager/core/types.js';
@@ -580,142 +578,21 @@ export class McpToolRouter {
         );
       }
 
-      // Custom check schema for simple inline validation
-      const customCheckSchema = z.object({
-        name: z.string().min(1, 'Custom check name cannot be empty'),
-        description: z.string().min(1, 'Custom check description cannot be empty'),
-      });
-
-      // Temporary gate object schema for full gate definitions
-      const temporaryGateObjectSchema = z
-        .object({
-          id: z.string().min(1, 'Gate ID cannot be empty').optional(),
-          template: z.string().min(1, 'Template reference cannot be empty').optional(),
-          name: z.string().optional(),
-          type: z.enum(['validation', 'guidance']).optional(),
-          scope: z.enum(['execution', 'session', 'chain', 'step']).optional(),
-          description: z.string().optional(),
-          guidance: z.string().optional(),
-          criteria: z.array(z.string().min(1)).optional(),
-          pass_criteria: z.array(z.string().min(1)).optional(),
-          severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
-          source: z.enum(['manual', 'automatic', 'analysis']).optional(),
-          context: z.record(z.any()).optional(),
-          target_step_number: z.number().int().positive().optional(),
-          apply_to_steps: z.array(z.number().int().positive()).optional(),
-        })
-        .refine(
-          (value) => {
-            if (value.id != null) {
-              return true;
-            }
-            const hasCriteria =
-              (value.criteria?.length ?? 0) > 0 || (value.pass_criteria?.length ?? 0) > 0;
-            const hasGuidance =
-              (value.guidance?.trim().length ?? 0) > 0 ||
-              (value.description?.trim().length ?? 0) > 0;
-            return hasCriteria || hasGuidance;
-          },
-          {
-            message: 'Temporary gate entries require an id or some inline criteria/guidance',
-          }
-        );
+      // Build schema with methodology-aware parameter descriptions
+      const promptEngineSchema = buildPromptEngineSchema(
+        isValidGateVerdict,
+        GATE_VERDICT_VALIDATION_MESSAGE,
+        getPromptEngineParamDescription
+      );
 
       this.mcpServer.registerTool(
         'prompt_engine',
         {
           title: 'Prompt Engine',
           description: promptEngineDescription,
-          inputSchema: {
-            command: z
-              .string()
-              .min(1, 'Command cannot be empty')
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'command',
-                  'Prompt/chain command. PATTERNS: >>prompt_id key="value" (single) | >>s1 --> >>s2 (chain). RESUME: omit command, use chain_id + user_response only.'
-                )
-              ),
-            force_restart: z
-              .boolean()
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'force_restart',
-                  'Create a new chain execution (increments chain ID). Use `command`.'
-                )
-              ),
-            chain_id: z
-              .string()
-              .regex(
-                /^chain-[a-zA-Z0-9_-]+(?:#\d+)?$/,
-                'Chain ID must follow format: chain-{prompt} or chain-{prompt}#runNumber'
-              )
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'chain_id',
-                  'Resume token (e.g., `chain-demo#2`). RESUME: chain_id + user_response only. Omit command.'
-                )
-              ),
-            gate_verdict: z
-              .string()
-              .trim()
-              .refine((v) => isValidGateVerdict(v), GATE_VERDICT_VALIDATION_MESSAGE)
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'gate_verdict',
-                  'Send PASS/FAIL verdicts when resuming after gate reviews (e.g., "GATE_REVIEW: PASS - rationale"). Keep user_response for actual step output.'
-                )
-              ),
-            gate_action: z
-              .enum(['retry', 'skip', 'abort'])
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'gate_action',
-                  'User choice after gate retry limit exhaustion. "retry" resets attempt count, "skip" bypasses the gate, "abort" stops execution.'
-                )
-              ),
-            user_response: z
-              .string()
-              .min(1, 'User response cannot be empty if provided')
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'user_response',
-                  'Your Step output to capture before advancing. Supply the same text you would reply with during manual execution.'
-                )
-              ),
-            gates: z
-              .array(
-                z.union([
-                  z.string().min(1, 'Gate reference cannot be empty'),
-                  customCheckSchema,
-                  temporaryGateObjectSchema,
-                ])
-              )
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'gates',
-                  'Unified gate specification - Accepts gate IDs (strings), custom checks ({name, description}), or full gate definitions. Supports mixed types in single array for maximum flexibility. Canonical parameter for all gate specification (v3.0.0+).'
-                )
-              ),
-            options: z
-              .record(z.any())
-              .optional()
-              .describe(
-                getPromptEngineParamDescription(
-                  'options',
-                  'Additional execution options (key-value pairs) passed through to execution.'
-                )
-              ),
-          },
+          inputSchema: promptEngineSchema,
         },
-        async (args: promptEngineInput, extra: unknown) => {
+        async (args: PromptEngineInput, extra: unknown) => {
           try {
             // Normalize and validate string inputs (trim whitespace, filter empty values)
             const trimmedCommand = args.command?.trim();
@@ -876,86 +753,17 @@ export class McpToolRouter {
           { applyMethodologyOverride: true }
         ) ?? fallback;
 
+      // Build schema with methodology-aware parameter descriptions
+      const systemControlSchema = buildSystemControlSchema(getSystemControlParamDescription);
+
       this.mcpServer.registerTool(
         'system_control',
         {
           title: 'System Control',
           description: systemControlDescription,
-          inputSchema: {
-            action: z
-              .string()
-              .describe(
-                getSystemControlParamDescription(
-                  'action',
-                  'Top-level command. Supported values: status, framework, gates, analytics, config, maintenance.'
-                )
-              ),
-            operation: z
-              .string()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'operation',
-                  'Sub-command for the selected action (e.g. framework: switch|list|enable|disable, analytics: view|reset|history).'
-                )
-              ),
-            framework: z
-              .string()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'framework',
-                  'Framework identifier when switching. Use framework:list to see available options.'
-                )
-              ),
-            reason: z
-              .string()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'reason',
-                  'Audit-friendly explanation for switches, config changes, or restarts.'
-                )
-              ),
-            persist: z
-              .boolean()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'persist',
-                  'When true, gate/framework enable/disable changes are also written to config.json.'
-                )
-              ),
-            include_history: z
-              .boolean()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'include_history',
-                  'Include historical entries (where supported).'
-                )
-              ),
-            include_metrics: z
-              .boolean()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'include_metrics',
-                  'Include detailed metrics output (where supported).'
-                )
-              ),
-            show_details: z
-              .boolean()
-              .optional()
-              .describe(
-                getSystemControlParamDescription(
-                  'show_details',
-                  'Request an expanded response for list/status style commands.'
-                )
-              ),
-          },
+          inputSchema: systemControlSchema,
         },
-        async (args: systemControlInput, extra: unknown) => {
+        async (args: SystemControlInput, extra: unknown) => {
           try {
             const toolResponse = await this.systemControl.handleAction(
               args,
@@ -1010,10 +818,10 @@ export class McpToolRouter {
         {
           title: 'Resource Manager',
           description: resourceManagerDescription,
-          // Use generated schema from contracts - includes .passthrough() for advanced methodology fields
-          inputSchema: resourceManagerSchema,
+          // Hand-written schema — includes .passthrough() for advanced methodology fields
+          inputSchema: resourceManagerInputSchema,
         },
-        async (args: resourceManagerInput, extra: unknown) => {
+        async (args: ResourceManagerSchemaInput, extra: unknown) => {
           try {
             const router = this.resourceManagerRouter;
             if (router == null) {

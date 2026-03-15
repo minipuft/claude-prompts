@@ -1,0 +1,45 @@
+// @lifecycle canonical - Loads operator patterns from SSOT registry at import time.
+/**
+ * Operator patterns loaded from tooling/contracts/registries/operators.json (SSOT).
+ *
+ * Replaces the previous codegen approach (generate-operators.ts) with runtime loading.
+ * JSON is imported directly — esbuild inlines it into the bundle, no file I/O needed.
+ */
+
+// JSON import — esbuild inlines, tsc resolves via resolveJsonModule
+import contract from '../../../../tooling/contracts/registries/operators.json' with { type: 'json' };
+
+interface OperatorEntry {
+  pattern: RegExp;
+  symbol: string;
+  status: 'implemented' | 'reserved' | 'deprecated';
+}
+
+type KnownOperators = {
+  chain: OperatorEntry;
+  delegation: OperatorEntry;
+  gate: OperatorEntry;
+  framework: OperatorEntry;
+  style: OperatorEntry;
+  repetition: OperatorEntry;
+  parallel: OperatorEntry;
+  conditional: OperatorEntry;
+  [key: string]: OperatorEntry;
+};
+
+export const OPERATOR_PATTERNS: KnownOperators = Object.fromEntries(
+  contract.operators.map((op) => [
+    op.id,
+    {
+      pattern: new RegExp(op.pattern.typescript, op.pattern.flags ?? ''),
+      symbol: op.symbol,
+      status: op.status,
+    },
+  ])
+) as KnownOperators;
+
+export type OperatorId = keyof typeof OPERATOR_PATTERNS;
+
+export const IMPLEMENTED_OPERATORS = contract.operators
+  .filter((op) => op.status === 'implemented')
+  .map((op) => op.id);

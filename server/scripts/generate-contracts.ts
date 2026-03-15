@@ -14,11 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 // Import schemas from SSOT (eliminates duplication)
-import {
-  toolContractSchema,
-  type ToolContract,
-  type ParameterDefinition,
-} from '../src/mcp/contracts/schemas/types.js';
+import { toolContractSchema, type ToolContract } from '../src/mcp/contracts/schemas/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -174,151 +170,9 @@ function generateToolDescriptions(
   };
 }
 
-/**
- * Map contract parameter type to Zod schema code
- */
-function typeToZod(param: ParameterDefinition): string {
-  const { type, name, required } = param;
-  let zodCode = '';
-
-  // Handle enum types
-  if (type.startsWith('enum[') || type === 'enum') {
-    const enumMatch = type.match(/^enum\[([^\]]+)\]$/);
-    if (enumMatch) {
-      const values = enumMatch[1].split('|').map((v) => `'${v.trim()}'`);
-      zodCode = `z.enum([${values.join(', ')}])`;
-    } else if (param.enum) {
-      const values = param.enum.map((v) => `'${v}'`);
-      zodCode = `z.enum([${values.join(', ')}])`;
-    } else {
-      zodCode = 'z.string()';
-    }
-  }
-  // Handle array types
-  else if (type === 'array' || type.startsWith('array<')) {
-    // For complex union arrays like gates, use passthrough
-    if (name === 'gates') {
-      zodCode = `z.array(z.union([
-        z.string(),
-        z.object({ name: z.string(), description: z.string() }),
-        z.object({
-          id: z.string().optional(),
-          name: z.string().optional(),
-          description: z.string().optional(),
-          criteria: z.array(z.string()).optional(),
-          severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
-          type: z.enum(['validation', 'guidance']).optional(),
-          scope: z.enum(['execution', 'session', 'chain', 'step']).optional(),
-          template: z.string().optional(),
-          pass_criteria: z.array(z.string()).optional(),
-          guidance: z.string().optional(),
-          context: z.record(z.unknown()).optional(),
-          source: z.enum(['manual', 'automatic', 'analysis']).optional(),
-          target_step_number: z.number().int().positive().optional(),
-          apply_to_steps: z.array(z.number().int().positive()).optional(),
-        }),
-      ]))`;
-    } else if (name === 'arguments') {
-      zodCode = `z.array(z.object({
-        name: z.string(),
-        type: z.string(),
-        description: z.string(),
-      }))`;
-    } else {
-      zodCode = 'z.array(z.unknown())';
-    }
-  }
-  // Handle record/object types
-  else if (type === 'record' || type === 'object') {
-    zodCode = 'z.record(z.unknown())';
-  }
-  // Handle never type (blocked parameters)
-  else if (type === 'never') {
-    zodCode = 'z.never()';
-  }
-  // Handle boolean
-  else if (type === 'boolean') {
-    zodCode = 'z.boolean()';
-  }
-  // Handle number
-  else if (type === 'number') {
-    zodCode = 'z.number()';
-  }
-  // Default to string with optional pattern
-  else {
-    zodCode = 'z.string()';
-    // Add trim for strings that might have whitespace
-    if (name === 'command' || name === 'user_response' || name === 'reason') {
-      zodCode += '.trim()';
-    }
-    // Add regex pattern for specific parameters
-    if (name === 'chain_id') {
-      zodCode += `.regex(/^chain-[a-zA-Z0-9_-]+(?:#\\d+)?$/, 'Chain ID must follow format: chain-{prompt}[#runNumber]')`;
-    }
-  }
-
-  // Add optional modifier if not required
-  if (!required) {
-    zodCode += '.optional()';
-  }
-
-  return zodCode;
-}
-
-/**
- * Convert tool name to camelCase (e.g., prompt_engine -> promptEngine)
- */
-function toCamelCase(str: string): string {
-  return str.replace(/[-_]([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-/**
- * Generate mcp-schemas.ts with Zod schemas for MCP registration
- */
-function generateMcpSchemas(contracts: ToolContract[]): string {
-  const lines: string[] = [
-    '// Auto-generated from tooling/contracts/*.json. Do not edit manually.',
-    "import { z } from 'zod';",
-    '',
-  ];
-
-  for (const contract of contracts) {
-    if (!contract.toolDescription) continue; // Skip contracts without toolDescription
-
-    const camelName = toCamelCase(contract.tool);
-    const schemaName = `${camelName}Schema`;
-
-    lines.push(`/**`);
-    lines.push(` * Zod schema for ${contract.tool} MCP tool`);
-    lines.push(` * Generated from contract version ${contract.version}`);
-    lines.push(` */`);
-    lines.push(`export const ${schemaName} = z.object({`);
-
-    for (const param of contract.parameters) {
-      // Skip hidden parameters in schema (they should be rejected)
-      if (param.status === 'hidden') {
-        lines.push(`  // ${param.name}: hidden/blocked - not included in schema`);
-        continue;
-      }
-
-      const zodType = typeToZod(param);
-      // Add JSDoc comment for description
-      lines.push(`  /** ${escapeTsComment(param.description)} */`);
-      lines.push(`  ${param.name}: ${zodType},`);
-    }
-
-    lines.push('}).passthrough();');
-    lines.push('');
-    lines.push(`export type ${camelName}Input = z.infer<typeof ${schemaName}>;`);
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-function escapeTsComment(text: string): string {
-  return text.replace(/\*\//g, '*\\/').replace(/\n/g, ' ');
-}
+// typeToZod() and generateMcpSchemas() removed — Zod schemas are now hand-written
+// in src/mcp/tools/schemas/ (SSOT for validation). This generator only produces
+// metadata (.generated.ts), tool descriptions (.json), and docs (.md).
 
 /**
  * Format TypeScript content with prettier for consistent output
@@ -453,17 +307,7 @@ async function main(): Promise<void> {
     console.log('[generate-contracts] Generated tool-descriptions.contracts.json');
   }
 
-  // Generate mcp-schemas.ts (Zod schemas for MCP registration)
-  const mcpSchemasPath = path.join(GENERATED_META_DIR, 'mcp-schemas.ts');
-  const mcpSchemasContent = generateMcpSchemas(contracts);
-  const formattedSchemas = formatWithPrettier(mcpSchemasContent, ROOT);
-
-  // Prettier already adds trailing newline, don't add another
-  const mcpSchemasChanged = await writeFileIfChanged(mcpSchemasPath, formattedSchemas, checkMode);
-  changed = changed || mcpSchemasChanged;
-  if (mcpSchemasChanged) {
-    console.log('[generate-contracts] Generated mcp-schemas.ts');
-  }
+  // mcp-schemas.ts generation removed — Zod schemas now hand-written in src/mcp/tools/schemas/
 
   if (checkMode && changed) {
     throw new Error('Contract artifacts were regenerated. Re-run without --check to update files.');

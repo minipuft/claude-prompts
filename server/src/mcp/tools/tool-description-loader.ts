@@ -21,7 +21,9 @@ import {
   createGenericGuide,
 } from '../../engine/frameworks/methodology/index.js';
 import { MethodologyToolDescriptions } from '../../engine/frameworks/types/index.js';
+import { getDefaultStyleDefinitionLoader } from '../../modules/formatting/core/style-definition-loader.js';
 
+import type { StyleToolDescriptionYaml } from '../../modules/formatting/core/style-schema.js';
 import type {
   ConfigManager,
   Logger,
@@ -125,6 +127,7 @@ export class ToolDescriptionLoader extends EventEmitter {
   private descriptions: Map<string, ToolDescription>;
   private defaults: Map<string, ToolDescription>;
   private methodologyDescriptions: Map<string, MethodologyToolDescriptions>;
+  private styleDescriptions: Map<string, Record<string, StyleToolDescriptionYaml>>;
   private isInitialized: boolean = false;
   private configManager: ConfigManager;
   private frameworksConfig: FrameworksConfig;
@@ -158,6 +161,7 @@ export class ToolDescriptionLoader extends EventEmitter {
     this.descriptions = new Map();
     this.defaults = this.createDefaults();
     this.methodologyDescriptions = new Map();
+    this.styleDescriptions = new Map();
     this.frameworksConfig = this.configManager.getFrameworksConfig();
 
     this.frameworksConfigListener = (newConfig: FrameworksConfig) => {
@@ -237,6 +241,33 @@ export class ToolDescriptionLoader extends EventEmitter {
     } catch (error) {
       this.logger.error(
         `Failed to pre-load methodology descriptions: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Pre-load style tool descriptions for responseFormat overlay.
+   * Uses the default StyleDefinitionLoader singleton.
+   */
+  private preloadStyleDescriptions(): void {
+    try {
+      this.styleDescriptions.clear();
+      const loader = getDefaultStyleDefinitionLoader();
+      const styleIds = loader.discoverStyles();
+
+      for (const id of styleIds) {
+        const definition = loader.loadStyle(id);
+        const toolDescs = definition?.toolDescriptions;
+        if (toolDescs == null) continue;
+        this.styleDescriptions.set(id.toLowerCase(), toolDescs);
+      }
+
+      this.logger.info(
+        `Pre-loaded tool descriptions for ${this.styleDescriptions.size} styles from YAML`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to pre-load style descriptions: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -373,6 +404,14 @@ export class ToolDescriptionLoader extends EventEmitter {
             ...methodologyTool.parameters,
           };
         }
+
+        // Methodology responseFormat woven into tool description (highest priority)
+        if (methodologyTool?.responseFormat) {
+          baseDescription.description = this.weaveResponseFormat(
+            baseDescription.description,
+            methodologyTool.responseFormat
+          );
+        }
       }
 
       tools[name] = baseDescription;
@@ -396,6 +435,49 @@ export class ToolDescriptionLoader extends EventEmitter {
   }
 
   /**
+   * Weave responseFormat guidance into the tool description text.
+   * Appended as a dedicated section so the LLM reads it before invocation.
+   */
+  private weaveResponseFormat(description: string, responseFormat: string): string {
+    if (description.includes(responseFormat)) {
+      return description; // Already contains this guidance
+    }
+    return `${description}\n\n**Response Format:** ${responseFormat}`;
+  }
+
+  /**
+   * Get the responseFormat for a specific tool from the active style.
+   * Used by Stage 06b to decide whether to inject style guidance into system prompt.
+   *
+   * @param toolName - The MCP tool name (e.g., 'prompt_engine')
+   * @param styleId - The active style ID (e.g., 'analytical')
+   * @returns The responseFormat text or undefined if none defined
+   */
+  getStyleResponseFormat(toolName: string, styleId: string): string | undefined {
+    const styleDescs = this.styleDescriptions.get(styleId.toLowerCase());
+    return styleDescs?.[toolName]?.responseFormat;
+  }
+
+  /**
+   * Check if the active methodology already provides a responseFormat for a tool.
+   * Used by Stage 06b to skip redundant style injection.
+   *
+   * @param toolName - The MCP tool name
+   * @returns true if the tool description already has a methodology responseFormat woven in
+   */
+  hasMethodologyResponseFormat(toolName: string): boolean {
+    const context = this.getActiveFrameworkContext();
+    const methodologyKey = this.normalizeMethodologyKey(
+      context.activeMethodology ?? context.activeFramework
+    );
+    if (!methodologyKey) return false;
+
+    const methodologyDescs = this.methodologyDescriptions.get(methodologyKey);
+    const tool = methodologyDescs?.[toolName as keyof MethodologyToolDescriptions];
+    return Boolean(tool?.responseFormat);
+  }
+
+  /**
    * Synchronize in-memory descriptions from contracts + methodology overlays.
    */
   private async synchronize(reason: string, options?: { emitChange?: boolean }): Promise<void> {
@@ -403,6 +485,7 @@ export class ToolDescriptionLoader extends EventEmitter {
       const base = await this.loadBaseConfig();
       this.lastLoadSource = base.source;
       this.preloadMethodologyDescriptions();
+      this.preloadStyleDescriptions();
       const activeContext = this.getActiveFrameworkContext();
       const activeConfig = this.buildActiveConfig(base.config, activeContext);
       activeConfig.generatedFrom = base.source;

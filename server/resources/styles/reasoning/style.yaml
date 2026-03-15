@@ -19,3 +19,9 @@ compatibleFrameworks:
   - ReACT
   - CAGEERF
   - 5W1H
+
+toolDescriptions:
+  prompt_engine:
+    responseFormat: >-
+      Apply logical decomposition. Break down the problem, show your reasoning
+      chain, identify assumptions, and evaluate conclusions systematically.

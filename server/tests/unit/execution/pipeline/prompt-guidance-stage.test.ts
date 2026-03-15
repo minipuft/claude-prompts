@@ -60,8 +60,24 @@ describe('PromptGuidanceStage', () => {
       applyGuidance: jest.fn(),
     } as unknown as jest.Mocked<PromptGuidanceService>;
 
-    // Pass null for StyleManager - tests use hardcoded fallback styles
-    stage = new PromptGuidanceStage(service, null, createLogger());
+    // Mock StyleManager providing style guidance from YAML SSOT
+    const mockStyleManager = {
+      isInitialized: () => true,
+      getStyleGuidance: (style: string) => {
+        const styles: Record<string, string> = {
+          analytical:
+            'Structure your response with systematic analysis. Use data-driven reasoning, present evidence clearly, and organize findings logically with clear sections.',
+          procedural:
+            'Provide step-by-step instructions. Number each step, explain prerequisites, and include verification points. Focus on actionable guidance.',
+          creative:
+            'Approach this with innovative thinking. Explore unconventional solutions, brainstorm alternatives, and encourage novel perspectives.',
+          reasoning:
+            'Apply logical decomposition. Break down the problem, show your reasoning chain, identify assumptions, and evaluate conclusions systematically.',
+        };
+        return styles[style.toLowerCase()] ?? null;
+      },
+    };
+    stage = new PromptGuidanceStage(service, mockStyleManager as any, createLogger());
   });
 
   test('skips when execution plan does not require frameworks', async () => {

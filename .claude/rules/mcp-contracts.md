@@ -12,10 +12,14 @@ These rules apply when modifying MCP tool parameters, schemas, or tool descripti
 
 ## Single Source of Truth
 
-**Contracts are the SSOT** for:
+**Hand-written Zod schemas** in `src/mcp/tools/schemas/` are the SSOT for MCP parameter validation.
+
+**Contracts** are the SSOT for:
 - Tool descriptions → generated to `_generated/tool-descriptions.contracts.json`
-- MCP parameter schemas → generated to `_generated/mcp-schemas.ts`
-- TypeScript types and documentation
+- Parameter metadata → generated to `_generated/*.generated.ts`
+- TypeScript documentation and parameter tables
+
+Contracts no longer generate Zod schemas — `mcp-schemas.ts` has been removed.
 
 ## Critical: Upstream Verification
 
@@ -40,10 +44,10 @@ When adding a new parameter, verify consistency across ALL layers:
 
 | Layer | File Location | What to Check |
 |-------|---------------|---------------|
-| Contract | `tooling/contracts/*.json` | Parameter name, type, description |
-| Generated | `mcp-contracts/schemas/_generated/mcp-schemas.ts` | Zod schema matches contract type |
+| Schema | `src/mcp/tools/schemas/*.schema.ts` | Zod schema defines validation |
+| Contract | `tooling/contracts/*.json` | Parameter descriptions, metadata |
 | Router | `resource-manager/core/router.ts` | Transforms or passes through correctly |
-| Types | `*/core/types.ts` | TypeScript type matches contract |
+| Types | `*/core/types.ts` | TypeScript type matches schema |
 | Manager | `*/core/manager.ts` | Expects same parameter name/type |
 | Service | `src/{domain}/` | Underlying function signature |
 
@@ -145,15 +149,24 @@ Before committing parameter changes:
 - [ ] Tested MCP tool with new parameter
 - [ ] Updated `docs/reference/mcp-tools.md`
 
-## Never Edit Generated Files
+## Schema Architecture
 
-Files in `mcp-contracts/schemas/_generated/` are auto-overwritten on every `npm run generate:contracts`.
+**Zod schemas are hand-written** in `src/mcp/tools/schemas/`:
+- `prompt-engine.schema.ts` — schema factory with `DescriptionResolver` for methodology overlays
+- `system-control.schema.ts` — system control input schema
+- `resource-manager.schema.ts` — resource manager input schema with gate sub-schemas
+
+**Generated files** in `_generated/` are metadata only (parameter tables, tool descriptions).
+Never edit generated files — they are overwritten by `npm run generate:contracts`.
 
 ```bash
 # ❌ WRONG: Editing generated files
-vim src/mcp-contracts/schemas/_generated/mcp-schemas.ts
+vim src/tooling/contracts/_generated/prompt_engine.generated.ts
 
-# ✅ RIGHT: Edit source contracts
+# ✅ RIGHT: Edit Zod schemas for validation
+vim src/mcp/tools/schemas/prompt-engine.schema.ts
+
+# ✅ RIGHT: Edit contracts for descriptions/metadata
 vim tooling/contracts/prompt-engine.json
 npm run generate:contracts
 ```
@@ -211,6 +224,6 @@ Do not apply rule-authoring style (contrastive directives, Layer 0/1/2 model) to
 | Hidden router transformation | User sees different names than code | Use same names throughout |
 | Contract type differs from service | Runtime errors, type coercion bugs | Verify types before adding |
 | Adding to contract without checking upstream | Mismatch discovered at runtime | Check service/manager first |
-| Manual schema in registration | Schema drift from contract | Import generated schemas |
+| Inline schema in tool registration | Schema drift, duplication | Import from `src/mcp/tools/schemas/` |
 | Applying rule-directive style to tool descriptions | Different cognitive task, reduces invocation accuracy | Dense syntax examples for parameter construction |
 | Applying tool-description style to rules | Bloats always-loaded context, weakens reasoning calibration | Short contrastive directives with skill pointers |

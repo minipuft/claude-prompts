@@ -15,6 +15,26 @@
 import { z } from 'zod';
 
 // ============================================
+// Tool Description Overlay Schema
+// ============================================
+
+/**
+ * Schema for per-tool description overlays when a style is active.
+ * Mirrors MethodologyToolDescription shape from methodology-types.ts
+ * so the overlay priority chain is consistent.
+ */
+export const StyleToolDescriptionSchema = z.object({
+  /** Override tool description text */
+  description: z.string().optional(),
+  /** Override individual parameter descriptions */
+  parameters: z.record(z.string()).optional(),
+  /** Response format guidance woven into tool description */
+  responseFormat: z.string().optional(),
+});
+
+export type StyleToolDescriptionYaml = z.infer<typeof StyleToolDescriptionSchema>;
+
+// ============================================
 // Activation Schema
 // ============================================
 
@@ -86,6 +106,10 @@ export const StyleDefinitionSchema = z
     // Framework compatibility
     /** Which frameworks this style works well with */
     compatibleFrameworks: z.array(z.string()).optional(),
+
+    // Tool description overlays
+    /** Per-tool description overlays when this style is active */
+    toolDescriptions: z.record(StyleToolDescriptionSchema).optional(),
   })
   .passthrough(); // Allow additional fields for extensibility
 

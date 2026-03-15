@@ -21,7 +21,6 @@ from pathlib import Path
 
 # Add hooks lib to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
-sys.path.insert(0, str(Path(__file__).parent / "lib" / "_generated"))
 
 from cache_manager import (
     ArgumentInfo,

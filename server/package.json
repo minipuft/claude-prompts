@@ -26,7 +26,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "prebuild": "npm run generate:contracts && npm run generate:operators",
+    "prebuild": "npm run generate:contracts",
     "build": "node esbuild.config.mjs",
     "postbuild": "chmod +x dist/index.js || true",
     "build:prod": "NODE_ENV=production node esbuild.config.mjs",
@@ -70,8 +70,6 @@
     "validate:build": "npm run build && npm run start:test",
     "generate:contracts": "tsx scripts/generate-contracts.ts",
     "validate:contracts": "tsx scripts/generate-contracts.ts --check",
-    "generate:operators": "tsx scripts/generate-operators.ts",
-    "validate:operators": "tsx scripts/generate-operators.ts --check",
     "skills:export": "tsx scripts/skills-sync.ts export",
     "skills:diff": "tsx scripts/skills-sync.ts diff",
     "skills:pull": "tsx scripts/skills-sync.ts pull",
@@ -84,7 +82,8 @@
     "version": "npm run sync:versions && git add ../.release-please-manifest.json ../manifest.json ../.claude-plugin/plugin.json",
     "validate:dist-fresh": "bash scripts/validate-dist-fresh.sh",
     "validate:extension-deps": "node scripts/validate-extension-deps.js",
-    "validate:all": "npm run lint && npm run validate:arch && npm run validate:filesize && npm run validate:metadata && npm run validate:contracts && npm run validate:operators && npm run validate:methodologies && npm run validate:gate-index && npm run validate:versions && npm run validate:extension-deps",
+    "validate:python": "cd .. && ruff check hooks/ && ruff format --check hooks/",
+    "validate:all": "npm run lint && npm run validate:arch && npm run validate:filesize && npm run validate:metadata && npm run validate:contracts && npm run validate:python && npm run validate:methodologies && npm run validate:gate-index && npm run validate:versions && npm run validate:extension-deps",
     "verify:action-metadata": "node scripts/verify-action-inventory.js",
     "dev:graph": "madge --ts-config ./tsconfig.json --extensions ts src --image graph.svg",
     "dev:graph:json": "madge --ts-config ./tsconfig.json --extensions ts src --json",

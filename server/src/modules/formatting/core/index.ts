@@ -11,10 +11,12 @@
 export {
   StyleDefinitionSchema,
   StyleActivationSchema,
+  StyleToolDescriptionSchema,
   validateStyleSchema,
   isValidStyleDefinition,
   type StyleDefinitionYaml,
   type StyleActivationYaml,
+  type StyleToolDescriptionYaml,
   type StyleSchemaValidationResult,
 } from './style-schema.js';
 

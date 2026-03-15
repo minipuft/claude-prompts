@@ -1,5 +1,5 @@
 // @lifecycle canonical - Parses symbolic command expressions into operators.
-import { GENERATED_OPERATOR_PATTERNS } from './_generated/operator-patterns.js';
+import { OPERATOR_PATTERNS } from './operator-patterns.js';
 import { stripStyleOperators, findFrameworkOperatorOutsideQuotes } from './parser-utils.js';
 import {
   type ChainOperator,
@@ -39,14 +39,14 @@ export class SymbolicCommandParser {
    *
    * Gate pattern groups: 1=operator, 2=namedColonId, 3=namedColonText, 4=anonQuoted, 5=canonicalOrUnquoted
    */
-  private readonly OPERATOR_PATTERNS = {
-    chain: GENERATED_OPERATOR_PATTERNS.chain.pattern,
-    gate: GENERATED_OPERATOR_PATTERNS.gate.pattern,
-    framework: GENERATED_OPERATOR_PATTERNS.framework.pattern,
-    style: GENERATED_OPERATOR_PATTERNS.style.pattern,
-    repetition: GENERATED_OPERATOR_PATTERNS.repetition.pattern,
-    parallel: GENERATED_OPERATOR_PATTERNS.parallel.pattern,
-    conditional: GENERATED_OPERATOR_PATTERNS.conditional.pattern,
+  private readonly OPERATOR_REGEX = {
+    chain: OPERATOR_PATTERNS.chain.pattern,
+    gate: OPERATOR_PATTERNS.gate.pattern,
+    framework: OPERATOR_PATTERNS.framework.pattern,
+    style: OPERATOR_PATTERNS.style.pattern,
+    repetition: OPERATOR_PATTERNS.repetition.pattern,
+    parallel: OPERATOR_PATTERNS.parallel.pattern,
+    conditional: OPERATOR_PATTERNS.conditional.pattern,
   } as const;
 
   /**
@@ -87,7 +87,7 @@ export class SymbolicCommandParser {
     expandedCommand: string;
     repetitionOp: RepetitionOperator | null;
   } {
-    const match = command.match(this.OPERATOR_PATTERNS.repetition);
+    const match = command.match(this.OPERATOR_REGEX.repetition);
     const countStr = match?.[1];
     if (match === null || countStr === undefined) {
       return { expandedCommand: command, repetitionOp: null };
@@ -276,7 +276,7 @@ export class SymbolicCommandParser {
       }
     }
 
-    const styleMatch = command.match(this.OPERATOR_PATTERNS.style);
+    const styleMatch = command.match(this.OPERATOR_REGEX.style);
     if (styleMatch) {
       const matchedId = styleMatch[1];
       if (matchedId) {
@@ -290,7 +290,7 @@ export class SymbolicCommandParser {
       }
     }
 
-    const chainMatches = command.match(this.OPERATOR_PATTERNS.chain);
+    const chainMatches = command.match(this.OPERATOR_REGEX.chain);
     const delegationMatches = command.match(/==>/g);
     if (
       (chainMatches != null && chainMatches.length > 0) ||
@@ -301,7 +301,7 @@ export class SymbolicCommandParser {
     }
 
     // Collect ALL gate matches using matchAll() for multiple :: operators
-    const gateMatches = [...command.matchAll(this.OPERATOR_PATTERNS.gate)];
+    const gateMatches = [...command.matchAll(this.OPERATOR_REGEX.gate)];
     if (gateMatches.length > 0) {
       operatorTypes.push('gate');
 
@@ -383,7 +383,7 @@ export class SymbolicCommandParser {
       }
     }
 
-    const parallelMatches = command.match(this.OPERATOR_PATTERNS.parallel);
+    const parallelMatches = command.match(this.OPERATOR_REGEX.parallel);
     if (
       parallelMatches &&
       parallelMatches.length > 0 &&
@@ -393,7 +393,7 @@ export class SymbolicCommandParser {
       operators.push(this.parseParallelOperator(command));
     }
 
-    const conditionalMatch = command.match(this.OPERATOR_PATTERNS.conditional);
+    const conditionalMatch = command.match(this.OPERATOR_REGEX.conditional);
     if (conditionalMatch) {
       const condition = conditionalMatch[1];
       const rawTrueBranch = conditionalMatch[2];
@@ -425,7 +425,7 @@ export class SymbolicCommandParser {
 
   private parseChainOperator(command: string): ChainOperator {
     // Remove framework operator prefix if present
-    let cleanCommand = command.replace(this.OPERATOR_PATTERNS.framework, '');
+    let cleanCommand = command.replace(this.OPERATOR_REGEX.framework, '');
     cleanCommand = stripStyleOperators(cleanCommand);
     // NOTE: Do NOT strip gate patterns here - they conflict with regular arguments like input="value"
     // Gate operators should be detected and handled separately by the gate operator executor

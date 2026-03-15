@@ -18,3 +18,9 @@ activation:
 compatibleFrameworks:
   - SCAMPER
   - CAGEERF
+
+toolDescriptions:
+  prompt_engine:
+    responseFormat: >-
+      Approach this with innovative thinking. Explore unconventional solutions,
+      brainstorm alternatives, and encourage novel perspectives.

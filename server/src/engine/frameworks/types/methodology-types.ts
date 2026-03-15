@@ -244,6 +244,8 @@ export interface TemplateEnhancement {
 export interface MethodologyToolDescription {
   description?: string;
   parameters?: Record<string, ToolParameter | string>;
+  /** Response format guidance woven into tool description (replaces system prompt append) */
+  responseFormat?: string;
 }
 
 /**

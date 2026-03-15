@@ -69,7 +69,7 @@ const hasConditionalOperator = /\s*\?\s*["'](.+?)["']\s*:\s*(?:>>)?\s*([A-Za-z0-
 
 ### Checklist
 
-1. **Define pattern** in `_generated/operator-patterns.ts`
+1. **Define pattern** in `tooling/contracts/registries/operators.json` (loaded at runtime by `operator-patterns.ts`)
 2. **Update `canHandle`** in BOTH strategies that need to detect it:
    - `createSymbolicCommandStrategy()` — to handle it
    - `createSimpleCommandStrategy()` — to reject it (defer to symbolic)
@@ -102,8 +102,7 @@ parsers/
 ├── types/
 │   ├── command-parse-types.ts # Result types
 │   └── operator-types.ts      # Operator interfaces
-└── _generated/
-    └── operator-patterns.ts   # Canonical pattern definitions
+├── operator-patterns.ts       # Runtime loader from operators.json (SSOT)
 ```
 
 ## Testing

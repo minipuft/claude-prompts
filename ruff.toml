@@ -21,7 +21,5 @@ ignore = [
 # E501: long test strings/assertions
 # SIM117: nested with/patch is idiomatic pytest
 # E402: sys.path manipulation before imports
-"hooks/lib/_generated/*" = ["E501"]
-# Generated code — line length not worth reformatting
 "hooks/lib/lesson_extractor.py" = ["E501"]
 # Regex patterns with long literal strings

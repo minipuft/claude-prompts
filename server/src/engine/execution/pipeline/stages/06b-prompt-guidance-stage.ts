@@ -2,7 +2,7 @@
 import { BasePipelineStage } from '../stage.js';
 
 import type { Logger } from '../../../../infra/logging/index.js';
-import type { ContentAnalysisResult, StyleManagerPort } from '../../../../shared/types/index.js';
+import type { StyleManagerPort } from '../../../../shared/types/index.js';
 import type {
   PromptGuidanceService,
   ServicePromptGuidanceResult,
@@ -193,30 +193,14 @@ export class PromptGuidanceStage extends BasePipelineStage {
   }
 
   /**
-   * Get guidance instructions for a style type.
-   * Uses StyleManager if available, falls back to hardcoded styles for backward compatibility.
+   * Get guidance instructions for a style type from StyleManager (YAML SSOT).
    */
   private getStyleGuidance(style: string): string | null {
-    // Try StyleManager first (dynamic YAML-based styles)
-    if (this.styleManager) {
-      const guidance = this.styleManager.getStyleGuidance(style);
-      if (guidance) {
-        return guidance;
-      }
+    if (!this.styleManager) {
+      this.logger.warn('[PromptGuidanceStage] StyleManager not available for style lookup');
+      return null;
     }
-
-    // Fallback to hardcoded styles for backward compatibility
-    const legacyStyles: Record<string, string> = {
-      analytical:
-        'Structure your response with systematic analysis. Use data-driven reasoning, present evidence clearly, and organize findings logically with clear sections.',
-      procedural:
-        'Provide step-by-step instructions. Number each step, explain prerequisites, and include verification points. Focus on actionable guidance.',
-      creative:
-        'Approach this with innovative thinking. Explore unconventional solutions, brainstorm alternatives, and encourage novel perspectives.',
-      reasoning:
-        'Apply logical decomposition. Break down the problem, show your reasoning chain, identify assumptions, and evaluate conclusions systematically.',
-    };
-    return legacyStyles[style.toLowerCase()] ?? null;
+    return this.styleManager.getStyleGuidance(style) ?? null;
   }
 
   /**
