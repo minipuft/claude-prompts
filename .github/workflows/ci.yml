@@ -4,17 +4,17 @@ on:
   push:
     branches: [main, develop]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.github/*.md'
-      - 'LICENSE'
+      - "**.md"
+      - "docs/**"
+      - ".github/*.md"
+      - "LICENSE"
   pull_request:
     branches: [main]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.github/*.md'
-      - 'LICENSE'
+      - "**.md"
+      - "docs/**"
+      - ".github/*.md"
+      - "LICENSE"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,7 +22,7 @@ concurrency:
 
 env:
   NODE_ENV: test
-  NODE_LTS: '22.x'
+  NODE_LTS: "22.x"
 
 permissions:
   contents: read
@@ -94,6 +94,7 @@ jobs:
   build:
     name: Build
     needs: lint
+    if: ${{ always() && needs.lint.result != 'cancelled' && (github.event_name == 'pull_request' || needs.lint.result == 'success') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -132,11 +133,12 @@ jobs:
   test:
     name: Test (Node ${{ matrix.node }})
     needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: ['22.x']
+        node: ["22.x"]
     defaults:
       run:
         working-directory: server
@@ -181,10 +183,18 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     if: |
-      contains(github.event.head_commit.modified, 'server/src/mcp-tools/') ||
-      contains(github.event.head_commit.modified, 'server/src/transport/') ||
-      contains(github.event.head_commit.modified, 'server/src/runtime/') ||
-      github.event_name == 'pull_request'
+      always() &&
+      needs.lint.result != 'cancelled' &&
+      (
+        github.event_name == 'pull_request' ||
+        needs.lint.result == 'success'
+      ) &&
+      (
+        contains(github.event.head_commit.modified, 'server/src/mcp-tools/') ||
+        contains(github.event.head_commit.modified, 'server/src/transport/') ||
+        contains(github.event.head_commit.modified, 'server/src/runtime/') ||
+        github.event_name == 'pull_request'
+      )
     defaults:
       run:
         working-directory: server

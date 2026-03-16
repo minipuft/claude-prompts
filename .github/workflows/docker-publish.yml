@@ -7,7 +7,7 @@ on:
     types: [completed]
   # Keep PR builds for testing Docker build process
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -16,11 +16,37 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  docker-scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.scope.outputs.should_run }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Docker-relevant changes
+        id: scope
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          CHANGED_FILES=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)
+          echo "$CHANGED_FILES"
+
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq \
+            '^(server/package\.json|server/package-lock\.json|server/\.npmrc|server/config.*\.json|server/resources/|server/src/|\.github/workflows/docker-publish\.yml)'; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push:
+    needs: docker-scope
     # Run if: extension-publish succeeded OR pull request
     if: >-
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-      || github.event_name == 'pull_request'
+      || (github.event_name == 'pull_request' && needs.docker-scope.outputs.should_run == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +69,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v4.1.0
         with:
-          cosign-release: 'v2.2.2'
+          cosign-release: "v2.2.2"
 
       - uses: actions/setup-node@v6
         with:
