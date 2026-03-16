@@ -12,6 +12,7 @@ import contract from '../../../../tooling/contracts/registries/operators.json' w
 interface OperatorEntry {
   pattern: RegExp;
   symbol: string;
+  role: 'delimiter' | 'modifier' | 'prefix';
   status: 'implemented' | 'reserved' | 'deprecated';
 }
 
@@ -33,6 +34,7 @@ export const OPERATOR_PATTERNS: KnownOperators = Object.fromEntries(
     {
       pattern: new RegExp(op.pattern.typescript, op.pattern.flags ?? ''),
       symbol: op.symbol,
+      role: op['role'] as OperatorEntry['role'],
       status: op.status,
     },
   ])

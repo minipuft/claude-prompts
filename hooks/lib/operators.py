@@ -18,6 +18,7 @@ class OperatorInfo(TypedDict):
     symbol: str
     description: str
     pattern: re.Pattern[str]
+    role: str
     examples: list[str]
 
 
@@ -44,6 +45,7 @@ def _load_operators() -> dict[str, OperatorInfo]:
             "symbol": op["symbol"],
             "description": op["description"],
             "pattern": re.compile(op["pattern"]["typescript"], flags),
+            "role": op.get("role", "modifier"),
             "examples": op.get("examples", []),
         }
 
@@ -90,3 +92,12 @@ def detect_operator(message: str, operator_id: str) -> list[str]:
 def detect_all_operators(message: str) -> dict[str, list[str]]:
     """Detect all operators in message. Returns dict of operator_id -> matches."""
     return {op_id: matches for op_id in OPERATORS if (matches := detect_operator(message, op_id))}
+
+
+def get_delimiter_symbols() -> list[str]:
+    """Get symbols that separate chain steps, from SSOT registry.
+
+    Returns symbols for operators with role='delimiter' (e.g., '-->', '==>').
+    Used by detect_chain_syntax() to split commands into steps.
+    """
+    return [op["symbol"] for op in OPERATORS.values() if op.get("role") == "delimiter"]

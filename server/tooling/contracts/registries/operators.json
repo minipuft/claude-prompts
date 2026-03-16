@@ -6,6 +6,7 @@
     {
       "id": "chain",
       "symbol": "-->",
+      "role": "delimiter",
       "description": "Sequential execution of prompts",
       "purpose": "Chain multiple steps together",
       "pattern": {
@@ -22,6 +23,7 @@
     {
       "id": "delegation",
       "symbol": "==>",
+      "role": "delimiter",
       "description": "Delegated chain step (sub-agent execution)",
       "purpose": "Execute step via Task tool sub-agent for context isolation",
       "pattern": {
@@ -38,6 +40,7 @@
     {
       "id": "gate",
       "symbol": "::",
+      "role": "modifier",
       "description": "Quality gate for validation",
       "purpose": "Add inline validation criteria",
       "pattern": {
@@ -60,6 +63,7 @@
     {
       "id": "framework",
       "symbol": "@",
+      "role": "prefix",
       "description": "Apply methodology framework",
       "purpose": "Inject framework guidance (CAGEERF, ReACT, etc.)",
       "pattern": {
@@ -72,6 +76,7 @@
     {
       "id": "style",
       "symbol": "#",
+      "role": "prefix",
       "description": "Response formatting style",
       "purpose": "Apply style guidance (analytical, procedural, etc.)",
       "pattern": {
@@ -84,6 +89,7 @@
     {
       "id": "repetition",
       "symbol": "* N",
+      "role": "modifier",
       "description": "Chain shorthand - repeat N times with SAME arguments",
       "purpose": "Execute prompt N times (unfolds to chain). Arguments are duplicated across all steps. For different args per step, use explicit --> chain syntax.",
       "pattern": {
@@ -101,6 +107,7 @@
     {
       "id": "parallel",
       "symbol": "+",
+      "role": "delimiter",
       "description": "Concurrent execution",
       "purpose": "Execute prompts in parallel",
       "pattern": {
@@ -114,6 +121,7 @@
     {
       "id": "conditional",
       "symbol": "?",
+      "role": "modifier",
       "description": "Conditional branching",
       "purpose": "Branch execution based on condition",
       "pattern": {

@@ -10,8 +10,8 @@ Architecture:
 - Layer 1: MCP-native prompts (via registerPrompt) - standard protocol
 - Layer 2: This hook - efficiency layer translating >>syntax to prompt_engine calls
 
-Operators detected (from contract):
-- `-->` chain, `::` gate, `@` framework, `#` style, `* N` repetition
+Operators detected (from SSOT registry):
+- `-->` chain, `==>` delegation, `::` gate, `@` framework, `#` style, `* N` repetition
 """
 
 import json
@@ -28,8 +28,8 @@ from cache_manager import (
     fuzzy_match_prompt_id,
     get_chains_only,
     get_prompt_by_id,
-    is_valid_framework,
-    is_valid_style,
+    get_valid_frameworks,
+    get_valid_styles,
     load_prompts_cache,
     match_prompts_to_intent,
 )
@@ -39,12 +39,15 @@ from session_state import ChainState, format_chain_reminder, load_session_state
 
 # Import generated operator patterns (SSOT: server/tooling/contracts/operators.json)
 try:
-    from operators import OPERATORS, detect_operator
+    from operators import OPERATORS, detect_operator, get_delimiter_symbols
 
     HAS_GENERATED_OPERATORS = True
 except ImportError:
     HAS_GENERATED_OPERATORS = False
     OPERATORS = {}
+
+    def get_delimiter_symbols() -> list[str]:
+        return ["-->", "==>"]
 
 
 def format_arguments(prompt_id: str) -> dict[str, str]:
@@ -126,28 +129,34 @@ def detect_explicit_request(message: str) -> bool:
 
 def detect_chain_syntax(message: str) -> list[str]:
     """
-    Detect --> chain syntax in message.
+    Detect chain syntax (-->, ==>) in message.
     Returns list of prompt IDs in chain order (normalized to lowercase).
 
+    Splits on delimiter operators from SSOT registry (plus → unicode alias),
+    then extracts >>prompt_id from each segment. Handles arguments between
+    prompt ID and delimiter correctly.
+
     Example: >>analyze --> >>implement --> >>test
-    Example with gate: >>a --> >>b :: "criteria"
+    Example with args: >>analyze scope:"backend" --> >>implement
+    Example with delegation: >>step1 ==> >>step2
     """
-    # Match: >>prompt_id --> >>prompt_id pattern
-    chain_pattern = r">>\s*([a-zA-Z0-9_-]+)\s*(?:-->|→)"
-    raw_matches = re.findall(chain_pattern, message)
-    # Normalize to lowercase for case-insensitive matching (aligns with MCP server)
-    matches = [m.lower() for m in raw_matches]
+    # Build split pattern from SSOT delimiter symbols
+    delimiters = get_delimiter_symbols()
+    escaped = [re.escape(d) for d in delimiters] + ["→"]
+    split_pattern = r"\s*(?:" + "|".join(escaped) + r")\s*"
 
-    # Get the last prompt (after final -->) by splitting on chain operators
-    # then extracting the prompt ID from the last segment
-    parts = re.split(r"\s*(?:-->|→)\s*", message)
-    if len(parts) > 1:
-        last_part = parts[-1]
-        last_match = re.match(r">>\s*([a-zA-Z0-9_-]+)", last_part)
-        if last_match:
-            matches.append(last_match.group(1).lower())
+    parts = re.split(split_pattern, message)
+    if len(parts) <= 1:
+        return []
 
-    return matches
+    # Extract >>prompt_id from each segment (ignores arguments safely)
+    prompts = []
+    for part in parts:
+        match = re.search(r">>\s*([a-zA-Z0-9_-]+)", part)
+        if match:
+            prompts.append(match.group(1).lower())
+
+    return prompts
 
 
 def detect_inline_gates(message: str) -> list[str]:
@@ -447,6 +456,8 @@ def format_user_message(
         op_indicators.append(f"#{operators['style'][0]}")
     if operators.get("gate"):
         op_indicators.append(f"gates:{len(operators['gate'])}")
+    if operators.get("delegation"):
+        op_indicators.append("delegated")
 
     if op_indicators:
         parts.append(" [" + ", ".join(op_indicators) + "]")
@@ -494,6 +505,8 @@ def _format_expanded_message(
         if operators.get("gate"):
             gate_list = ", ".join(operators["gate"][:2])
             op_parts.append(f"gates: {gate_list}")
+        if operators.get("delegation"):
+            op_parts.append("delegation (==> sub-agent)")
         if op_parts:
             lines.append(f"  Operators: {' | '.join(op_parts)}")
 
@@ -593,47 +606,73 @@ def main():
         # === DIRECTIVE MODE: >>syntax detected ===
         # Generate split output: compact systemMessage + structured directive
 
-        # Detect operators - use semantic detection for chain/gate (need content),
-        # use generated patterns for framework/style/repetition (symbol detection OK)
+        # Detect operators — semantic extraction for chain/gate (need content),
+        # SSOT patterns for framework/style/repetition/delegation (symbol detection)
         operators: dict[str, list[str]] = {}
 
-        # Chain and gate ALWAYS use semantic extraction (need prompt IDs / gate criteria)
+        # Chain: semantic extraction via SSOT delimiters (need prompt IDs, not just symbols)
         if chain_prompts and len(chain_prompts) > 1:
             operators["chain"] = chain_prompts
 
+        # Gate: semantic extraction (need criteria content, not just :: symbol)
         inline_gates = detect_inline_gates(user_message)
         if inline_gates:
             operators["gate"] = inline_gates
 
-        # Framework, style, repetition use generated patterns when available
-        # Only include operators with VALID values (registered in server)
         if HAS_GENERATED_OPERATORS:
-            # Framework - only include if registered in server methodologies
+            # Delegation: detect ==> presence via SSOT pattern
+            delegation_matches = detect_operator(user_message, "delegation")
+            if delegation_matches:
+                operators["delegation"] = delegation_matches
+
+            # Framework: validate against DB, pass through if DB unavailable
             fw_matches = detect_operator(user_message, "framework")
             if fw_matches:
-                valid_fws = [fw for fw in fw_matches if is_valid_framework(fw)]
+                valid_fws = get_valid_frameworks()
                 if valid_fws:
-                    operators["framework"] = valid_fws
+                    filtered = [fw for fw in fw_matches if fw.lower() in valid_fws]
+                    if filtered:
+                        operators["framework"] = filtered
+                else:
+                    # DB unavailable — pass through (server validates)
+                    operators["framework"] = fw_matches
 
-            # Style - only include if registered in server styles
+            # Style: validate against DB, pass through if DB unavailable
             style_matches = detect_operator(user_message, "style")
             if style_matches:
-                valid_styles = [s for s in style_matches if is_valid_style(s)]
+                valid_styles = get_valid_styles()
                 if valid_styles:
-                    operators["style"] = valid_styles
+                    filtered = [s for s in style_matches if s.lower() in valid_styles]
+                    if filtered:
+                        operators["style"] = filtered
+                else:
+                    operators["style"] = style_matches
 
-            # Repetition - no validation needed (it's a number)
+            # Repetition: no validation needed (it's a number)
             rep_matches = detect_operator(user_message, "repetition")
             if rep_matches:
                 operators["repetition"] = rep_matches
         else:
-            # Fallback: manual detection with validation
+            # Fallback: manual detection with DB-aware validation
             framework = detect_framework(user_message)
-            if framework and is_valid_framework(framework):
-                operators["framework"] = [framework]
+            if framework:
+                valid_fws = get_valid_frameworks()
+                if not valid_fws or framework.lower() in valid_fws:
+                    operators["framework"] = [framework]
+
+            style_match = re.search(r"(?:^|\s)#([A-Za-z][A-Za-z0-9_-]*)(?=\s|$)", user_message)
+            if style_match:
+                style = style_match.group(1)
+                valid_styles = get_valid_styles()
+                if not valid_styles or style.lower() in valid_styles:
+                    operators["style"] = [style]
+
             repetition = detect_repetition(user_message)
             if repetition:
                 operators["repetition"] = [str(repetition)]
+
+            if "==>" in user_message:
+                operators["delegation"] = ["==>"]
 
         # Parse inline arguments (quoted only)
         parsed_args = parse_inline_args(user_message)
