@@ -87,6 +87,37 @@ jobs:
           pip install pyrefly --quiet
           pyrefly check --baseline hooks/.pyrefly-baseline.json
 
+  architecture-scope:
+    name: Architecture Scope
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.scope.outputs.should_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect architecture-relevant changes
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            CHANGED_FILES=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}"...HEAD)
+          else
+            CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          fi
+
+          echo "$CHANGED_FILES"
+
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(server/src/mcp/tools/|server/src/infra/http/transport/|server/src/runtime/)'; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ============================================================
   # Stage 2: Build (single Node LTS, upload artifact)
   # Build once, share with test matrix
@@ -180,20 +211,16 @@ jobs:
   # ============================================================
   architecture:
     name: Architecture Validation
-    needs: lint
+    needs: [lint, architecture-scope]
     runs-on: ubuntu-latest
     if: |
       always() &&
       needs.lint.result != 'cancelled' &&
+      needs.architecture-scope.result == 'success' &&
+      needs.architecture-scope.outputs.should_run == 'true' &&
       (
         github.event_name == 'pull_request' ||
         needs.lint.result == 'success'
-      ) &&
-      (
-        contains(github.event.head_commit.modified, 'server/src/mcp-tools/') ||
-        contains(github.event.head_commit.modified, 'server/src/transport/') ||
-        contains(github.event.head_commit.modified, 'server/src/runtime/') ||
-        github.event_name == 'pull_request'
       )
     defaults:
       run:

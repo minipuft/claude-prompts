@@ -99,3 +99,5 @@ Execution notes:
 - 2026-03-16: Added Docker relevance detection job in `docker-publish.yml` so the workflow still reports a stable check name while skipping irrelevant PRs inside the workflow.
 - 2026-03-16: Validation completed via `sh -n` for hooks, `prettier --check` for workflow/plan files, and `git diff --check`.
 - 2026-03-16: Removed duplicate `server/.lintstagedrc.json`; `server/package.json` is now the single lint-staged source of truth.
+- 2026-03-16: Modernized `server/src/Dockerfile` from `npm ci --only=production` to `npm ci --omit=dev`.
+- 2026-03-16: Replaced brittle architecture path checks with an explicit `architecture-scope` diff job that uses current canonical directories.
