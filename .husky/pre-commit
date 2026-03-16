@@ -1,32 +1,30 @@
 #!/usr/bin/env sh
 
-# Navigate to server directory
-cd server
+set -eu
+
+SERVER_DIR=server
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 
 # Contract auto-regeneration: If contracts or generator changed, regenerate and stage
-CONTRACTS_CHANGED=$(git diff --cached --name-only | grep "tooling/contracts/.*\.json" || true)
-GENERATOR_CHANGED=$(git diff --cached --name-only | grep "scripts/generate-contracts\.ts" || true)
+CONTRACTS_CHANGED=$(printf '%s\n' "$STAGED_FILES" | grep "^server/tooling/contracts/.*\.json$" || true)
+GENERATOR_CHANGED=$(printf '%s\n' "$STAGED_FILES" | grep "^server/scripts/generate-contracts\.ts$" || true)
 
 if [ -n "$CONTRACTS_CHANGED" ] || [ -n "$GENERATOR_CHANGED" ]; then
   echo "📝 Contract source changed - auto-regenerating..."
-  npm run -s generate:contracts
-  if [ $? -ne 0 ]; then
-    echo "❌ Contract generation failed!"
-    exit 1
-  fi
+  npm --prefix "$SERVER_DIR" run -s generate:contracts
   # Stage regenerated files
-  git add src/mcp/contracts/schemas/_generated/
+  git add server/src/mcp/contracts/schemas/_generated/
   echo "✅ Generated files updated and staged"
 fi
 
 # Prevent direct edits to generated files (without contract/generator changes)
 # Exception: Deletions are allowed if the source contract doesn't exist (feature removal)
-MANUAL_GEN_EDITS=$(git diff --cached --name-only | grep "src/.*_generated/.*\.ts$" || true)
+MANUAL_GEN_EDITS=$(printf '%s\n' "$STAGED_FILES" | grep "^server/src/.*_generated/.*\.ts$" || true)
 if [ -n "$MANUAL_GEN_EDITS" ] && [ -z "$CONTRACTS_CHANGED" ] && [ -z "$GENERATOR_CHANGED" ]; then
   # Check if these are deletions vs modifications
-  MODIFIED_GEN_FILES=$(git diff --cached --name-only --diff-filter=M | grep "src/.*_generated/.*\.ts$" || true)
-  ADDED_GEN_FILES=$(git diff --cached --name-only --diff-filter=A | grep "src/.*_generated/.*\.ts$" || true)
-  DELETED_GEN_FILES=$(git diff --cached --name-only --diff-filter=D | grep "src/.*_generated/.*\.ts$" || true)
+  MODIFIED_GEN_FILES=$(git diff --cached --name-only --diff-filter=M | grep "^server/src/.*_generated/.*\.ts$" || true)
+  ADDED_GEN_FILES=$(git diff --cached --name-only --diff-filter=A | grep "^server/src/.*_generated/.*\.ts$" || true)
+  DELETED_GEN_FILES=$(git diff --cached --name-only --diff-filter=D | grep "^server/src/.*_generated/.*\.ts$" || true)
 
   # Block modifications and additions (must go through regeneration)
   if [ -n "$MODIFIED_GEN_FILES" ] || [ -n "$ADDED_GEN_FILES" ]; then
@@ -56,14 +54,26 @@ if [ -n "$MANUAL_GEN_EDITS" ] && [ -z "$CONTRACTS_CHANGED" ] && [ -z "$GENERATOR
   fi
 fi
 
-# Run lint-staged for formatting (prettier)
-npm run -s lint:staged
+# Run server-scoped lint-staged for files inside server/
+SERVER_STAGED=$(printf '%s\n' "$STAGED_FILES" | grep '^server/' || true)
+if [ -n "$SERVER_STAGED" ]; then
+  (cd "$SERVER_DIR" && npm run -s lint:staged)
+fi
+
+# Format repo-level JSON/Markdown/YAML files with server's Prettier
+ROOT_FORMATTABLE=$(printf '%s\n' "$STAGED_FILES" | grep -v '^server/' | grep -E '\.(json|md|ya?ml)$' || true)
+if [ -n "$ROOT_FORMATTABLE" ]; then
+  echo "📝 Formatting staged repo-level text files..."
+  printf '%s\n' "$ROOT_FORMATTABLE" | xargs npx --prefix "$SERVER_DIR" prettier --write
+  printf '%s\n' "$ROOT_FORMATTABLE" | xargs git add --
+fi
+
+# Restore local Python lint/format parity when hooks change
+HOOK_CHANGES=$(printf '%s\n' "$STAGED_FILES" | grep '^hooks/' || true)
+if [ -n "$HOOK_CHANGES" ]; then
+  echo "🐍 Validating Python hooks..."
+  npm --prefix "$SERVER_DIR" run -s validate:python
+fi
 
 # Run lint ratchet check (allow existing violations, block new ones)
-npm run -s lint:ratchet
-if [ $? -ne 0 ]; then
-  echo ""
-  echo "❌ Lint ratchet check failed - new violations detected!"
-  echo "Run: npm run lint:fix to attempt auto-fix"
-  exit 1
-fi
+npm --prefix "$SERVER_DIR" run -s lint:ratchet

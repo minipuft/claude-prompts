@@ -1,33 +1,54 @@
 #!/usr/bin/env sh
 
-# Navigate to server directory
-cd server || exit 1
+set -eu
+
+SERVER_DIR=server
+
+if UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null); then
+  PUSHED_FILES=$(git diff --name-only "$UPSTREAM"..HEAD)
+else
+  PUSHED_FILES=$(git diff --name-only HEAD~1..HEAD)
+fi
 
 echo "🔍 Running pre-push validation..."
 echo ""
 
 echo "1/6 Type checking..."
-npm run typecheck || { echo "❌ Type checking failed"; exit 1; }
+npm --prefix "$SERVER_DIR" run typecheck || { echo "❌ Type checking failed"; exit 1; }
 
 echo ""
 echo "2/6 Linting..."
-npm run lint:ratchet || { echo "❌ Lint ratchet failed (new violations introduced)"; exit 1; }
+npm --prefix "$SERVER_DIR" run lint:ratchet || { echo "❌ Lint ratchet failed (new violations introduced)"; exit 1; }
 
 echo ""
 echo "3/6 Format checking..."
-echo "✅ Skipped (format is enforced via eslint/prettier in lint-staged for staged files)"
+ROOT_FORMATTABLE=$(printf '%s\n' "$PUSHED_FILES" | grep -v '^server/' | grep -E '\.(json|md|ya?ml)$' || true)
+if [ -n "$ROOT_FORMATTABLE" ]; then
+  printf '%s\n' "$ROOT_FORMATTABLE" | xargs npx --prefix "$SERVER_DIR" prettier --check
+else
+  echo "✅ No repo-level JSON/Markdown/YAML files in push range"
+fi
+
+echo ""
+echo "3b/6 Python hook validation..."
+HOOK_CHANGES=$(printf '%s\n' "$PUSHED_FILES" | grep '^hooks/' || true)
+if [ -n "$HOOK_CHANGES" ]; then
+  npm --prefix "$SERVER_DIR" run validate:python || { echo "❌ Python hook validation failed"; exit 1; }
+else
+  echo "✅ No hook changes in push range"
+fi
 
 echo ""
 echo "4/6 Running tests..."
-npm run test:ci || { echo "❌ Tests failed"; exit 1; }
+npm --prefix "$SERVER_DIR" run test:ci || { echo "❌ Tests failed"; exit 1; }
 
 echo ""
 echo "5/6 Dependency validation..."
-npm run validate:arch || { echo "❌ Dependency validation failed"; exit 1; }
+npm --prefix "$SERVER_DIR" run validate:arch || { echo "❌ Dependency validation failed"; exit 1; }
 
 echo ""
 echo "6/6 Version consistency check..."
-npm run validate:versions || { echo "❌ Version mismatch across manifests"; exit 1; }
+npm --prefix "$SERVER_DIR" run validate:versions || { echo "❌ Version mismatch across manifests"; exit 1; }
 
 # Optional: render and validate graphs only when .dot sources changed
 CHANGED_DOTS=$(git diff --name-only --cached | grep '^server/graphs/.*\.dot$' || true)
