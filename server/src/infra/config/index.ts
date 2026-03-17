@@ -35,7 +35,9 @@ import {
   VerificationConfig,
   AdvancedConfig,
   ResourcesConfig,
+  TelemetryConfig,
   DEFAULT_VERSIONING_CONFIG,
+  DEFAULT_TELEMETRY_CONFIG,
   DEFAULT_INJECTION_CONFIG,
   type InjectionConfig,
   type ConfigManager,
@@ -375,6 +377,30 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
   }
 
   /**
+   * Get OpenTelemetry configuration with safe defaults.
+   */
+  getTelemetryConfig(): TelemetryConfig {
+    const cfg: Partial<TelemetryConfig> = this.config.telemetry ?? {};
+    return {
+      enabled: cfg.enabled ?? DEFAULT_TELEMETRY_CONFIG.enabled,
+      mode: cfg.mode ?? DEFAULT_TELEMETRY_CONFIG.mode,
+      exporterEndpoint: cfg.exporterEndpoint ?? DEFAULT_TELEMETRY_CONFIG.exporterEndpoint,
+      samplingRate: cfg.samplingRate ?? DEFAULT_TELEMETRY_CONFIG.samplingRate,
+      attributePolicy: {
+        businessContext:
+          cfg.attributePolicy?.businessContext ??
+          DEFAULT_TELEMETRY_CONFIG.attributePolicy.businessContext,
+        rawCommands:
+          cfg.attributePolicy?.rawCommands ?? DEFAULT_TELEMETRY_CONFIG.attributePolicy.rawCommands,
+        rawResponses:
+          cfg.attributePolicy?.rawResponses ??
+          DEFAULT_TELEMETRY_CONFIG.attributePolicy.rawResponses,
+        allowlist: cfg.attributePolicy?.allowlist,
+      },
+    };
+  }
+
+  /**
    * Get injection config for the internal InjectionDecisionService.
    * Translates from the user-friendly frameworks.injection format to the internal format.
    */
@@ -464,8 +490,7 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
    *
    * Priority:
    *   1. overridePath parameter
-   *   2. MCP_PROMPTS_PATH environment variable
-   *   3. config.prompts.directory setting
+   *   2. config.prompts.directory setting
    *
    * Note: PathResolver is the preferred source of truth for path resolution.
    * This method exists for backward compatibility and simple use cases.
@@ -473,8 +498,8 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
   getResolvedPromptsFilePath(overridePath?: string): string {
     const baseDir = path.dirname(this.configPath);
 
-    // Priority: overridePath > MCP_PROMPTS_PATH > config
-    let resolvedPath = overridePath ?? process.env['MCP_PROMPTS_PATH'] ?? this.getPromptsFilePath();
+    // Priority: overridePath > config
+    let resolvedPath = overridePath ?? this.getPromptsFilePath();
 
     if (!path.isAbsolute(resolvedPath)) {
       resolvedPath = path.resolve(baseDir, resolvedPath);
@@ -580,6 +605,20 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
       ...DEFAULT_VERSIONING_CONFIG,
       ...this.config.versioning,
     };
+
+    // Ensure telemetry config exists with safe defaults
+    if (!this.config.telemetry) {
+      this.config.telemetry = { ...DEFAULT_TELEMETRY_CONFIG };
+    } else {
+      this.config.telemetry = {
+        ...DEFAULT_TELEMETRY_CONFIG,
+        ...this.config.telemetry,
+        attributePolicy: {
+          ...DEFAULT_TELEMETRY_CONFIG.attributePolicy,
+          ...this.config.telemetry.attributePolicy,
+        },
+      };
+    }
   }
 
   /**

@@ -14,11 +14,6 @@ export interface ServerCliArgs {
   testMode: boolean;
   workspace?: string;
   config?: string;
-  prompts?: string;
-  methodologies?: string;
-  gates?: string;
-  scripts?: string;
-  styles?: string;
   workspaceId?: string;
   organizationId?: string;
   identityMode?: string;
@@ -42,11 +37,6 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
       'test-mode': { type: 'boolean' },
       workspace: { type: 'string' },
       config: { type: 'string' },
-      prompts: { type: 'string' },
-      methodologies: { type: 'string' },
-      gates: { type: 'string' },
-      scripts: { type: 'string' },
-      styles: { type: 'string' },
       'workspace-id': { type: 'string' },
       'organization-id': { type: 'string' },
       'identity-mode': { type: 'string' },
@@ -70,11 +60,6 @@ export function parseServerCliArgs(args: string[] = process.argv.slice(2)): Serv
     testMode: Boolean(values['test-mode']),
     workspace: values.workspace as string | undefined,
     config: values.config as string | undefined,
-    prompts: values.prompts as string | undefined,
-    methodologies: values.methodologies as string | undefined,
-    gates: values.gates as string | undefined,
-    scripts: values.scripts as string | undefined,
-    styles: values.styles as string | undefined,
     workspaceId: values['workspace-id'] as string | undefined,
     organizationId: values['organization-id'] as string | undefined,
     identityMode: values['identity-mode'] as string | undefined,

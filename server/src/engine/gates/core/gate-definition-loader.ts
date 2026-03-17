@@ -396,67 +396,28 @@ export class GateDefinitionLoader {
   // ============================================================================
 
   /**
-   * Resolve the gates directory from multiple possible locations
-   *
-   * Priority:
-   *   1. MCP_GATES_PATH environment variable
-   *   2. Package.json resolution (npm/npx installs)
-   *   3. Walk up from module location (development)
-   *   4. Common relative paths (resources/gates first, then legacy)
-   *   5. Fallback
+   * Resolve the gates directory from package location.
+   * Standalone fallback — used when PathResolver is not available (tests, standalone).
+   * In production, GateRegistry passes the resolved dir via config.
    */
   private resolveGatesDir(): string {
-    // Priority 1: Direct path environment variable
-    const envGates = process.env['MCP_GATES_PATH'];
-    if (envGates) {
-      const resolvedPath = join(envGates);
-      if (existsSync(resolvedPath) && this.hasYamlFiles(resolvedPath)) {
-        if (this.debug) {
-          console.error(`[GateDefinitionLoader] Using MCP_GATES_PATH: ${resolvedPath}`);
-        }
-        return resolvedPath;
-      }
-    }
-
-    // Priority 2: Find package.json with our package name
+    // 1. Find package.json with our package name
     const pkgResolved = this.resolveFromPackageJson();
     if (pkgResolved) {
       return pkgResolved;
     }
 
-    // Priority 3: Walk up from current module location
+    // 2. Walk up from current module location
     let current = __dirname;
     for (let i = 0; i < 10; i++) {
-      // Check resources/gates first (new structure)
       const resourcesCandidate = join(current, 'resources', 'gates');
       if (existsSync(resourcesCandidate) && this.hasYamlFiles(resourcesCandidate)) {
         return resourcesCandidate;
       }
-      // Then check legacy location
-      const candidate = join(current, 'gates');
-      if (existsSync(candidate) && this.hasYamlFiles(candidate)) {
-        return candidate;
-      }
       current = dirname(current);
     }
 
-    // Priority 4: Common relative paths from dist (resources/gates first)
-    // NOTE: process.cwd() paths removed - use explicit PathResolver configuration
-    const relativePaths = [
-      join(__dirname, '..', '..', '..', 'resources', 'gates'),
-      join(__dirname, '..', '..', 'resources', 'gates'),
-      // Legacy paths (package-relative only)
-      join(__dirname, '..', '..', '..', 'gates'),
-      join(__dirname, '..', '..', 'gates'),
-    ];
-
-    for (const path of relativePaths) {
-      if (existsSync(path) && this.hasYamlFiles(path)) {
-        return path;
-      }
-    }
-
-    // Fallback to new structure (may not exist yet)
+    // Fallback
     return join(__dirname, '..', '..', '..', 'resources', 'gates');
   }
 

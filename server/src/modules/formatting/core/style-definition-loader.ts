@@ -24,7 +24,11 @@ import {
   type StyleSchemaValidationResult,
   type StyleDefinitionYaml,
 } from './style-schema.js';
-import { loadYamlFileSync, discoverYamlDirectories } from '../../../shared/utils/yaml/index.js';
+import {
+  loadYamlFileSync,
+  discoverYamlDirectories,
+  discoverNestedYamlDirectories,
+} from '../../../shared/utils/yaml/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +39,8 @@ const __dirname = dirname(__filename);
 export interface StyleDefinitionLoaderConfig {
   /** Override default styles directory */
   stylesDir?: string;
+  /** Additional directories to scan for style overlays (workspace resources) */
+  additionalStylesDirs?: string[];
   /** Enable caching of loaded definitions (default: true) */
   enableCache?: boolean;
   /** Validate definitions on load (default: true) */
@@ -57,6 +63,8 @@ export interface StyleLoaderStats {
   loadErrors: number;
   /** Styles directory being used */
   stylesDir: string;
+  /** Additional overlay directories */
+  additionalStylesDirs: string[];
 }
 
 // Re-export validation types
@@ -83,12 +91,16 @@ export class StyleDefinitionLoader {
   private cache = new Map<string, StyleDefinitionYaml>();
   private stats = { cacheHits: 0, cacheMisses: 0, loadErrors: 0 };
   private stylesDir: string;
+  private additionalStylesDirs: string[];
   private enableCache: boolean;
   private validateOnLoad: boolean;
   private debug: boolean;
 
   constructor(config: StyleDefinitionLoaderConfig = {}) {
     this.stylesDir = config.stylesDir ?? this.resolveStylesDir();
+    this.additionalStylesDirs = (config.additionalStylesDirs ?? []).filter(
+      (dir) => existsSync(dir) && dir !== this.stylesDir
+    );
     this.enableCache = config.enableCache ?? true;
     this.validateOnLoad = config.validateOnLoad ?? true;
     this.debug = config.debug ?? false;
@@ -96,6 +108,11 @@ export class StyleDefinitionLoader {
     if (this.debug) {
       // Use stderr to avoid corrupting STDIO protocol
       console.error(`[StyleDefinitionLoader] Using directory: ${this.stylesDir}`);
+      if (this.additionalStylesDirs.length > 0) {
+        console.error(
+          `[StyleDefinitionLoader] Additional directories: ${this.additionalStylesDirs.join(', ')}`
+        );
+      }
     }
   }
 
@@ -116,8 +133,9 @@ export class StyleDefinitionLoader {
 
     this.stats.cacheMisses++;
 
-    // Load from YAML directory
-    const definition = this.loadFromYamlDir(normalizedId);
+    // Load from primary YAML directory, then fall through to additional dirs
+    const definition =
+      this.loadFromYamlDir(normalizedId) ?? this.loadFromAdditionalDirs(normalizedId);
 
     if (!definition) {
       return undefined;
@@ -137,8 +155,19 @@ export class StyleDefinitionLoader {
    * @returns Array of style IDs from YAML directories
    */
   discoverStyles(): string[] {
-    const yamlIds = discoverYamlDirectories(this.stylesDir, 'style.yaml');
-    return yamlIds.map((id) => id.toLowerCase()).sort();
+    // Primary: flat scan
+    const primaryIds = discoverYamlDirectories(this.stylesDir, 'style.yaml');
+    const idSet = new Set(primaryIds.map((id) => id.toLowerCase()));
+
+    // Additional: nested scan (flat + grouped). Primary wins on conflict via Set.
+    for (const dir of this.additionalStylesDirs) {
+      const additionalIds = discoverNestedYamlDirectories(dir, 'style.yaml');
+      for (const id of additionalIds) {
+        idSet.add(id.toLowerCase());
+      }
+    }
+
+    return Array.from(idSet).sort();
   }
 
   /**
@@ -168,8 +197,14 @@ export class StyleDefinitionLoader {
    */
   styleExists(id: string): boolean {
     const normalizedId = id.toLowerCase();
-    const yamlPath = join(this.stylesDir, normalizedId, 'style.yaml');
-    return existsSync(yamlPath);
+
+    // Check primary
+    if (existsSync(join(this.stylesDir, normalizedId, 'style.yaml'))) {
+      return true;
+    }
+
+    // Check additional dirs (flat + grouped)
+    return this.findInAdditionalDirs(normalizedId) !== undefined;
   }
 
   /**
@@ -195,6 +230,7 @@ export class StyleDefinitionLoader {
       cacheMisses: this.stats.cacheMisses,
       loadErrors: this.stats.loadErrors,
       stylesDir: this.stylesDir,
+      additionalStylesDirs: this.additionalStylesDirs,
     };
   }
 
@@ -205,16 +241,69 @@ export class StyleDefinitionLoader {
     return this.stylesDir;
   }
 
+  /**
+   * Get all directories that should be watched for changes (primary + additional)
+   */
+  getWatchDirectories(): string[] {
+    return [this.stylesDir, ...this.additionalStylesDirs];
+  }
+
+  // ============================================================================
+  // Private Implementation - Overlay Loading
+  // ============================================================================
+
+  /**
+   * Attempt to load a style from additional directories.
+   * Tries flat path first, then scans for grouped nesting.
+   */
+  private loadFromAdditionalDirs(id: string): StyleDefinitionYaml | undefined {
+    const resolvedDir = this.findInAdditionalDirs(id);
+    if (resolvedDir === undefined) return undefined;
+    return this.loadFromYamlDir(id, resolvedDir);
+  }
+
+  /**
+   * Find which additional directory contains a style ID.
+   * Checks flat ({dir}/{id}/style.yaml) and grouped ({dir}/{group}/{id}/style.yaml).
+   *
+   * @returns The base directory to pass to loadFromYamlDir, or undefined
+   */
+  private findInAdditionalDirs(id: string): string | undefined {
+    for (const dir of this.additionalStylesDirs) {
+      // Flat: {dir}/{id}/style.yaml
+      if (existsSync(join(dir, id, 'style.yaml'))) {
+        return dir;
+      }
+
+      // Grouped: {dir}/{group}/{id}/style.yaml
+      try {
+        const groups = readdirSync(dir, { withFileTypes: true });
+        for (const group of groups) {
+          if (!group.isDirectory()) continue;
+          if (existsSync(join(dir, group.name, id, 'style.yaml'))) {
+            return join(dir, group.name);
+          }
+        }
+      } catch {
+        // Directory read failure — skip
+      }
+    }
+    return undefined;
+  }
+
   // ============================================================================
   // Private Implementation - YAML Loading
   // ============================================================================
 
   /**
-   * Load a style from YAML directory format (styles/{id}/style.yaml)
+   * Load a style from YAML directory format ({baseDir}/{id}/style.yaml)
+   *
+   * @param id - Style ID
+   * @param baseDir - Directory to load from (defaults to primary stylesDir)
    */
-  private loadFromYamlDir(id: string): StyleDefinitionYaml | undefined {
+  private loadFromYamlDir(id: string, baseDir?: string): StyleDefinitionYaml | undefined {
     try {
-      const styleDir = join(this.stylesDir, id);
+      const styleDir = join(baseDir ?? this.stylesDir, id);
       const entryPath = join(styleDir, 'style.yaml');
 
       if (!existsSync(entryPath)) {
@@ -318,64 +407,32 @@ export class StyleDefinitionLoader {
    * Resolve the styles directory from multiple possible locations
    *
    * Priority:
-   *   1. MCP_STYLES_PATH environment variable
-   *   2. Package.json resolution (npm/npx installs)
+   *   1. Package.json resolution (npm/npx installs)
    *   3. Walk up from module location (development)
    *   4. Common relative paths (resources/styles first, then legacy styles)
    *   5. Fallback
    */
   private resolveStylesDir(): string {
-    // Priority 1: Direct path environment variable
-    const envStyles = process.env['MCP_STYLES_PATH'];
-    if (envStyles) {
-      const resolvedPath = join(envStyles);
-      if (existsSync(resolvedPath) && this.hasYamlFiles(resolvedPath)) {
-        if (this.debug) {
-          console.error(`[StyleDefinitionLoader] Using MCP_STYLES_PATH: ${resolvedPath}`);
-        }
-        return resolvedPath;
-      }
-    }
+    // Standalone fallback — used when PathResolver is not available (tests, standalone).
+    // In production, module-initializer passes the resolved dir via config.
 
-    // Priority 2: Find package.json with our package name
+    // 1. Find package.json with our package name
     const pkgResolved = this.resolveFromPackageJson();
     if (pkgResolved) {
       return pkgResolved;
     }
 
-    // Priority 3: Walk up from current module location
+    // 2. Walk up from current module location
     let current = __dirname;
     for (let i = 0; i < 10; i++) {
-      // Check resources/styles first (new structure)
       const resourcesCandidate = join(current, 'resources', 'styles');
       if (existsSync(resourcesCandidate) && this.hasYamlFiles(resourcesCandidate)) {
         return resourcesCandidate;
       }
-      // Then check legacy styles location
-      const candidate = join(current, 'styles');
-      if (existsSync(candidate) && this.hasYamlFiles(candidate)) {
-        return candidate;
-      }
       current = dirname(current);
     }
 
-    // Priority 4: Common relative paths from dist (resources/styles first)
-    // NOTE: process.cwd() paths removed - use explicit PathResolver configuration
-    const relativePaths = [
-      join(__dirname, '..', '..', '..', 'resources', 'styles'),
-      join(__dirname, '..', '..', 'resources', 'styles'),
-      // Legacy paths (package-relative only)
-      join(__dirname, '..', '..', '..', 'styles'),
-      join(__dirname, '..', '..', 'styles'),
-    ];
-
-    for (const path of relativePaths) {
-      if (existsSync(path) && this.hasYamlFiles(path)) {
-        return path;
-      }
-    }
-
-    // Fallback to new structure (may not exist yet)
+    // Fallback
     return join(__dirname, '..', '..', '..', 'resources', 'styles');
   }
 
@@ -449,9 +506,11 @@ let defaultLoader: StyleDefinitionLoader | null = null;
  * Get the default StyleDefinitionLoader instance
  * Creates one if it doesn't exist
  */
-export function getDefaultStyleDefinitionLoader(): StyleDefinitionLoader {
+export function getDefaultStyleDefinitionLoader(
+  config?: StyleDefinitionLoaderConfig
+): StyleDefinitionLoader {
   if (!defaultLoader) {
-    defaultLoader = new StyleDefinitionLoader();
+    defaultLoader = new StyleDefinitionLoader(config);
   }
   return defaultLoader;
 }

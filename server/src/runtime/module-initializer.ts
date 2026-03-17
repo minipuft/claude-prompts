@@ -14,6 +14,7 @@ import {
   createFrameworkStateStore,
   FrameworkStateStore,
 } from '../engine/frameworks/framework-state-store.js';
+import { getDefaultRuntimeLoader } from '../engine/frameworks/methodology/runtime-methodology-loader.js';
 import { createGateManager, GateManager } from '../engine/gates/gate-manager.js';
 import { createMetricsCollector } from '../infra/observability/metrics/index.js';
 import { ResourceChangeTracker } from '../infra/observability/tracking/index.js';
@@ -22,6 +23,7 @@ import {
   createToolDescriptionLoader,
   ToolDescriptionLoader,
 } from '../mcp/tools/tool-description-loader.js';
+import { getDefaultStyleDefinitionLoader } from '../modules/formatting/core/style-definition-loader.js';
 import { isChainPrompt } from '../shared/utils/chainUtils.js';
 
 import type { RuntimeLaunchOptions } from './options.js';
@@ -151,6 +153,31 @@ export async function initializeModules(params: ModuleInitParams): Promise<Modul
     if (additionalGatesDirs.length > 0) {
       logger.info(`  📂 Additional gate directories: ${additionalGatesDirs.join(', ')}`);
     }
+  }
+
+  // Initialize methodology + style loaders with PathResolver-resolved dirs
+  // This ensures PathResolver is the SSOT for directory resolution and enables overlays.
+  // Must happen before any pipeline/tool code calls getDefaultRuntimeLoader().
+  const methodologiesDir = pathResolver?.getMethodologiesPath();
+  const additionalMethodologiesDirs = pathResolver?.getOverlayResourceDirs('methodologies') ?? [];
+  getDefaultRuntimeLoader({
+    ...(methodologiesDir !== undefined ? { methodologiesDir } : {}),
+    ...(additionalMethodologiesDirs.length > 0 ? { additionalMethodologiesDirs } : {}),
+  });
+  if (isVerbose && additionalMethodologiesDirs.length > 0) {
+    logger.info(
+      `  📂 Additional methodology directories: ${additionalMethodologiesDirs.join(', ')}`
+    );
+  }
+
+  const stylesDir = pathResolver?.getStylesPath();
+  const additionalStylesDirs = pathResolver?.getOverlayResourceDirs('styles') ?? [];
+  getDefaultStyleDefinitionLoader({
+    ...(stylesDir !== undefined ? { stylesDir } : {}),
+    ...(additionalStylesDirs.length > 0 ? { additionalStylesDirs } : {}),
+  });
+  if (isVerbose && additionalStylesDirs.length > 0) {
+    logger.info(`  📂 Additional style directories: ${additionalStylesDirs.join(', ')}`);
   }
 
   const chainCount = convertedPrompts.filter((p) => isChainPrompt(p)).length;

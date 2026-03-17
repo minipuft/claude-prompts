@@ -14,7 +14,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
-import { join, dirname, basename } from 'path';
+import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 import {
@@ -24,7 +24,7 @@ import {
 import {
   loadYamlFileSync,
   discoverYamlDirectories,
-  type YamlFileLoadOptions,
+  discoverNestedYamlDirectories,
 } from '../../../shared/utils/yaml/index.js';
 
 import type { MethodologyDefinition } from './methodology-definition-types.js';
@@ -38,6 +38,8 @@ const __dirname = dirname(__filename);
 export interface RuntimeMethodologyLoaderConfig {
   /** Override default methodologies directory */
   methodologiesDir?: string;
+  /** Additional directories to scan for methodology overlays (workspace resources) */
+  additionalMethodologiesDirs?: string[];
   /** Enable caching of loaded definitions (default: true) */
   enableCache?: boolean;
   /** Validate definitions on load (default: true) */
@@ -60,6 +62,8 @@ export interface LoaderStats {
   loadErrors: number;
   /** Methodologies directory being used */
   methodologiesDir: string;
+  /** Additional overlay directories */
+  additionalMethodologiesDirs: string[];
 }
 
 // MethodologySchemaValidationResult is imported from methodology-schema.ts
@@ -87,12 +91,16 @@ export class RuntimeMethodologyLoader {
   private cache = new Map<string, MethodologyDefinition>();
   private stats = { cacheHits: 0, cacheMisses: 0, loadErrors: 0 };
   private methodologiesDir: string;
+  private additionalMethodologiesDirs: string[];
   private enableCache: boolean;
   private validateOnLoad: boolean;
   private debug: boolean;
 
   constructor(config: RuntimeMethodologyLoaderConfig = {}) {
     this.methodologiesDir = config.methodologiesDir ?? this.resolveMethodologiesDir();
+    this.additionalMethodologiesDirs = (config.additionalMethodologiesDirs ?? []).filter(
+      (dir) => existsSync(dir) && dir !== this.methodologiesDir
+    );
     this.enableCache = config.enableCache ?? true;
     this.validateOnLoad = config.validateOnLoad ?? true;
     this.debug = config.debug ?? false;
@@ -100,6 +108,11 @@ export class RuntimeMethodologyLoader {
     if (this.debug) {
       // Use stderr to avoid corrupting STDIO protocol
       console.error(`[RuntimeMethodologyLoader] Using directory: ${this.methodologiesDir}`);
+      if (this.additionalMethodologiesDirs.length > 0) {
+        console.error(
+          `[RuntimeMethodologyLoader] Additional directories: ${this.additionalMethodologiesDirs.join(', ')}`
+        );
+      }
     }
   }
 
@@ -120,63 +133,21 @@ export class RuntimeMethodologyLoader {
 
     this.stats.cacheMisses++;
 
-    try {
-      const methodologyDir = join(this.methodologiesDir, normalizedId);
-      const entryPath = join(methodologyDir, 'methodology.yaml');
+    // Load from primary directory, then fall through to additional dirs
+    const definition =
+      this.loadFromDir(normalizedId, this.methodologiesDir) ??
+      this.loadFromAdditionalDirs(normalizedId);
 
-      if (!existsSync(entryPath)) {
-        if (this.debug) {
-          console.error(`[RuntimeMethodologyLoader] Entry point not found: ${entryPath}`);
-        }
-        return undefined;
-      }
-
-      // Load main methodology.yaml
-      const definition = loadYamlFileSync<MethodologyDefinition>(entryPath, {
-        required: true,
-      });
-
-      if (!definition) {
-        return undefined;
-      }
-
-      // Inline referenced files
-      this.inlineReferencedFiles(definition, methodologyDir);
-
-      // Validate if enabled
-      if (this.validateOnLoad) {
-        const validation = this.validateDefinition(definition, normalizedId);
-        if (!validation.valid) {
-          this.stats.loadErrors++;
-          console.error(
-            `[RuntimeMethodologyLoader] Validation failed for '${id}':`,
-            validation.errors.join('; ')
-          );
-          return undefined;
-        }
-        if (validation.warnings.length > 0) {
-          console.warn(
-            `[RuntimeMethodologyLoader] Warnings for '${id}':`,
-            validation.warnings.join('; ')
-          );
-        }
-      }
-
-      // Cache result
-      if (this.enableCache) {
-        this.cache.set(normalizedId, definition);
-      }
-
-      if (this.debug) {
-        console.error(`[RuntimeMethodologyLoader] Loaded: ${definition.name} (${normalizedId})`);
-      }
-
-      return definition;
-    } catch (error) {
-      this.stats.loadErrors++;
-      console.error(`[RuntimeMethodologyLoader] Failed to load '${id}':`, error);
+    if (!definition) {
       return undefined;
     }
+
+    // Cache result
+    if (this.enableCache) {
+      this.cache.set(normalizedId, definition);
+    }
+
+    return definition;
   }
 
   /**
@@ -185,7 +156,19 @@ export class RuntimeMethodologyLoader {
    * @returns Array of methodology IDs that have valid entry points
    */
   discoverMethodologies(): string[] {
-    return discoverYamlDirectories(this.methodologiesDir, 'methodology.yaml');
+    // Primary: flat scan
+    const primaryIds = discoverYamlDirectories(this.methodologiesDir, 'methodology.yaml');
+    const idSet = new Set(primaryIds.map((id) => id.toLowerCase()));
+
+    // Additional: nested scan (flat + grouped). Primary wins on conflict via Set.
+    for (const dir of this.additionalMethodologiesDirs) {
+      const additionalIds = discoverNestedYamlDirectories(dir, 'methodology.yaml');
+      for (const id of additionalIds) {
+        idSet.add(id.toLowerCase());
+      }
+    }
+
+    return Array.from(idSet).sort();
   }
 
   /**
@@ -215,8 +198,14 @@ export class RuntimeMethodologyLoader {
    */
   methodologyExists(id: string): boolean {
     const normalizedId = id.toLowerCase();
-    const entryPath = join(this.methodologiesDir, normalizedId, 'methodology.yaml');
-    return existsSync(entryPath);
+
+    // Check primary
+    if (existsSync(join(this.methodologiesDir, normalizedId, 'methodology.yaml'))) {
+      return true;
+    }
+
+    // Check additional dirs (flat + grouped)
+    return this.findInAdditionalDirs(normalizedId) !== undefined;
   }
 
   /**
@@ -242,6 +231,7 @@ export class RuntimeMethodologyLoader {
       cacheMisses: this.stats.cacheMisses,
       loadErrors: this.stats.loadErrors,
       methodologiesDir: this.methodologiesDir,
+      additionalMethodologiesDirs: this.additionalMethodologiesDirs,
     };
   }
 
@@ -252,72 +242,148 @@ export class RuntimeMethodologyLoader {
     return this.methodologiesDir;
   }
 
+  /**
+   * Get all directories that should be watched for changes (primary + additional)
+   */
+  getWatchDirectories(): string[] {
+    return [this.methodologiesDir, ...this.additionalMethodologiesDirs];
+  }
+
   // ============================================================================
-  // Private Implementation
+  // Private Implementation - Overlay Loading
+  // ============================================================================
+
+  /**
+   * Load a methodology from a specific base directory
+   */
+  private loadFromDir(id: string, baseDir: string): MethodologyDefinition | undefined {
+    try {
+      const methodologyDir = join(baseDir, id);
+      const entryPath = join(methodologyDir, 'methodology.yaml');
+
+      if (!existsSync(entryPath)) {
+        if (this.debug) {
+          console.error(`[RuntimeMethodologyLoader] Entry point not found: ${entryPath}`);
+        }
+        return undefined;
+      }
+
+      // Load main methodology.yaml
+      const definition = loadYamlFileSync<MethodologyDefinition>(entryPath, {
+        required: true,
+      });
+
+      if (!definition) {
+        return undefined;
+      }
+
+      // Inline referenced files
+      this.inlineReferencedFiles(definition, methodologyDir);
+
+      // Validate if enabled
+      if (this.validateOnLoad) {
+        const validation = this.validateDefinition(definition, id);
+        if (!validation.valid) {
+          this.stats.loadErrors++;
+          console.error(
+            `[RuntimeMethodologyLoader] Validation failed for '${id}':`,
+            validation.errors.join('; ')
+          );
+          return undefined;
+        }
+        if (validation.warnings.length > 0) {
+          console.warn(
+            `[RuntimeMethodologyLoader] Warnings for '${id}':`,
+            validation.warnings.join('; ')
+          );
+        }
+      }
+
+      if (this.debug) {
+        console.error(`[RuntimeMethodologyLoader] Loaded: ${definition.name} (${id})`);
+      }
+
+      return definition;
+    } catch (error) {
+      this.stats.loadErrors++;
+      console.error(`[RuntimeMethodologyLoader] Failed to load '${id}':`, error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Attempt to load a methodology from additional directories.
+   * Tries flat path first, then scans for grouped nesting.
+   */
+  private loadFromAdditionalDirs(id: string): MethodologyDefinition | undefined {
+    const resolvedDir = this.findInAdditionalDirs(id);
+    if (resolvedDir === undefined) return undefined;
+    return this.loadFromDir(id, resolvedDir);
+  }
+
+  /**
+   * Find which additional directory contains a methodology ID.
+   * Checks flat ({dir}/{id}/methodology.yaml) and grouped ({dir}/{group}/{id}/methodology.yaml).
+   *
+   * @returns The base directory to pass to loadFromDir, or undefined
+   */
+  private findInAdditionalDirs(id: string): string | undefined {
+    for (const dir of this.additionalMethodologiesDirs) {
+      // Flat: {dir}/{id}/methodology.yaml
+      if (existsSync(join(dir, id, 'methodology.yaml'))) {
+        return dir;
+      }
+
+      // Grouped: {dir}/{group}/{id}/methodology.yaml
+      try {
+        const groups = readdirSync(dir, { withFileTypes: true });
+        for (const group of groups) {
+          if (!group.isDirectory()) continue;
+          if (existsSync(join(dir, group.name, id, 'methodology.yaml'))) {
+            return join(dir, group.name);
+          }
+        }
+      } catch {
+        // Directory read failure — skip
+      }
+    }
+    return undefined;
+  }
+
+  // ============================================================================
+  // Private Implementation - Directory Resolution
   // ============================================================================
 
   /**
    * Resolve the methodologies directory from multiple possible locations
    *
    * Priority:
-   *   1. MCP_METHODOLOGIES_PATH environment variable
-   *   2. Package.json resolution (npm/npx installs)
+   *   1. Package.json resolution (npm/npx installs)
    *   3. Walk up from module location (development)
    *   4. Common relative paths (resources/methodologies first, then legacy)
    *   5. Fallback
    */
   private resolveMethodologiesDir(): string {
-    // Priority 1: Direct path environment variable
-    const envMethodologies = process.env['MCP_METHODOLOGIES_PATH'];
-    if (envMethodologies) {
-      const resolvedPath = join(envMethodologies); // Normalize
-      if (existsSync(resolvedPath) && this.hasYamlFiles(resolvedPath)) {
-        if (this.debug) {
-          console.error(`[RuntimeMethodologyLoader] Using MCP_METHODOLOGIES_PATH: ${resolvedPath}`);
-        }
-        return resolvedPath;
-      }
-    }
+    // Standalone fallback — used when PathResolver is not available (tests, standalone).
+    // In production, module-initializer passes the resolved dir via config.
 
-    // Priority 2: Find package.json with our package name (works for npx deep cache paths)
+    // 1. Find package.json with our package name (works for npx deep cache paths)
     const pkgResolved = this.resolveFromPackageJson();
     if (pkgResolved) {
       return pkgResolved;
     }
 
-    // Priority 3: Walk up from current module location (fallback for development)
+    // 2. Walk up from current module location (fallback for development)
     let current = __dirname;
     for (let i = 0; i < 10; i++) {
-      // Check resources/methodologies first (new structure)
       const resourcesCandidate = join(current, 'resources', 'methodologies');
       if (existsSync(resourcesCandidate) && this.hasYamlFiles(resourcesCandidate)) {
         return resourcesCandidate;
       }
-      // Then check legacy location
-      const candidate = join(current, 'methodologies');
-      if (existsSync(candidate) && this.hasYamlFiles(candidate)) {
-        return candidate;
-      }
       current = dirname(current);
     }
 
-    // Priority 4: Common relative paths from dist (resources/methodologies first)
-    // NOTE: process.cwd() paths removed - use explicit PathResolver configuration
-    const relativePaths = [
-      join(__dirname, '..', '..', '..', 'resources', 'methodologies'),
-      join(__dirname, '..', '..', 'resources', 'methodologies'),
-      // Legacy paths (package-relative only)
-      join(__dirname, '..', '..', '..', 'methodologies'),
-      join(__dirname, '..', '..', 'methodologies'),
-    ];
-
-    for (const path of relativePaths) {
-      if (existsSync(path) && this.hasYamlFiles(path)) {
-        return path;
-      }
-    }
-
-    // Fallback to new structure (may not exist)
+    // Fallback
     return join(__dirname, '..', '..', '..', 'resources', 'methodologies');
   }
 
@@ -468,9 +534,11 @@ let defaultLoader: RuntimeMethodologyLoader | null = null;
  *
  * Creates a singleton instance on first call.
  */
-export function getDefaultRuntimeLoader(): RuntimeMethodologyLoader {
+export function getDefaultRuntimeLoader(
+  config?: RuntimeMethodologyLoaderConfig
+): RuntimeMethodologyLoader {
   if (!defaultLoader) {
-    defaultLoader = new RuntimeMethodologyLoader();
+    defaultLoader = new RuntimeMethodologyLoader(config);
   }
   return defaultLoader;
 }

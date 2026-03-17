@@ -27,14 +27,14 @@ Export as native skills.
 
 ### What your AI client gives you — and what this server adds
 
-| Your client already does | This server adds |
-|--------------------------|-----------------|
-| Run a prompt | Compose prompts with validation, reasoning guidance, and formatting in one expression |
-| Single-shot skills | Multi-step workflows that thread context between steps |
-| Execute subagents | Hand off mid-chain steps to agents with full workflow context |
-| Client-native skill format | Author once as YAML, export to any client with `skills:export` |
-| Manual prompt writing | Versioned templates with hot-reload, rollback, and history |
-| Trust the output | Validate output between steps — self-evaluation and shell commands |
+| Your client already does   | This server adds                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| Run a prompt               | Compose prompts with validation, reasoning guidance, and formatting in one expression |
+| Single-shot skills         | Multi-step workflows that thread context between steps                                |
+| Execute subagents          | Hand off mid-chain steps to agents with full workflow context                         |
+| Client-native skill format | Author once as YAML, export to any client with `skills:export`                        |
+| Manual prompt writing      | Versioned templates with hot-reload, rollback, and history                            |
+| Trust the output           | Validate output between steps — self-evaluation and shell commands                    |
 
 ---
 
@@ -68,7 +68,7 @@ Edit hooks/prompts → restart Claude Code. Edit TypeScript → rebuild first.
 
 </details>
 
-**User Data**: Custom prompts stored in `~/.local/share/claude-prompts/` persist across updates.
+**Custom prompts**: Use `--init=~/my-prompts` to create a workspace with starter templates you own. Prompts created via `resource_manager` are saved to your active resources directory. See [Custom Resources](#custom-resources).
 
 ---
 
@@ -85,6 +85,7 @@ The `.mcpb` bundle is self-contained (~5MB) — no npm required.
 **Option B: NPX** (auto-updates)
 
 Add to your config file:
+
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -146,29 +147,71 @@ Click the badge above for one-click install, or add manually to `~/.cursor/mcp.j
 <details>
 <summary><strong>OpenCode</strong></summary>
 
-Install the [opencode-prompts](https://github.com/minipuft/opencode-prompts) plugin — it registers the MCP server **and** adds hooks for chain tracking, gate enforcement, and state preservation:
+**Option A: Plugin install** (recommended — includes hooks)
 
 ```bash
 npm install -g opencode-prompts
 opencode-prompts install
 ```
 
-> [!NOTE]
-> **MCP server only** (no hooks): Add to `~/.config/opencode/opencode.json` with `--client=opencode`. You'll have MCP tools but no chain tracking, gate enforcement, or state preservation across compactions. See [opencode-prompts](https://github.com/minipuft/opencode-prompts) for what hooks provide.
+The installer configures hooks (chain tracking, gate enforcement, state preservation), plugin registration, and MCP server. See [opencode-prompts](https://github.com/minipuft/opencode-prompts) for what hooks provide.
+
+**Option B: MCP server only** (manual config, no hooks)
+
+Add to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "claude-prompts": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "claude-prompts@latest",
+        "--transport=stdio",
+        "--client=opencode"
+      ]
+    }
+  }
+}
+```
+
+You'll have the three MCP tools but no chain tracking, gate enforcement, or state preservation across compactions. To load your own prompts, add an `environment` key — see [Custom Resources](#custom-resources).
 
 </details>
 
 <details>
 <summary><strong>Gemini CLI</strong></summary>
 
-Install the [gemini-prompts](https://github.com/minipuft/gemini-prompts) extension — it registers the MCP server **and** adds hooks for `>>` syntax detection, chain tracking, and gate reminders:
+**Option A: Extension install** (recommended — includes hooks)
 
 ```bash
+# Enable hooks (first time only — skip if already enabled)
+echo '{"hooks": {"enabled": true}}' > ~/.gemini/settings.json
+
+# Install extension
 gemini extensions install https://github.com/minipuft/gemini-prompts
 ```
 
-> [!NOTE]
-> **MCP server only** (no hooks): Run `npx -y claude-prompts@latest --client=gemini` directly. You'll have MCP tools but no `>>` syntax detection, chain tracking, or gate reminders. See [gemini-prompts](https://github.com/minipuft/gemini-prompts) for what hooks provide.
+The extension registers the MCP server and adds hooks for `>>` syntax detection, chain tracking, and gate reminders. See [gemini-prompts](https://github.com/minipuft/gemini-prompts) for what hooks provide.
+
+**Option B: MCP server only** (manual config, no hooks)
+
+Add to `~/.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-prompts": {
+      "command": "npx",
+      "args": ["-y", "claude-prompts@latest", "--client=gemini"]
+    }
+  }
+}
+```
+
+You'll have the three MCP tools but no `>>` syntax detection, chain tracking, or gate reminders. To load your own prompts, add an `env` key — see [Custom Resources](#custom-resources).
 
 </details>
 
@@ -177,13 +220,14 @@ gemini extensions install https://github.com/minipuft/gemini-prompts
 
 Add to your MCP config file with a `--client` preset for deterministic handoff guidance:
 
-| Client | Config Location | Recommended `--client` |
-|--------|-----------------|------------------------|
-| Codex | `~/.codex/config.toml` | `codex` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `cursor` (experimental) |
-| Zed | `~/.config/zed/settings.json` → `mcp` key | `unknown` |
+| Client   | Config Location                           | Recommended `--client`  |
+| -------- | ----------------------------------------- | ----------------------- |
+| Codex    | `~/.codex/config.toml`                    | `codex`                 |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json`     | `cursor` (experimental) |
+| Zed      | `~/.config/zed/settings.json` → `mcp` key | `unknown`               |
 
 **JSON-based configs (Windsurf/Zed):**
+
 ```json
 {
   "mcpServers": {
@@ -206,6 +250,7 @@ args = ["-y", "claude-prompts@latest", "--client=codex"]
 Supported presets: `claude-code`, `codex`, `gemini`, `opencode`, `cursor`, `unknown`.
 
 For complete per-client setup and limitations:
+
 - [Client Integration Guide](docs/guides/client-integration.md)
 - [Client Capabilities Reference](docs/reference/client-capabilities.md)
 
@@ -228,14 +273,37 @@ Point your MCP config to `server/dist/index.js`. The esbuild bundle is self-cont
 
 ### Custom Resources
 
-Use your own prompts without cloning. Add `MCP_RESOURCES_PATH` to any MCP config:
+**Use your own prompts, gates, methodologies, and styles.** Two approaches depending on whether you want the bundled resources or not:
+
+**Option A: Own workspace** (recommended for full control)
+
+Create a workspace with starter templates, then point your MCP config to it:
+
+```bash
+npx -y claude-prompts@latest --init=~/my-prompts
+```
+
+This creates `~/my-prompts/resources/` with starter prompts you own. Set `MCP_WORKSPACE` or `MCP_RESOURCES_PATH` to use it. Prompts created via `resource_manager` are saved here. Your AI can update them through MCP — no manual editing needed.
+
+**Option B: Plugin install** (bundled resources + hooks)
+
+Plugin installs (Claude Code, OpenCode, Gemini) set `MCP_WORKSPACE` automatically and ship the bundled 90+ prompts, gates, and methodologies. Prompts created via `resource_manager` are saved to the plugin's resources directory.
+
+> [!IMPORTANT]
+> **`MCP_RESOURCES_PATH`** sets the base resources directory (replaces the package default).
+> **`MCP_WORKSPACE`** enables overlay — custom resources in your workspace are loaded **alongside** bundled ones. Prompts, gates, methodologies, and styles with the same ID as bundled ones take priority.
+
+<details>
+<summary><strong>Config examples per client</strong></summary>
+
+**Claude Desktop / VS Code / Cursor** (JSON with `env`):
 
 ```json
 {
   "mcpServers": {
     "claude-prompts": {
       "command": "npx",
-      "args": ["-y", "claude-prompts@latest", "--client", "claude-code"],
+      "args": ["-y", "claude-prompts@latest"],
       "env": {
         "MCP_RESOURCES_PATH": "/path/to/your/resources"
       }
@@ -244,9 +312,25 @@ Use your own prompts without cloning. Add `MCP_RESOURCES_PATH` to any MCP config
 }
 ```
 
-Your resources directory can contain: `prompts/`, `gates/`, `methodologies/`, `styles/`.
+**OpenCode** (JSON with `environment`):
 
-See [CLI Configuration](docs/reference/mcp-tools.md#cli-configuration) for all options including fine-grained path overrides.
+```json
+{
+  "mcp": {
+    "claude-prompts": {
+      "type": "local",
+      "command": ["npx", "-y", "claude-prompts@latest", "--transport=stdio"],
+      "environment": {
+        "MCP_RESOURCES_PATH": "/path/to/your/resources"
+      }
+    }
+  }
+}
+```
+
+</details>
+
+See [CLI Configuration](docs/reference/mcp-tools.md#cli-configuration) for all env vars including fine-grained path overrides (`MCP_PROMPTS_PATH`, `MCP_GATES_PATH`, etc.).
 
 ---
 
@@ -362,12 +446,17 @@ The operator syntax wires resources together — chain steps, add validation inl
 </details>
 
 What happened:
+
 1. Loaded the `review` template with arguments
 2. Injected CAGEERF reasoning guidance
 3. Added a validation rule (AI self-evaluates against it)
 4. Chained output to the next step
 5. Ran a shell command for ground-truth validation
 6. Handed the final step off to a client-native subagent
+
+> [!TIP]
+> Chains support conditional branching, context threading, and agent handoffs.
+> [Chains Lifecycle](docs/concepts/chains-lifecycle.md) · [MCP Tools Reference](docs/reference/mcp-tools.md)
 
 ### Verification Loops
 
@@ -379,11 +468,11 @@ Ground-truth validation via shell commands — the AI keeps iterating until test
 
 Implements, runs the test, reads failures, fixes, retries. Spawns a fresh context after repeated failures to avoid context rot.
 
-| Preset | Tries | Timeout | Use Case |
-|--------|-------|---------|----------|
-| `:fast` | 1 | 30s | Quick check |
-| `:full` | 5 | 5 min | CI validation |
-| `:extended` | 10 | 10 min | Large test suites |
+| Preset      | Tries | Timeout | Use Case          |
+| ----------- | ----- | ------- | ----------------- |
+| `:fast`     | 1     | 30s     | Quick check       |
+| `:full`     | 5     | 5 min   | CI validation     |
+| `:extended` | 10    | 10 min  | Large test suites |
 
 > [!TIP]
 > **Autonomous test-fix cycles.** See [Ralph Loops](docs/guides/ralph-loops.md) for presets, timeout configuration, and context-rot prevention.
@@ -400,10 +489,6 @@ Analyzes available templates, reasoning frameworks, validation rules, and styles
 
 > [!TIP]
 > **How judge mode selects resources.** See [Judge Mode Guide](docs/guides/judge-mode.md) for scoring, overrides, and preview with `%judge`.
-
-> [!TIP]
-> Chains support conditional branching, context threading, and agent handoffs.
-> [Chains Lifecycle](docs/concepts/chains-lifecycle.md) · [MCP Tools Reference](docs/reference/mcp-tools.md)
 
 ---
 
@@ -455,13 +540,13 @@ Route operator syntax to the right tool automatically.
 Track workflow progress across steps and long sessions.
 Enforce validation rules and step handoffs between agents.
 
-| Behavior | What happens |
-|----------|-------------|
-| Prompt routing | `>>analyze` in conversation → correct MCP tool call |
-| Chain continuity | Injects step progress and continuation between steps |
-| Validation tracking | Tracks pass/fail verdicts across chain steps |
-| Agent handoffs | Routes `==>` steps to client-native subagents |
-| Session persistence | Preserves workflow state through context compaction |
+| Behavior            | What happens                                         |
+| ------------------- | ---------------------------------------------------- |
+| Prompt routing      | `>>analyze` in conversation → correct MCP tool call  |
+| Chain continuity    | Injects step progress and continuation between steps |
+| Validation tracking | Tracks pass/fail verdicts across chain steps         |
+| Agent handoffs      | Routes `==>` steps to client-native subagents        |
+| Session persistence | Preserves workflow state through context compaction  |
 
 Hooks ship with the plugin install. Available for [Claude Code](.) (full), [OpenCode](https://github.com/minipuft/opencode-prompts) (full), [Gemini CLI](https://github.com/minipuft/gemini-prompts) (partial). Other clients: MCP tools only.
 
@@ -474,18 +559,19 @@ Hooks ship with the plugin install. Available for [Claude Code](.) (full), [Open
 <details>
 <summary><strong>Syntax Reference</strong></summary>
 
-| Symbol | Name | What It Does | Example |
-|:------:|:-----|:-------------|:--------|
-| `>>` | Prompt | Execute template | `>>code_review` |
-| `-->` | Chain | Pipe to next step | `step1 --> step2` |
-| `==>` | Handoff | Route step to agent | `step1 ==> agent_step` |
-| `*` | Repeat | Run prompt N times | `>>brainstorm * 5` |
-| `@` | Framework | Inject reasoning guidance | `@CAGEERF` |
-| `::` | Gate | Add validation criteria | `:: 'cite sources'` |
-| `%` | Modifier | Toggle behavior | `%clean`, `%judge` |
-| `#` | Style | Apply formatting | `#analytical` |
+| Symbol | Name      | What It Does              | Example                |
+| :----: | :-------- | :------------------------ | :--------------------- |
+|  `>>`  | Prompt    | Execute template          | `>>code_review`        |
+| `-->`  | Chain     | Pipe to next step         | `step1 --> step2`      |
+| `==>`  | Handoff   | Route step to agent       | `step1 ==> agent_step` |
+|  `*`   | Repeat    | Run prompt N times        | `>>brainstorm * 5`     |
+|  `@`   | Framework | Inject reasoning guidance | `@CAGEERF`             |
+|  `::`  | Gate      | Add validation criteria   | `:: 'cite sources'`    |
+|  `%`   | Modifier  | Toggle behavior           | `%clean`, `%judge`     |
+|  `#`   | Style     | Apply formatting          | `#analytical`          |
 
 **Modifiers:**
+
 - `%clean` — No framework/gate injection
 - `%lean` — Gates only, skip framework
 - `%guided` — Force framework injection
@@ -498,11 +584,11 @@ Hooks ship with the plugin install. Available for [Claude Code](.) (full), [Open
 <details>
 <summary><strong>The Three Tools</strong></summary>
 
-| Tool | Purpose |
-|------|---------|
-| `prompt_engine` | Execute prompts with frameworks and validation |
-| `resource_manager` | Create, update, version, and export resources |
-| `system_control` | Status, analytics, framework switching |
+| Tool               | Purpose                                        |
+| ------------------ | ---------------------------------------------- |
+| `prompt_engine`    | Execute prompts with frameworks and validation |
+| `resource_manager` | Create, update, version, and export resources  |
+| `system_control`   | Status, analytics, framework switching         |
 
 ```
 prompt_engine(command:"@CAGEERF >>analysis topic:'AI safety'")
@@ -562,22 +648,22 @@ Command with operators → server parses and injects resources → client execut
 
 ## Documentation
 
-| I want to... | Go here |
-|-------------|---------|
-| Build my first prompt | [Prompt Authoring Tutorial](docs/tutorials/build-first-prompt.md) |
-| Chain multi-step workflows | [Chains Lifecycle](docs/concepts/chains-lifecycle.md) |
-| Add validation to workflows | [Gates Guide](docs/guides/gates.md) |
-| Use or create reasoning frameworks | [Methodologies Guide](docs/guides/methodologies.md) |
-| Use autonomous verification loops | [Ralph Loops](docs/guides/ralph-loops.md) |
-| Configure per-client MCP installs and `--client` presets | [Client Integration Guide](docs/guides/client-integration.md) |
-| Compare client profile mapping and limitations | [Client Capabilities Reference](docs/reference/client-capabilities.md) |
-| Export skills to other clients | [Skills Sync](docs/guides/skills-sync.md) |
-| Configure the server | [CLI & Configuration](docs/guides/cli.md) |
-| Let the AI pick resources automatically | [Judge Mode Guide](docs/guides/judge-mode.md) |
-| Look up MCP tool parameters | [MCP Tools Reference](docs/reference/mcp-tools.md) |
-| Look up prompt YAML fields | [Prompt YAML Schema](docs/reference/prompt-yaml-schema.md) |
-| Understand the architecture | [Architecture Overview](docs/architecture/overview.md) |
-| Fix common issues | [Troubleshooting](docs/guides/troubleshooting.md) |
+| I want to...                                             | Go here                                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Build my first prompt                                    | [Prompt Authoring Tutorial](docs/tutorials/build-first-prompt.md)      |
+| Chain multi-step workflows                               | [Chains Lifecycle](docs/concepts/chains-lifecycle.md)                  |
+| Add validation to workflows                              | [Gates Guide](docs/guides/gates.md)                                    |
+| Use or create reasoning frameworks                       | [Methodologies Guide](docs/guides/methodologies.md)                    |
+| Use autonomous verification loops                        | [Ralph Loops](docs/guides/ralph-loops.md)                              |
+| Configure per-client MCP installs and `--client` presets | [Client Integration Guide](docs/guides/client-integration.md)          |
+| Compare client profile mapping and limitations           | [Client Capabilities Reference](docs/reference/client-capabilities.md) |
+| Export skills to other clients                           | [Skills Sync](docs/guides/skills-sync.md)                              |
+| Configure the server                                     | [CLI & Configuration](docs/guides/cli.md)                              |
+| Let the AI pick resources automatically                  | [Judge Mode Guide](docs/guides/judge-mode.md)                          |
+| Look up MCP tool parameters                              | [MCP Tools Reference](docs/reference/mcp-tools.md)                     |
+| Look up prompt YAML fields                               | [Prompt YAML Schema](docs/reference/prompt-yaml-schema.md)             |
+| Understand the architecture                              | [Architecture Overview](docs/architecture/overview.md)                 |
+| Fix common issues                                        | [Troubleshooting](docs/guides/troubleshooting.md)                      |
 
 ---
 

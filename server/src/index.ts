@@ -321,11 +321,8 @@ QUICK START:
   Claude can update your prompts via resource_manager - no manual editing needed!
 
 PATH OPTIONS:
-  --workspace=/path       Base directory for user assets (prompts, config, etc.)
+  --workspace=/path       Base directory for all assets (resources/, config.json, hooks/)
   --config=/path          Direct path to config.json
-  --prompts=/path         Direct path to prompts configuration file
-  --methodologies=/path   Custom methodologies directory
-  --gates=/path           Custom gates directory
 
 RUNTIME OPTIONS:
   --init=/path            Create a new workspace with starter prompts at the specified path
@@ -340,28 +337,27 @@ RUNTIME OPTIONS:
 
 ENVIRONMENT VARIABLES:
   MCP_WORKSPACE            Base workspace directory (same as --workspace)
+  MCP_RESOURCES_PATH       Custom resources base directory (replaces package default)
   MCP_CONFIG_PATH          Direct path to config.json (same as --config)
-  MCP_PROMPTS_PATH         Direct path to prompts config (same as --prompts)
-  MCP_METHODOLOGIES_PATH   Custom methodologies directory
-  MCP_GATES_PATH           Custom gates directory
   LOG_LEVEL                Override log level (debug, info, warn, error)
 
 PRIORITY ORDER:
-  CLI flags > Environment variables > Workspace subdirectory > Package defaults
+  --workspace > MCP_WORKSPACE > Package defaults
+  MCP_RESOURCES_PATH overrides the resources base within the workspace.
+  Custom workspace resources overlay bundled ones (same ID = custom wins).
 
 WORKSPACE STRUCTURE:
   Your workspace can contain:
-    prompts/                   - Your custom prompts (directory format)
-    config.json                 - Server configuration overrides
-    methodologies/              - Custom methodology definitions
-    gates/                      - Custom gate definitions
+    resources/
+      prompts/                 - Custom prompt templates
+      gates/                   - Custom validation gates
+      methodologies/           - Custom reasoning frameworks
+      styles/                  - Custom output styles
+    config.json                - Server configuration overrides
 
 EXAMPLES:
-  # Use a custom workspace
+  # Use a custom workspace (overlays custom + bundled resources)
   npx claude-prompts --workspace=/home/user/my-prompts
-
-  # Override specific paths
-  npx claude-prompts --prompts=/path/to/prompts
 
   # Via environment variables
   MCP_WORKSPACE=/home/user/my-prompts npx claude-prompts
@@ -612,7 +608,7 @@ async function main(): Promise<void> {
       debugLog(`DEBUG: Node.js version: ${process.version}`);
       debugLog(`DEBUG: Working directory: ${process.cwd()}`);
       debugLog(`DEBUG: MCP_WORKSPACE: ${process.env['MCP_WORKSPACE'] ?? 'not set'}`);
-      debugLog(`DEBUG: MCP_PROMPTS_PATH: ${process.env['MCP_PROMPTS_PATH'] ?? 'not set'}`);
+      debugLog(`DEBUG: MCP_RESOURCES_PATH: ${process.env['MCP_RESOURCES_PATH'] ?? 'not set'}`);
     }
 
     // Setup error handlers first

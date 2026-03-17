@@ -65,11 +65,6 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
     logger.info(`Config prompts.directory setting: "${config.prompts.directory}"`);
   }
 
-  // Log environment overrides
-  if (process.env['MCP_PROMPTS_PATH']) {
-    logger.info(`🎯 MCP_PROMPTS_PATH override: "${process.env['MCP_PROMPTS_PATH']}"`);
-  }
-
   // Normalize to absolute path if needed
   if (!path.isAbsolute(promptsPath)) {
     const baseRoot = serverRoot ?? configManager.getServerRoot?.();
@@ -114,10 +109,31 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
   const categories = result.categories;
   const convertedPrompts = result.convertedPrompts;
 
+  // Load overlay prompts from workspace resource directories
+  const overlayPromptsDirs = pathResolver?.getOverlayResourceDirs('prompts', promptsPath) ?? [];
+  for (const overlayDir of overlayPromptsDirs) {
+    try {
+      const overlayResult = await promptManager.loadAndConvertPrompts(overlayDir, overlayDir);
+      mergePromptResults({ promptsData, categories, convertedPrompts }, overlayResult);
+      if (isVerbose) {
+        logger.info(
+          `  📂 Overlay prompts from ${overlayDir}: +${overlayResult.promptsData.length} prompts`
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `Failed to load overlay prompts from ${overlayDir}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   if (!isQuiet) {
     logger.info('=== PROMPT LOADING RESULTS ===');
     logger.info(`✓ Loaded ${promptsData.length} prompts from ${categories.length} categories`);
     logger.info(`✓ Converted ${convertedPrompts.length} prompts to MCP format`);
+    if (overlayPromptsDirs.length > 0) {
+      logger.info(`  (includes overlays from ${overlayPromptsDirs.length} additional directories)`);
+    }
   }
 
   // Update downstream managers if available
@@ -142,6 +158,51 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
     convertedPrompts,
     promptsFilePath: promptsPath,
   };
+}
+
+/**
+ * Merge overlay prompt results into the primary arrays.
+ * Overlay prompts with matching IDs override primary ones (standard overlay semantics).
+ */
+function mergePromptResults(
+  target: {
+    promptsData: PromptData[];
+    categories: Category[];
+    convertedPrompts: ConvertedPrompt[];
+  },
+  overlay: {
+    promptsData: PromptData[];
+    categories: Category[];
+    convertedPrompts: ConvertedPrompt[];
+  }
+): void {
+  // Merge categories (ensure overlay categories exist, don't replace existing metadata)
+  for (const overlayCat of overlay.categories) {
+    const exists = target.categories.some((c) => c.name === overlayCat.name);
+    if (!exists) {
+      target.categories.push(overlayCat);
+    }
+  }
+
+  // Merge prompts (overlay wins on ID conflict)
+  for (const overlayPrompt of overlay.promptsData) {
+    const existingIdx = target.promptsData.findIndex((p) => p.id === overlayPrompt.id);
+    if (existingIdx !== -1) {
+      target.promptsData[existingIdx] = overlayPrompt;
+    } else {
+      target.promptsData.push(overlayPrompt);
+    }
+  }
+
+  // Merge converted prompts (overlay wins on name conflict)
+  for (const overlayConverted of overlay.convertedPrompts) {
+    const existingIdx = target.convertedPrompts.findIndex((c) => c.name === overlayConverted.name);
+    if (existingIdx !== -1) {
+      target.convertedPrompts[existingIdx] = overlayConverted;
+    } else {
+      target.convertedPrompts.push(overlayConverted);
+    }
+  }
 }
 
 /**
