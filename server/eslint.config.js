@@ -1,6 +1,5 @@
 import eslint from '@eslint/js';
-import tseslint from '@typescript-eslint/eslint-plugin';
-import tsparser from '@typescript-eslint/parser';
+import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 import prettierPlugin from 'eslint-plugin-prettier';
 import prettierConfig from 'eslint-config-prettier';
@@ -27,7 +26,7 @@ export default [
   {
     files: ['src/**/*.ts', 'src/**/*.tsx'],
     languageOptions: {
-      parser: tsparser,
+      parser: tseslint.parser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
@@ -43,7 +42,7 @@ export default [
       },
     },
     plugins: {
-      '@typescript-eslint': tseslint,
+      '@typescript-eslint': tseslint.plugin,
       import: importPlugin,
       prettier: prettierPlugin,
       claude: claudePlugin,
@@ -128,7 +127,7 @@ export default [
 
       // Complexity enforcement (PRIMARY quality gate — ratcheted)
       'sonarjs/cognitive-complexity': ['warn', 15],
-      'complexity': ['warn', 10],
+      complexity: ['warn', 10],
       'max-depth': ['warn', 4],
       'max-params': ['warn', 4],
       // File-level line count (ADVISORY — secondary signal)
@@ -185,7 +184,7 @@ export default [
   {
     files: ['tests/**/*.ts', 'tests/**/*.tsx'],
     languageOptions: {
-      parser: tsparser,
+      parser: tseslint.parser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
@@ -210,7 +209,7 @@ export default [
       },
     },
     plugins: {
-      '@typescript-eslint': tseslint,
+      '@typescript-eslint': tseslint.plugin,
       import: importPlugin,
       prettier: prettierPlugin,
       claude: claudePlugin,
@@ -289,7 +288,7 @@ export default [
       'import/newline-after-import': 'error',
       // Complexity enforcement (relaxed for tests)
       'sonarjs/cognitive-complexity': ['warn', 20],
-      'complexity': ['warn', 15],
+      complexity: ['warn', 15],
       'max-depth': ['warn', 5],
       'max-params': ['warn', 5],
 
@@ -342,9 +341,9 @@ export default [
   // Console usage exemptions - early startup files where logger is not available yet
   {
     files: [
-      'src/index.ts',           // Main entry point - early startup before logger initialization
-      'src/runtime/startup.ts',  // Rollback mechanism and critical diagnostics
-      'src/infra/logging/index.ts',    // Logger implementation - fallback console for error cases
+      'src/index.ts', // Main entry point - early startup before logger initialization
+      'src/runtime/startup.ts', // Rollback mechanism and critical diagnostics
+      'src/infra/logging/index.ts', // Logger implementation - fallback console for error cases
     ],
     rules: {
       // Allow console usage in these files for early startup and critical diagnostics
