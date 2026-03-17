@@ -1,0 +1,101 @@
+name: Bug Report
+description: Report a bug in the Claude Prompts MCP server
+labels: ["bug", "triage"]
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this bug. Please check [existing issues](https://github.com/minipuft/claude-prompts/issues?q=is%3Aissue+label%3Abug) and [troubleshooting](https://github.com/minipuft/claude-prompts/blob/main/docs/guides/troubleshooting.md) first.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched [existing issues](https://github.com/minipuft/claude-prompts/issues?q=is%3Aissue+label%3Abug) and this hasn't been reported
+          required: true
+        - label: I'm using the [latest version](https://www.npmjs.com/package/claude-prompts)
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: |
+        When I run `>>prompt_name arg:"value"`, the server returns...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Run `>>prompt_name arg:"value"`
+        2. Observe error in output
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      description: Which transport are you using?
+      options:
+        - STDIO
+        - SSE
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mcp-tool
+    attributes:
+      label: MCP Tool
+      description: Which tool is affected?
+      options:
+        - prompt_engine
+        - resource_manager
+        - system_control
+        - Not tool-specific
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error Output
+      description: Paste any error messages, stack traces, or unexpected output.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Version info and setup details.
+      placeholder: |
+        - claude-prompts version: (e.g., 2.0.0)
+        - Node.js version: (e.g., 22.x)
+        - OS: (e.g., macOS 15, Ubuntu 24.04, WSL2)
+        - MCP client: (e.g., Claude Code, Cursor, VS Code)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Config snippets, screenshots, or anything else relevant.

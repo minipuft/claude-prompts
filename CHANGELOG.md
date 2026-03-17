@@ -9,12 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multi-source resource overlay**: Custom workspace resources now load alongside bundled ones for all resource types (prompts, gates, methodologies, styles). Set `MCP_WORKSPACE` to a directory with `resources/` subdirs — custom resources with the same ID as bundled ones take priority
+  - Methodologies: `additionalMethodologiesDirs` in `RuntimeMethodologyLoader` (mirrors gates pattern)
+  - Styles: `additionalStylesDirs` in `StyleDefinitionLoader` (mirrors gates pattern)
+  - Prompts: Overlay merge in `data-loader.ts` — loads primary then overlays per workspace dir
+  - Gates: Already supported (unchanged)
+- **Wide-event root span enrichment**: Pipeline root span (`prompt_engine.request`) now contains 22 business-context attributes at completion, following the [wide-event pattern](https://loggingsucks.com/)
+  - Performance: `stages.slowest`, `slowest_ms`, `executed_count`, `duration.total_ms`, `had_early_exit`
+  - Gates: `gates.names`, `passed_count`, `failed_count`, `blocked`, `retry_exhausted`, `enforcement_mode`
+  - Chain: `chain.is_chain`, `chain.step_index`, `chain.id`
+  - Framework/scope: `framework.id`, `framework.enabled`, `scope.source`
+  - Error: `error.type` for groupable incident triage
+  - Enables incident queries like "show blocked requests by gate name" or "which stage is the bottleneck"
 - **Response Format Overlays**: Methodologies and styles can define `responseFormat` in YAML to guide LLM response structure at the tool description level
   - Methodology `responseFormat` woven into tool descriptions at synchronization time (global)
   - Style `responseFormat` available for per-execution system prompt injection
 
 ### Changed
 
+- **BREAKING**: Path resolution consolidated to `MCP_WORKSPACE` as single source of truth. Individual per-resource env vars (`MCP_PROMPTS_PATH`, `MCP_METHODOLOGIES_PATH`, `MCP_GATES_PATH`, `MCP_STYLES_PATH`, `MCP_SCRIPTS_PATH`) and CLI flags (`--prompts`, `--methodologies`, `--gates`, `--scripts`, `--styles`) removed
+  - Migration: Use `MCP_WORKSPACE` with standard `resources/` subdirectory structure, or `MCP_RESOURCES_PATH` for custom resources base
+  - PathResolver `get*Path()` methods unified via shared `resolveResourceSubdir()` helper
+  - Per-loader `resolve*Dir()` methods simplified to package.json + \_\_dirname fallback only (env var handling removed)
+  - `module-initializer.ts` unconditionally initializes singletons with PathResolver-resolved dirs
+- **Prompt management consolidation**: Migrated all prompt lifecycle operations from standalone `prompt_manager` tool to unified `resource_manager` with `resource_type:"prompt"`. This completes the tool consolidation started in v1.2.0.
+  - All 12 prompt actions preserved: `create`, `update`, `delete`, `list`, `inspect`, `reload`, `analyze_type`, `analyze_gates`, `guide`, `history`, `rollback`, `compare`
+  - Internal architecture improved with service decomposition: `PromptLifecycleService`, `PromptDiscoveryService`, `PromptVersioningService`
+  - No API changes required—use `resource_manager(resource_type:"prompt", action:"...")` as before
+- **Client launch preset expansion**: Extended `--client` startup presets to include `gemini`, `opencode`, and `cursor` (in addition to `claude-code`, `codex`, `unknown`) and wired delegation strategy routing for each profile.
+- **Delegation strategy hardening**: Centralized delegation profile metadata for CTA/footer rendering, added Codex fallback guidance when `spawn_agent` is unavailable, and marked Cursor delegation messaging as experimental/testing.
 - **Tier 5 File Size Decomposition**: Three oversized files decomposed to meet 500-line service advisory
   - `loader.ts` (896→544): Extracted markdown parsing to `markdown-prompt-parser.ts`; consolidated ~30 verbose info-level logs
   - `tool-description-loader.ts` (741→489): Extracted methodology/style overlay resolution to `tool-description-overlays.ts`
@@ -23,66 +46,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Operator Patterns**: Loaded from JSON registry at import time via esbuild inlining, eliminating the `generate-operators` codegen step and Python hook codegen
 - **Style Guidance**: Served exclusively from YAML definitions via StyleManager, removing hardcoded legacy fallback
 
-## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
+### Removed
 
-
-### ⚠ BREAKING CHANGES
-
-* **server:** License changed from MIT to AGPL-3.0-only. Network use of modified versions now requires source disclosure under Section 13 of the GNU Affero General Public License v3.
-* **server:** All runtime-state paths require explicit PathResolver configuration. Users running via npx must provide --workspace or set MCP_WORKSPACE. Storage backend migrated from JSON files to SQLite — downstream readers of state files must use SQLite.
-* **paths:** All path-dependent modules now require explicit path configuration. Callers must provide paths via PathResolver or CLI flags.
-
-### Added
-
-* **ci:** add commitlint, changelog-sections, and downstream sync workflow ([802575d](https://github.com/minipuft/claude-prompts/commit/802575df5bb95a1f6cecf1dcd9a9d3f3cfc8fd8e))
-* **eslint:** add claude-plugin custom ESLint rule ([876b431](https://github.com/minipuft/claude-prompts/commit/876b431f428b8a8df644ae4d89c31d483c45e9d2))
-* **gates:** add response blocking and gate event emission in pipeline ([914a074](https://github.com/minipuft/claude-prompts/commit/914a0740db3d793d259d502ae9a354077b85c3d3))
-* **hooks:** add server-side hook registry and MCP notification system ([86ba115](https://github.com/minipuft/claude-prompts/commit/86ba11564d6363e9353b34cfcef0a7e662d50b96))
-* **parsers:** add framework-aware quote parsing for @ operator ([9555122](https://github.com/minipuft/claude-prompts/commit/95551220836997760e735ab6b7121548f05dc504))
-* **scripts:** add skills-sync CLI for cross-client skill distribution ([351291c](https://github.com/minipuft/claude-prompts/commit/351291c5827e17cd36b34588d6ee2646b561eebc))
-* **server:** add identity resolution, delegation operator, and methodology assertions ([#76](https://github.com/minipuft/claude-prompts/issues/76)) ([913c2d9](https://github.com/minipuft/claude-prompts/commit/913c2d9d3dc8d65a64e47c29f310feeca0f0c937))
-
-
-### Fixed
-
-* **ci:** align extension-publish tags with Release Please config ([19a0024](https://github.com/minipuft/claude-prompts/commit/19a002439ade437c7856c03164b52c4196d821a1))
-* **hooks:** allow generated file deletions for feature removal ([a8fcb24](https://github.com/minipuft/claude-prompts/commit/a8fcb24f310096fe617ac50fb1840acdeb5778f8))
-* **hooks:** update Python hooks for new gate server format ([1b0ddf5](https://github.com/minipuft/claude-prompts/commit/1b0ddf50367e8de7fb447b2e95b6d80ecec2d207))
-* **parsers:** simplify argument assignment for unstructured text ([061cd0f](https://github.com/minipuft/claude-prompts/commit/061cd0f1e8483e258ffff13e5576b61eddac15d2))
-* **pipeline:** use provider function for prompt cache synchronization ([f092837](https://github.com/minipuft/claude-prompts/commit/f09283778ff2474b1a30d8a40c6a8f0827069c97))
-* **runtime:** bridge PathResolver to jsonUtils via PROMPTS_PATH env var ([3d4505b](https://github.com/minipuft/claude-prompts/commit/3d4505b3c982f2952fc56f574ba5228b801d290e))
-* **tests:** set PROMPTS_PATH in test setup for template rendering ([34769d7](https://github.com/minipuft/claude-prompts/commit/34769d762fc9ffdb2f7c00064dc4a04bdd2a0a9e))
-
-
-### Changed
-
-* **gates:** consolidate gate verdict validation to single source of truth ([0ae1ae9](https://github.com/minipuft/claude-prompts/commit/0ae1ae9ed20070515129ce239f7b0aec5f31daff))
-* **gates:** extract gate-activation utility and cleanup dead code ([85bd265](https://github.com/minipuft/claude-prompts/commit/85bd265ae91599718b257055ac45955249bf3f0a))
-* **mcp-tools:** consolidate prompt_manager into resource_manager ([6a41a52](https://github.com/minipuft/claude-prompts/commit/6a41a5293524b0097132d22ccd6107e43cd863f6))
-* **parsers:** simplify argument matching and remove dead code ([3befb9f](https://github.com/minipuft/claude-prompts/commit/3befb9f086567d880b4152a49437b551b7b51a5b))
-* **paths:** enforce explicit path resolution, remove process.cwd() fallbacks ([b93ca78](https://github.com/minipuft/claude-prompts/commit/b93ca789abf5e2bcf318fce73dd27cd634563efa))
-* **prompt-guidance:** remove unused resource selection code ([a2da026](https://github.com/minipuft/claude-prompts/commit/a2da0267d90a206a0864a62d741ccbab1819f8ca))
-* **remotion:** replace demo compositions with Liquescent design system ([b06706b](https://github.com/minipuft/claude-prompts/commit/b06706b135ff51aada2191b283e905e66eff4b40))
-* **runtime:** migrate CLI argument parsing to node:util parseArgs ([71dbe00](https://github.com/minipuft/claude-prompts/commit/71dbe00e27199850ad093cf077638ca3d4038eee))
-* **server:** complete modular monolith migration to 5-layer architecture ([31d3884](https://github.com/minipuft/claude-prompts/commit/31d3884726f29611a5e4ca1e3bd9673729b53d90))
-* **server:** relocate tooling/ submodules and consolidate pipeline imports ([5204a7a](https://github.com/minipuft/claude-prompts/commit/5204a7a01e66cefffb2a607c0432e0a880df1cb3))
-* **types:** consolidate context types and add gate response contract ([aa51202](https://github.com/minipuft/claude-prompts/commit/aa512028795538127fb86eb3ef3d210b85ad6e9e))
-
+- **Legacy `prompt_manager` MCP tool**: Prompt lifecycle now exclusively via `resource_manager`. The standalone `prompt_manager` tool registration has been removed.
 
 ### Documentation
 
-* add LIQUESCENT methodology and update changelog ([26a639b](https://github.com/minipuft/claude-prompts/commit/26a639b59c89f7f0f223dc65fb5a8201a7740d06))
-* **changelog:** document breaking path resolution changes ([5918e16](https://github.com/minipuft/claude-prompts/commit/5918e1653f9cf4810998466567ce72f40b0808ee))
-* **ci:** update downstream sync comment to reflect Dependabot approach ([82e15cd](https://github.com/minipuft/claude-prompts/commit/82e15cd32251579da6ab6ab862b244b493de5c78))
-* consolidate documentation and remove completed plans ([1e52295](https://github.com/minipuft/claude-prompts/commit/1e52295ce182e20753d7444293086eab81652206))
-* update path configuration and release process documentation ([abf3457](https://github.com/minipuft/claude-prompts/commit/abf345766f8fd611c5b0ad1e502866f6d81cc88b))
+- **README install sections**: OpenCode and Gemini CLI sections restructured with Option A/B (plugin vs manual config), correct config formats (OpenCode uses `mcp` key with `command` array), and Gemini hooks prerequisite added. Fixed `> [!NOTE]` callouts not rendering inside `<details>` blocks
+- **Custom Resources section**: Documented `MCP_WORKSPACE` overlay behavior, removed false `~/.local/share/claude-prompts/` persistence claim, added per-client config examples with `MCP_RESOURCES_PATH`, added `--init` workspace creation workflow
+- **Telemetry observability guide**: Restructured attribute reference into Initial/Wide-Event/Other sections with incident query examples per attribute. Fixed chain events incorrectly documented as active (now marked Planned). Updated architecture diagram to show wide-event enrichment flow.
+- **CONTRIBUTING.md modernization**: Restructured contributor guide with quick-start path, contribution type routing (code/prompts/gates/methodologies/docs), commit scope reference, testing decision matrix, and progressive disclosure via collapsible sections
+- **GitHub issue and PR templates**: Added YAML-based issue forms (bug report, feature request) with project-specific dropdowns (transport, MCP tool, area), preflight checkboxes, and structured fields following Next.js/Vite/Claude Code conventions. Minimal PR template complements existing CI `pr-summary` bot
 
+## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
+
+### ⚠ BREAKING CHANGES
+
+- **server:** License changed from MIT to AGPL-3.0-only. Network use of modified versions now requires source disclosure under Section 13 of the GNU Affero General Public License v3.
+- **server:** All runtime-state paths require explicit PathResolver configuration. Users running via npx must provide --workspace or set MCP_WORKSPACE. Storage backend migrated from JSON files to SQLite — downstream readers of state files must use SQLite.
+- **paths:** All path-dependent modules now require explicit path configuration. Callers must provide paths via PathResolver or CLI flags.
+
+### Added
+
+- **ci:** add commitlint, changelog-sections, and downstream sync workflow ([802575d](https://github.com/minipuft/claude-prompts/commit/802575df5bb95a1f6cecf1dcd9a9d3f3cfc8fd8e))
+- **eslint:** add claude-plugin custom ESLint rule ([876b431](https://github.com/minipuft/claude-prompts/commit/876b431f428b8a8df644ae4d89c31d483c45e9d2))
+- **gates:** add response blocking and gate event emission in pipeline ([914a074](https://github.com/minipuft/claude-prompts/commit/914a0740db3d793d259d502ae9a354077b85c3d3))
+- **hooks:** add server-side hook registry and MCP notification system ([86ba115](https://github.com/minipuft/claude-prompts/commit/86ba11564d6363e9353b34cfcef0a7e662d50b96))
+- **parsers:** add framework-aware quote parsing for @ operator ([9555122](https://github.com/minipuft/claude-prompts/commit/95551220836997760e735ab6b7121548f05dc504))
+- **scripts:** add skills-sync CLI for cross-client skill distribution ([351291c](https://github.com/minipuft/claude-prompts/commit/351291c5827e17cd36b34588d6ee2646b561eebc))
+- **server:** add identity resolution, delegation operator, and methodology assertions ([#76](https://github.com/minipuft/claude-prompts/issues/76)) ([913c2d9](https://github.com/minipuft/claude-prompts/commit/913c2d9d3dc8d65a64e47c29f310feeca0f0c937))
+
+### Fixed
+
+- **ci:** align extension-publish tags with Release Please config ([19a0024](https://github.com/minipuft/claude-prompts/commit/19a002439ade437c7856c03164b52c4196d821a1))
+- **hooks:** allow generated file deletions for feature removal ([a8fcb24](https://github.com/minipuft/claude-prompts/commit/a8fcb24f310096fe617ac50fb1840acdeb5778f8))
+- **hooks:** update Python hooks for new gate server format ([1b0ddf5](https://github.com/minipuft/claude-prompts/commit/1b0ddf50367e8de7fb447b2e95b6d80ecec2d207))
+- **parsers:** simplify argument assignment for unstructured text ([061cd0f](https://github.com/minipuft/claude-prompts/commit/061cd0f1e8483e258ffff13e5576b61eddac15d2))
+- **pipeline:** use provider function for prompt cache synchronization ([f092837](https://github.com/minipuft/claude-prompts/commit/f09283778ff2474b1a30d8a40c6a8f0827069c97))
+- **runtime:** bridge PathResolver to jsonUtils via PROMPTS_PATH env var ([3d4505b](https://github.com/minipuft/claude-prompts/commit/3d4505b3c982f2952fc56f574ba5228b801d290e))
+- **tests:** set PROMPTS_PATH in test setup for template rendering ([34769d7](https://github.com/minipuft/claude-prompts/commit/34769d762fc9ffdb2f7c00064dc4a04bdd2a0a9e))
+
+### Changed
+
+- **gates:** consolidate gate verdict validation to single source of truth ([0ae1ae9](https://github.com/minipuft/claude-prompts/commit/0ae1ae9ed20070515129ce239f7b0aec5f31daff))
+- **gates:** extract gate-activation utility and cleanup dead code ([85bd265](https://github.com/minipuft/claude-prompts/commit/85bd265ae91599718b257055ac45955249bf3f0a))
+- **mcp-tools:** consolidate prompt_manager into resource_manager ([6a41a52](https://github.com/minipuft/claude-prompts/commit/6a41a5293524b0097132d22ccd6107e43cd863f6))
+- **parsers:** simplify argument matching and remove dead code ([3befb9f](https://github.com/minipuft/claude-prompts/commit/3befb9f086567d880b4152a49437b551b7b51a5b))
+- **paths:** enforce explicit path resolution, remove process.cwd() fallbacks ([b93ca78](https://github.com/minipuft/claude-prompts/commit/b93ca789abf5e2bcf318fce73dd27cd634563efa))
+- **prompt-guidance:** remove unused resource selection code ([a2da026](https://github.com/minipuft/claude-prompts/commit/a2da0267d90a206a0864a62d741ccbab1819f8ca))
+- **remotion:** replace demo compositions with Liquescent design system ([b06706b](https://github.com/minipuft/claude-prompts/commit/b06706b135ff51aada2191b283e905e66eff4b40))
+- **runtime:** migrate CLI argument parsing to node:util parseArgs ([71dbe00](https://github.com/minipuft/claude-prompts/commit/71dbe00e27199850ad093cf077638ca3d4038eee))
+- **server:** complete modular monolith migration to 5-layer architecture ([31d3884](https://github.com/minipuft/claude-prompts/commit/31d3884726f29611a5e4ca1e3bd9673729b53d90))
+- **server:** relocate tooling/ submodules and consolidate pipeline imports ([5204a7a](https://github.com/minipuft/claude-prompts/commit/5204a7a01e66cefffb2a607c0432e0a880df1cb3))
+- **types:** consolidate context types and add gate response contract ([aa51202](https://github.com/minipuft/claude-prompts/commit/aa512028795538127fb86eb3ef3d210b85ad6e9e))
+
+### Documentation
+
+- add LIQUESCENT methodology and update changelog ([26a639b](https://github.com/minipuft/claude-prompts/commit/26a639b59c89f7f0f223dc65fb5a8201a7740d06))
+- **changelog:** document breaking path resolution changes ([5918e16](https://github.com/minipuft/claude-prompts/commit/5918e1653f9cf4810998466567ce72f40b0808ee))
+- **ci:** update downstream sync comment to reflect Dependabot approach ([82e15cd](https://github.com/minipuft/claude-prompts/commit/82e15cd32251579da6ab6ab862b244b493de5c78))
+- consolidate documentation and remove completed plans ([1e52295](https://github.com/minipuft/claude-prompts/commit/1e52295ce182e20753d7444293086eab81652206))
+- update path configuration and release process documentation ([abf3457](https://github.com/minipuft/claude-prompts/commit/abf345766f8fd611c5b0ad1e502866f6d81cc88b))
 
 ### Maintenance
 
-* **ci:** downgrade to minor bump — path resolution change is internal only ([c550b74](https://github.com/minipuft/claude-prompts/commit/c550b74d4a220ba44ecb09654c0542e380bd56bd))
-* **ci:** release as 2.0.0 — AGPL license change is breaking ([7e5d024](https://github.com/minipuft/claude-prompts/commit/7e5d024645831005c55f86281364efa90312ef82))
-* **server:** migrate license from MIT to AGPL-3.0-only ([36961fa](https://github.com/minipuft/claude-prompts/commit/36961fad8bac2cb4b4f9b232ece905be91fe16f8))
+- **ci:** downgrade to minor bump — path resolution change is internal only ([c550b74](https://github.com/minipuft/claude-prompts/commit/c550b74d4a220ba44ecb09654c0542e380bd56bd))
+- **ci:** release as 2.0.0 — AGPL license change is breaking ([7e5d024](https://github.com/minipuft/claude-prompts/commit/7e5d024645831005c55f86281364efa90312ef82))
+- **server:** migrate license from MIT to AGPL-3.0-only ([36961fa](https://github.com/minipuft/claude-prompts/commit/36961fad8bac2cb4b4f9b232ece905be91fe16f8))
 
 ## [1.7.0](https://github.com/minipuft/claude-prompts/compare/v1.6.0...v1.7.0) (2026-01-23)
 

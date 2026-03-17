@@ -1,192 +1,334 @@
-# Contributing to Claude Prompts (Canonical)
+# Contributing to Claude Prompts
 
-Thank you for helping maintain the Claude Prompts server. This guide consolidates our contributor expectations, operational workflows, and automation guardrails. It replaces older scattered docs (`docs/contributing.md`, legacy READMEs) so please keep it up to date whenever workflows change.
+Thank you for contributing to the Claude Prompts MCP server. This guide covers everything from your first PR to advanced contribution workflows.
 
-## 1. Development Environment
-
-- **Node.js**: 18–24 supported. Use the version defined in `.nvmrc` (pinned to 24) or match CI.
-- **npm**: Comes with Node; ensure `npm install` runs inside `server/`.
-- **Git**: Required for Husky hooks and for keeping runtime-state files out of commits.
+## Quick Start
 
 ```bash
-git clone https://github.com/minipuft/claude-prompts.git
+# 1. Fork and clone
+git clone https://github.com/<your-fork>/claude-prompts.git
 cd claude-prompts/server
+
+# 2. Install (hooks auto-configure via Husky)
 npm install
-npm run build
+
+# 3. Build and verify
+npm run build && npm test
+
+# 4. Create a branch
+git checkout -b feat/my-change
+
+# 5. Make changes, then commit with conventional format
+git add <files>
+git commit -m "feat(server): add new capability"
 ```
 
-## 2. Repo Structure (server/dist is the runtime contract)
+> [!TIP]
+> First time? Start with a docs fix or a small bug. The hooks will lint, format, and typecheck your staged files automatically.
+
+## Development Environment
+
+| Requirement | Version           | Notes                              |
+| ----------- | ----------------- | ---------------------------------- |
+| **Node.js** | 18 -- 24          | `.nvmrc` pinned to 24              |
+| **npm**     | Bundled with Node | Run `npm install` inside `server/` |
+| **Git**     | Any recent        | Required for Husky hooks           |
+
+<details>
+<summary><strong>Repo Structure</strong></summary>
 
 ```
 repo/
 ├── server/
 │   ├── src/            # TypeScript sources
-│   ├── dist/           # Compiled runtime (reference for docs + MCP clients)
+│   ├── dist/           # Compiled runtime (SSOT for behavior)
 │   ├── prompts/        # Prompt registry and markdown templates
+│   ├── resources/      # Gates, methodologies, styles
 │   ├── config.json     # Runtime configuration
 │   └── package.json    # Scripts + dependencies
-├── docs/               # Canonical documentation set
+├── docs/               # Canonical documentation (Diataxis)
 ├── plans/              # Living migration plans + guardrails
+├── AGENTS.md           # Agent automation rules
 └── CONTRIBUTING.md     # This file
 ```
 
-Whenever you touch runtime behavior, inspect `server/dist/**` to confirm the emitted output matches your expectations.
+</details>
 
-## 3. Git Hooks (Husky + lint-staged)
+<details>
+<summary><strong>Available Scripts</strong> (run inside <code>server/</code>)</summary>
 
-Hooks auto-install via the `prepare` script the first time you run `npm install` inside `server/`.
+| Command                             | Description                                 |
+| ----------------------------------- | ------------------------------------------- |
+| `npm run build`                     | esbuild bundle to `dist/index.js`           |
+| `npm run typecheck`                 | Strict TypeScript checks without emit       |
+| `npm run lint` / `lint:fix`         | ESLint validation + autofix                 |
+| `npm run lint:ratchet`              | Fail if ESLint violations increased         |
+| `npm run format` / `format:fix`     | Prettier checks/auto-format                 |
+| `npm run validate:all`              | Full validation suite (deps + architecture) |
+| `npm run validate:arch`             | Dependency Cruiser architecture rules       |
+| `npm test` / `test:jest`            | Jest suite (unit + integration)             |
+| `npm run test:integration`          | Integration tests only                      |
+| `npm run test:coverage`             | Coverage report (target: >80%)              |
+| `npm run generate:contracts`        | Regenerate MCP schemas from contracts       |
+| `npm run start:stdio` / `start:sse` | Launch transports for manual testing        |
 
-### Pre-commit
+</details>
 
-Runs on staged files:
+## How to Contribute
+
+### Contribution Types
+
+Choose the path that matches your change:
+
+| I want to...                  | Path                                                    | Key docs                                                        |
+| ----------------------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| Fix a bug or add a feature    | [Code changes](#code-changes)                           | [Architecture](docs/architecture/overview.md)                   |
+| Create or edit a prompt/chain | [Prompt contributions](#prompt--chain-contributions)    | [Build Your First Prompt](docs/tutorials/build-first-prompt.md) |
+| Add or modify a quality gate  | [Gate contributions](#gate-contributions)               | [Gates Guide](docs/guides/gates.md)                             |
+| Add or modify a methodology   | [Methodology contributions](#methodology-contributions) | [Methodologies Guide](docs/guides/methodologies.md)             |
+| Improve documentation         | [Documentation](#documentation)                         | [Docs Index](docs/README.md)                                    |
+
+### Code Changes
+
+1. Read [Architecture Overview](docs/architecture/overview.md) for the pipeline, transports, and runtime model.
+2. Identify the correct domain from the ownership matrix in `CLAUDE.md` -- stages are thin orchestration, domain logic lives in services.
+3. Make focused, reversible changes. Respect [AGENTS.md](AGENTS.md) guardrails.
+4. Keep STDIO and SSE behavior in parity.
+5. Register new modules through the `Application` orchestrator (`server/src/runtime/`).
+
+> [!IMPORTANT]
+> **TypeScript strict mode** is enforced. Prefer dependency injection for custom services, but use library globals directly (e.g., `trace.getTracer()`) when the library provides its own accessor.
+
+### Prompt & Chain Contributions
+
+All prompt/chain changes flow through MCP tools -- never edit files under `server/prompts/` directly.
+
+- **Create/update/delete**: Use `resource_manager` with `resource_type:"prompt"`
+- **Schema**: Follow [Prompt YAML Schema](docs/reference/prompt-yaml-schema.md)
+- **Chains**: See [Chains Lifecycle](docs/concepts/chains-lifecycle.md) and [Chain Schema](docs/reference/chain-schema.md)
+- **Test**: Execute via `prompt_engine` and include output in your PR
+
+### Gate Contributions
+
+- Add gate definitions under `server/resources/gates/{id}/gate.yaml`
+- Follow [Gate Configuration](docs/reference/gate-configuration.md) for schema
+- See [Quality Gates](docs/concepts/quality-gates.md) for precedence and verification types
+- Update [Gates Guide](docs/guides/gates.md) when behavior changes
+
+### Methodology Contributions
+
+- Add methodology definitions under `server/resources/methodologies/{id}/`
+- Follow the structure: `methodology.yaml` + `phases.yaml` + optional `system-prompt.md` and `judge-prompt.md`
+- See [Methodologies Guide](docs/guides/methodologies.md) for configuration
+
+### Documentation
+
+All docs live under `docs/` organized by [Diataxis](https://diataxis.fr/) intent:
+
+| Quadrant  | Directory         | For                           |
+| --------- | ----------------- | ----------------------------- |
+| Tutorials | `docs/tutorials/` | Learning by doing             |
+| How-to    | `docs/guides/`    | Solving specific problems     |
+| Reference | `docs/reference/` | Looking up syntax/API details |
+| Concepts  | `docs/concepts/`  | Understanding how things work |
+
+- Update docs **in the same changeset** as code -- no deferred TODOs.
+- Verify references against `server/dist/**` for behavioral accuracy.
+- Consult [Docs Index](docs/README.md) before creating new files.
+
+## Commit Conventions
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) enforced by CI.
+
+### Format
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+### Types
+
+| Type       | When                                    |
+| ---------- | --------------------------------------- |
+| `feat`     | New feature or capability               |
+| `fix`      | Bug fix                                 |
+| `refactor` | Code restructuring (no behavior change) |
+| `chore`    | Maintenance, deps, configs              |
+| `docs`     | Documentation only                      |
+| `test`     | Adding or updating tests                |
+| `ci`       | CI/CD workflow changes                  |
+| `perf`     | Performance improvement                 |
+
+### Scopes
+
+Use these project-specific scopes:
+
+`server` `runtime` `pipeline` `gates` `frameworks` `prompts` `chains` `styles` `scripts` `hooks` `resources` `mcp-tools` `contracts` `parsers` `ci` `deps` `config` `docs` `tests` `execution`
+
+### Examples
+
+```bash
+git commit -m "feat(gates): add shell verification timeout option"
+git commit -m "fix(pipeline): correct framework authority resolution order"
+git commit -m "docs(guides): update injection control frequency table"
+git commit -m "refactor(runtime): extract module initialization to dedicated service"
+```
+
+> [!NOTE]
+> Breaking changes: add `!` after type/scope (e.g., `feat(mcp-tools)!: redesign resource_manager schema`) and include a `BREAKING CHANGE:` footer.
+
+## Testing
+
+### Decision Matrix
+
+Run validations that match what you changed:
+
+| I changed...               | Run this                                                   | Required? |
+| -------------------------- | ---------------------------------------------------------- | --------- |
+| Server source code         | `npm run typecheck && npm test`                            | Yes       |
+| Pipeline stages            | `npm test` + smoke test both transports                    | Yes       |
+| MCP tool schemas/contracts | `npm run generate:contracts && npm run validate:contracts` | Yes       |
+| A prompt or chain template | Execute via `prompt_engine`, describe results in PR        | Yes       |
+| A gate definition          | Execute via `resource_manager`, verify gate triggers       | Yes       |
+| Transport/runtime behavior | Smoke test `npm run start:stdio` and `start:sse`           | Yes       |
+| Documentation only         | Verify references against `server/dist/**`                 | Yes       |
+| Dependencies               | `npm audit` + full test suite                              | Yes       |
+
+### Minimum Validation (before any commit)
+
+```bash
+npm run typecheck && npm run lint:ratchet && npm test
+```
+
+### Full Validation (before pushing)
+
+```bash
+npm run typecheck && npm run lint:ratchet && npm test && npm run validate:all
+```
+
+> [!TIP]
+> Pre-push hooks run this automatically. If a push is blocked, fix the issue -- don't bypass hooks.
+
+## Issues & Pull Requests
+
+### Opening an Issue
+
+Use the [issue templates](https://github.com/minipuft/claude-prompts/issues/new/choose) -- they provide structured forms for bug reports and feature requests. Check [Troubleshooting](docs/guides/troubleshooting.md) before filing a bug.
+
+### Pull Request Process
+
+A [PR template](.github/pull_request_template.md) auto-fills when you open a PR. Fill in each section -- CI will also auto-comment a validation summary.
+
+**What reviewers look for:**
+
+1. **Focused scope** -- one concern per PR. Split large changes into reviewable chunks.
+2. **Tests** -- new behavior has tests; changed behavior has updated tests.
+3. **Docs updated** -- code and docs ship together.
+4. **Conventional commit** -- PR title follows commit conventions (squash-merge uses it).
+5. **Validation proof** -- link test output, screenshots, or describe manual verification steps.
+6. **No regressions** -- hooks pass, CI green, no new lint violations.
+
+## Git Hooks
+
+Hooks auto-install via `prepare` on first `npm install` inside `server/`.
+
+<details>
+<summary><strong>Pre-commit (staged files)</strong></summary>
+
+Runs on staged files only:
+
 1. `eslint --fix`
 2. `prettier --write`
 3. `npm run typecheck`
 
-Commits are blocked if linting/formatting/type checks fail. Expect staged files to be modified automatically.
+Commits are blocked if checks fail. Staged files may be auto-modified by formatters.
 
-### Pre-push
+</details>
 
-Runs before every `git push` over the entire workspace:
+<details>
+<summary><strong>Pre-push (full workspace)</strong></summary>
+
+Runs before every `git push`:
+
 1. `npm run typecheck`
 2. `npm run lint`
 3. `npm run format`
 4. `npm run test:jest`
 5. `npm run validate:all`
 
-Pushes are blocked if any command fails. This keeps CI and local environments aligned.
+Pushes are blocked if any command fails.
 
-### Emergency Bypass
+</details>
 
-Only bypass hooks to unblock CI or for emergency hotfixes. Use `HUSKY=0 git commit` or `HUSKY=0 git push`, then open a follow-up issue documenting why the bypass was required.
+> [!CAUTION]
+> **Emergency bypass only**: `HUSKY=0 git commit` or `HUSKY=0 git push`. Open a follow-up issue documenting why the bypass was needed.
 
-## 4. Available Scripts (run inside `server/`)
+<details>
+<summary><strong>Pipeline State Management Patterns</strong></summary>
 
-| Command | Description |
-| --- | --- |
-| `npm run build` | Compile TypeScript to `dist/`. |
-| `npm run typecheck` | Strict TypeScript checks without emit. |
-| `npm run lint` / `lint:fix` | ESLint validation + autofix. |
-| `npm run format` / `format:fix` | Prettier checks/auto-format. |
-| `npm run validate:all` | Dependency + architecture validation. |
-| `npm test` / `npm run test:jest` | Jest suite (unit + integration). |
-| `npm run start:stdio` / `start:sse` | Launch transports for manual testing. |
+When modifying pipeline stages (`server/src/engine/execution/pipeline/stages/`), use centralized state management:
 
-## 5. Contribution Workflow
+**Gates** -- use `context.gates` accumulator:
 
-1. Create a descriptive branch.
-2. Make focused, reversible changes; respect prompts/tool guardrails from `AGENTS.md`.
-3. Run tests/validations that match the area you touched (execution, gates, docs, etc.).
-4. Update relevant docs (`docs/mcp-tools.md`, `docs/troubleshooting.md`, etc.).
-5. Stage changes and let hooks run.
-6. Open a pull request with context, validation proof, and links to related plans/issues.
-
-## 6. Coding Guidelines
-
-- **TypeScript**: Strict mode, descriptive interfaces, prefer dependency injection over global state.
-- **Runtime lifecycle**: Register new modules through the `Application` orchestrator (`server/src/runtime/`).
-- **Transports**: Keep STDIO and SSE behavior in parity; mention both when updating docs.
-- **Prompts**: Only modify via `resource_manager` (`resource_type:"prompt"`). See `docs/tutorials/build-first-prompt.md` for schema expectations.
-- **Chains**: Define/edit steps via `resource_manager` (`resource_type:"prompt"`). Reference `docs/concepts/chains-lifecycle.md` for schema details.
-- **Gates**: Add definitions under `server/gates/{id}/gate.yaml` and update `docs/concepts/quality-gates.md` when behavior changes.
-
-### Pipeline State Management Patterns
-
-When modifying pipeline stages (`server/src/execution/pipeline/stages/`), use the centralized state management:
-
-**For Gates**: Use `context.gates` accumulator instead of direct array manipulation:
 ```typescript
-// ✅ Correct: Use accumulator with source tracking
-context.gates.add('research-quality', 'registry-auto');
-context.gates.addAll(methodologyGates, 'methodology');
+// Correct: accumulator with source tracking
+context.gates.add("research-quality", "registry-auto");
+context.gates.addAll(methodologyGates, "methodology");
 const finalGates = context.gates.getAll();
-
-// ❌ Wrong: Direct array mutation
-gateIds.push(...newGates);
 ```
 
-**For Framework Decisions**: Use `context.frameworkAuthority` instead of resolving framework ID manually:
+**Framework decisions** -- use `context.frameworkAuthority`:
+
 ```typescript
-// ✅ Correct: Use authority for consistent resolution
-const decisionInput = {
+// Correct: authority for consistent resolution
+const decision = context.frameworkAuthority.decide({
   modifiers: context.executionPlan?.modifiers,
   operatorOverride: context.parsedCommand?.executionPlan?.frameworkOverride,
   clientOverride: context.state.framework.clientOverride,
   globalActiveFramework: context.frameworkContext?.selectedFramework?.id,
-};
-const decision = context.frameworkAuthority.decide(decisionInput);
-if (decision.shouldApply) {
-  const frameworkId = decision.frameworkId; // lowercase
-}
-
-// ❌ Wrong: Manual resolution in each stage
-const frameworkId = context.state.framework.clientOverride ??
-  context.parsedCommand?.executionPlan?.frameworkOverride;
+});
 ```
 
-**For Diagnostics**: Use `context.diagnostics` for audit trail:
+**Diagnostics** -- use `context.diagnostics`:
+
 ```typescript
-context.diagnostics.info(this.name, 'Stage completed', { key: value });
-context.diagnostics.warn(this.name, 'Potential issue', { details });
+context.diagnostics.info(this.name, "Stage completed", { key: value });
+context.diagnostics.warn(this.name, "Potential issue", { details });
 ```
 
-See `docs/architecture.md#pipeline-state-management` for detailed documentation.
+See [Architecture Overview](docs/architecture/overview.md) for the full pipeline model.
 
-## 7. Testing Expectations
+</details>
 
-- **Server code**: `npm run typecheck && npm test && npm run validate:all`.
-- **Transport/runtime changes**: Add targeted smoke tests (`npm run start:stdio` or `npm run start:sse`) and note results in PRs.
-- **Prompt/tool changes**: Execute via MCP tools (`prompt_engine`, `resource_manager`, `system_control`). Link output or describe validation steps.
-- **Documentation-only changes**: Verify references against `server/dist/**`. If commands/scripts are mentioned, ensure they exist.
-
-## 8. Documentation & Plans
-
-- All docs now live under `docs/` with lifecycle tags (canonical, migrating, legacy). Consult `plans/docs-migration-plan.md` before creating new files.
-- Update docs in the same change set as the code; avoid TODO piles.
-- Long-running migrations belong in `plans/*.md` with checklists and blockers for the next contributor.
-
-## 9. Prompt & Template Contributions
-
-- Use `resource_manager` (`resource_type:"prompt"`, action `create`, `update`, `delete`, `reload`) for every change.
-- Document complex prompts/chains inside Markdown files and cross-reference the relevant doc (authoring guide or chain workflows).
-- Provide argument metadata (types + validation) so the runtime schema remains accurate.
-
-## 10. Security & Dependency Hygiene
-
-- Run `npm audit:check` when bumping dependencies; fix or document high/critical issues immediately.
-- Keep `.husky/`, `.lintstagedrc.json`, `.prettierrc.json`, and ESLint configs in sync when updating lint rules.
-- Never check in secrets; use environment variables for API keys (LLM integrations, etc.).
-
-## 11. Release Automation & CI/CD
-
-### Release Flow
+## Release Process
 
 ```
-Conventional commits → Release-Please PR → Merge → GitHub Release → npm publish → gemini-prompts update
+Conventional commits --> Release-Please PR --> Merge --> GitHub Release --> npm publish
 ```
 
-1. **Commit with conventional format**: `feat:`, `fix:`, `chore:`, etc.
-2. **Release-Please** auto-creates a PR bumping version + CHANGELOG
-3. **Merge the PR** → Creates GitHub Release with tag `vX.Y.Z`
-4. **npm-publish.yml** triggers → validates, tests, publishes with provenance
-5. **Downstream repos** pick up new version via daily Dependabot
+Releases are fully automated. Commit with conventional format and Release-Please handles versioning, changelogs, and publishing.
 
-### Required Secrets (Repository Maintainers)
+All version references must stay in sync across `server/package.json`, `manifest.json`, and `.claude-plugin/plugin.json`. The `validate:versions` script enforces this.
 
-| Secret | Purpose | Permissions Needed |
-|--------|---------|-------------------|
-| `NPM_TOKEN` | Publish to npm | npm automation token |
-| `RELEASE_PLEASE_TOKEN` | Allow releases to trigger workflows | Contents: Write, PRs: Write |
+> [!TIP]
+> See [Release Process Guide](docs/guides/release-process.md) for detailed workflows, troubleshooting, and token rotation procedures.
 
-**Creating tokens:**
-1. npm token: https://www.npmjs.com/settings/tokens
-2. GitHub PATs: https://github.com/settings/tokens?type=beta (fine-grained recommended)
+<details>
+<summary><strong>Maintainer: Release Secrets & Manual Release</strong></summary>
 
-**Adding secrets:** Repository Settings → Secrets and variables → Actions
+**Required secrets** (Repository Settings > Secrets and variables > Actions):
 
-### Manual Release (Emergency)
+| Secret                 | Purpose                                  |
+| ---------------------- | ---------------------------------------- |
+| `NPM_TOKEN`            | npm automation token for publishing      |
+| `RELEASE_PLEASE_TOKEN` | GitHub PAT (Contents: Write, PRs: Write) |
 
-If automation fails:
+**Manual release** (emergency only):
+
 ```bash
 cd server
 npm run build && npm test
@@ -195,26 +337,31 @@ npm publish --access public
 git push --tags
 ```
 
-### Version Consistency
+</details>
 
-All version references must match:
-- `server/package.json`
-- `manifest.json`
-- `.claude-plugin/plugin.json`
+## Security & Dependencies
 
-The `validate:versions` script enforces this in CI and pre-push hooks.
+- Run `npm audit` when bumping dependencies; fix or document high/critical issues immediately.
+- Keep hook configs (`.husky/`, `.lintstagedrc.json`, `.prettierrc.json`, ESLint) in sync when updating rules.
+- Never commit secrets. Use environment variables for API keys.
 
-**Detailed documentation:** See [`docs/guides/release-process.md`](docs/guides/release-process.md) for troubleshooting, token rotation, and workflow diagrams.
+## Architecture Decisions
 
-## 12. Transport-Agnostic Development
+Design decisions are recorded in `docs/adr/` using [ADR format](docs/adr/0000-template.md). Long-running migrations live in `plans/*.md` with checklists and blockers.
 
-- Avoid STDIO-specific assumptions in prompts or code (e.g., `console.log` inside STDIO loops).
-- SSE endpoints should expose equivalent functionality to STDIO flows. When adding a transport-specific feature, update `docs/architecture.md` with testing instructions.
+Check `plans/` before touching a subsystem -- there may be an active migration that affects your work.
 
-## 12. Getting Help
+## Getting Help
 
-- Review `AGENTS.md` for automation rules.
-- Check `plans/` for ongoing migrations before touching a subsystem.
-- If hooks or scripts fail unexpectedly, inspect `server/logs/` and `runtime-state/` for details, then document findings in your PR.
+| Need                              | Where                                                              |
+| --------------------------------- | ------------------------------------------------------------------ |
+| Understand the architecture       | [Architecture Overview](docs/architecture/overview.md)             |
+| Look up MCP tool syntax           | [MCP Tools Reference](docs/reference/mcp-tools.md)                 |
+| Debug a common error              | [Troubleshooting](docs/guides/troubleshooting.md)                  |
+| Understand agent automation       | [AGENTS.md](AGENTS.md)                                             |
+| Find any doc by topic             | [Docs Index](docs/README.md)                                       |
+| Report a bug or request a feature | [GitHub Issues](https://github.com/minipuft/claude-prompts/issues) |
 
-Thank you for keeping this guide current. If anything in here becomes outdated, fix it alongside your change so future contributors avoid drift.
+---
+
+_If anything in this guide becomes outdated, fix it alongside your change so future contributors avoid drift._

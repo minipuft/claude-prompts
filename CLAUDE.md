@@ -22,7 +22,9 @@
 | Injection control | `docs/guides/injection-control.md` |
 | Identity & scope | `docs/guides/identity-scope.md` |
 | Skills Sync | `docs/guides/skills-sync.md` |
+| Telemetry & observability | `docs/guides/telemetry-observability.md` |
 | Troubleshooting | `docs/guides/troubleshooting.md` |
+| Contributing & PR process | `CONTRIBUTING.md` |
 | Release highlights | `CHANGELOG.md` |
 
 Read the relevant doc before editing. Update docs when behavior changes.
@@ -100,7 +102,7 @@ system_control → SystemControl Router → 10 action handlers
 - **Pipeline state**: Use `context.gates`, `context.frameworkAuthority`, `context.diagnostics` -- never mutate arrays directly.
 - **Module organization**: <=7 files flat + barrel, >7 files use `internal/` subfolder.
 - **Commit convention**: Conventional Commits enforced. Scopes: `server`, `runtime`, `pipeline`, `gates`, `frameworks`, `prompts`, `chains`, `styles`, `scripts`, `hooks`, `resources`, `mcp-tools`, `contracts`, `parsers`, `ci`, `deps`, `config`, `docs`, `tests`, `execution`.
-- **Environment**: `MCP_WORKSPACE`, `MCP_CONFIG_PATH`, `MCP_PROMPTS_PATH`, `MCP_METHODOLOGIES_PATH`, `MCP_GATES_PATH`, `MCP_SCRIPTS_PATH`, `MCP_STYLES_PATH`. CLI flags take priority.
+- **Environment**: `MCP_WORKSPACE` (primary — SSOT for all paths), `MCP_RESOURCES_PATH` (resources base override), `MCP_CONFIG_PATH` (config file override). Workspace resources overlay bundled ones.
 
 -> `.claude/rules/mcp-contracts.md` for full contract protocol (auto-loaded)
 -> `docs/architecture/overview.md` for architecture, pipeline stages, subsystems

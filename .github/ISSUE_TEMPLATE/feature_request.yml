@@ -1,0 +1,66 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement", "triage"]
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature. Please check [existing requests](https://github.com/minipuft/claude-prompts/issues?q=is%3Aissue+label%3Aenhancement) first to avoid duplicates.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched [existing requests](https://github.com/minipuft/claude-prompts/issues?q=is%3Aissue+label%3Aenhancement) and this hasn't been requested
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? Focus on the problem, not the solution.
+      placeholder: "When I try to ..., I can't ... because ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you envision this working? Describe user-facing behavior.
+      placeholder: |
+        Example: "A new gate type that validates JSON schema against output"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the system does this affect?
+      options:
+        - Prompt Engine (execution, pipeline)
+        - Resource Manager (prompts, gates, methodologies)
+        - System Control (runtime, configuration)
+        - Chains (session management, delegation)
+        - Gates (quality validation)
+        - Methodologies (reasoning frameworks)
+        - CLI / Installation
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you tried workarounds or considered other approaches?
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Examples, mockups, links to related issues, or prior art.
