@@ -34,6 +34,9 @@ export const RESOURCE_URI_PATTERNS = {
   SESSION_ITEM: 'resource://session/{chainId}',
   METRICS_PIPELINE: 'resource://metrics/pipeline',
 
+  // Telemetry resources
+  TELEMETRY_STATUS: 'resource://telemetry/status',
+
   // Logs resources (Phase 3)
   LOGS_LIST: 'resource://logs/',
   LOGS_BY_LEVEL: 'resource://logs/{level}',
@@ -239,6 +242,16 @@ export interface ResourceDependencies {
         gateAdoptionRate: number;
       };
       recommendations: string[];
+    };
+  };
+  /** Telemetry runtime for health/status resource */
+  telemetryRuntime?: {
+    getStatus(): {
+      enabled: boolean;
+      mode: string;
+      exporterEndpoint: string;
+      samplingRate: number;
+      startedAt?: number;
     };
   };
   /** Log manager for MCP resources access to recent logs */

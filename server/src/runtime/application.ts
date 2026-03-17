@@ -22,6 +22,7 @@ import { resolveRuntimeLaunchOptions, RuntimeLaunchOptions } from './options.js'
 import { buildResourceChangeTrackerAuxiliaryReloadConfig } from './resource-change-tracking.js';
 import { buildScriptAuxiliaryReloadConfig } from './script-hot-reload.js';
 import { startServerWithManagers } from './startup-server.js';
+import { TelemetryLifecycle } from './telemetry-lifecycle.js';
 import { FrameworkStateStore } from '../engine/frameworks/framework-state-store.js';
 import { GateManager } from '../engine/gates/gate-manager.js';
 import { ConfigLoader } from '../infra/config/index.js';
@@ -35,18 +36,6 @@ import { ConversationStore, createConversationStore } from '../modules/text-refs
 import { TextReferenceStore } from '../modules/text-refs/index.js';
 import { FrameworksConfig, TransportMode } from '../shared/types/index.js';
 import { ServiceOrchestrator } from '../shared/utils/service-orchestrator.js';
-
-// Import execution modules
-// REMOVED: ExecutionCoordinator and GateEvaluator imports - modular chain and gate systems removed
-
-//  Framework capabilities now integrated into base components
-// No separate framework observers needed - functionality moved to enhanced FileObserver and HotReloadObserver
-
-// Import startup management
-
-// Import types
-// Import chain utilities
-// Import MCP resources registration
 
 import type { PathResolver } from './paths.js';
 import type { ConvertedPrompt } from '../engine/execution/types.js';
@@ -67,20 +56,17 @@ export class Application {
   private textReferenceStore!: TextReferenceStore;
   private conversationStore!: ConversationStore;
   private promptManager!: PromptAssetManager;
-  // REMOVED: executionCoordinator - modular chain system removed
-  // REMOVED: gateEvaluator - gate evaluation system removed
   private mcpToolsManager!: McpToolRouter;
   private toolDescriptionLoader!: ToolDescriptionLoader;
   private frameworkStateStore!: FrameworkStateStore;
   private gateManager?: GateManager;
   private hookRegistry!: HookRegistry;
   private notificationEmitter!: McpNotificationEmitter;
+  private telemetryLifecycle?: TelemetryLifecycle;
   private pathResolver!: PathResolver;
   private transportRouter!: TransportRouter;
   private apiRouter: ApiRouter | undefined;
   private serverLifecycle: ServerLifecycle | undefined;
-  //  Framework capabilities integrated into base components
-  // No separate framework observers needed
 
   // MCP Server instance
   private mcpServer!: McpServer;
@@ -94,12 +80,7 @@ export class Application {
   private promptReloadInProgress: Promise<void> | undefined;
   private promptHotReloadHandler = (event: HotReloadEvent) => this.handlePromptHotReload(event);
 
-  // Performance monitoring
   private memoryOptimizationInterval: NodeJS.Timeout | undefined;
-
-  // Server root detector
-
-  // Debug output control
   private debugOutput: boolean;
   private runtimeOptions: RuntimeLaunchOptions;
   private serviceOrchestrator: ServiceOrchestrator;
@@ -109,8 +90,6 @@ export class Application {
   private frameworksConfigListener:
     | ((newConfig: FrameworksConfig, previousConfig: FrameworksConfig) => void)
     | undefined;
-  private pendingFrameworkSystemState: boolean | undefined;
-
   /**
    * Conditional debug logging to prevent output flood during tests
    */
@@ -141,6 +120,11 @@ export class Application {
       this.debugLog('Starting  - Core Foundation...');
       await this.initializeFoundation();
       this.debugLog(' completed successfully');
+
+      // Start telemetry (SDK init + exporter connection, no-ops if disabled)
+      if (this.telemetryLifecycle) {
+        await this.telemetryLifecycle.start();
+      }
 
       // Data Loading and Processing
       this.debugLog('Starting  - Data Loading and Processing...');
@@ -232,44 +216,21 @@ export class Application {
 
     // Only show startup messages if not in quiet mode
     if (!isQuiet) {
-      this.debugLog('About to call logger.info - Starting MCP...');
       this.logger.info('Starting MCP Claude Prompts Server...');
-      this.debugLog('First logger.info completed');
       this.logger.info(`Transport: ${transport}`);
-      this.debugLog('Second logger.info completed');
     }
 
-    // Verbose mode shows detailed configuration info
     if (isVerbose) {
-      this.debugLog('About to call verbose logger.info calls');
       this.logger.info(`Server root: ${this.serverRoot}`);
       this.logger.info(`Config file: ${this.configManager.getConfigPath()}`);
       this.logger.debug(`Command line args: ${JSON.stringify(this.runtimeOptions.args)}`);
       this.logger.debug(`Process working directory: ${process.cwd()}`);
-      this.debugLog('Verbose logger.info calls completed');
     }
 
-    // Initialize text reference manager
-    this.debugLog('About to create TextReferenceStore');
     this.textReferenceStore = new TextReferenceStore(this.logger);
-    this.debugLog('TextReferenceStore created');
+    this.conversationStore = createConversationStore(this.logger);
 
-    // Initialize conversation manager
-    this.debugLog('About to create ConversationStore');
-    try {
-      this.conversationStore = createConversationStore(this.logger);
-      this.debugLog('ConversationStore created successfully');
-    } catch (error) {
-      this.debugLog('ConversationStore creation failed:', error);
-      throw error;
-    }
-    this.debugLog('ConversationStore created');
-
-    // Create MCP server
-    this.debugLog('About to get config');
     const config = this.configManager.getConfig();
-    this.debugLog('Config retrieved successfully');
-    this.debugLog('About to create McpServer');
     this.mcpServer = new McpServer(
       {
         name: config.server.name,
@@ -295,6 +256,17 @@ export class Application {
         .mcpServer as unknown as import('../infra/observability/notifications/index.js').McpNotificationServer
     );
     this.debugLog('HookRegistry and McpNotificationEmitter initialized');
+
+    // Initialize telemetry lifecycle (creates runtime + hook observer, does not start SDK yet)
+    const telemetryConfig = this.configManager.getTelemetryConfig();
+    this.telemetryLifecycle = new TelemetryLifecycle({
+      config: telemetryConfig,
+      logger: this.logger,
+      hookRegistry: this.hookRegistry,
+      serviceName: config.server.name,
+      serviceVersion: config.server.version,
+    });
+    this.debugLog('TelemetryLifecycle initialized');
 
     // Only log completion in verbose mode
     if (isVerbose) {
@@ -569,6 +541,15 @@ export class Application {
         this.logger.info('Initiating application shutdown...');
       }
 
+      // Flush telemetry spans before tearing down services
+      if (this.telemetryLifecycle) {
+        try {
+          await this.telemetryLifecycle.shutdown();
+        } catch (error) {
+          this.logger?.warn('Error shutting down telemetry:', error);
+        }
+      }
+
       //  Stop server and transport layers
       if (this.serverLifecycle) {
         if (this.logger) {
@@ -748,7 +729,6 @@ export class Application {
 
       // Step 3: Propagate the new data to all dependent modules.
       // This ensures all parts of the application are synchronized with the new state.
-      // REMOVED: ExecutionCoordinator prompts update - modular chain system removed
 
       if (this.mcpToolsManager) {
         this.mcpToolsManager.updateData(this._promptsData, this._convertedPrompts, this.categories);
@@ -985,7 +965,7 @@ export class Application {
       promptManager: this.promptManager,
       textReferenceStore: this.textReferenceStore,
       conversationStore: this.conversationStore,
-      // REMOVED: executionCoordinator and gateEvaluator - modular systems removed
+
       mcpToolsManager: this.mcpToolsManager,
       apiRouter: this.apiRouter,
       serverLifecycle: this.serverLifecycle,
@@ -1029,11 +1009,7 @@ export class Application {
     }
 
     // Check module initialization
-    const modulesInitialized = !!(
-      this.promptManager &&
-      // REMOVED: this.executionCoordinator && this.gateEvaluator - modular systems removed
-      this.mcpToolsManager
-    );
+    const modulesInitialized = !!(this.promptManager && this.mcpToolsManager);
     moduleStatus['modulesInitialized'] = modulesInitialized;
     moduleStatus['serverRunning'] = !!(this.serverLifecycle && this.transportRouter);
 
@@ -1042,7 +1018,7 @@ export class Application {
     moduleStatus['promptManager'] = !!this.promptManager;
     moduleStatus['textReferenceStore'] = !!this.textReferenceStore;
     moduleStatus['conversationStore'] = !!this.conversationStore;
-    // REMOVED: moduleStatus for executionCoordinator and gateEvaluator - modular systems removed
+
     moduleStatus['mcpToolsManager'] = !!this.mcpToolsManager;
     moduleStatus['transportRouter'] = !!this.transportRouter;
     moduleStatus['apiRouter'] = !!this.apiRouter;
@@ -1083,7 +1059,6 @@ export class Application {
       statistics: any;
     };
   } {
-    // REMOVED: ExecutionCoordinator metrics - providing default metrics
     const executionCoordinatorMetrics = {
       statistics: {
         totalExecutions: 0,
@@ -1172,7 +1147,6 @@ export class Application {
       systemPromptEnabled || gatesConfig.enableMethodologyGates || config.dynamicToolDescriptions;
 
     if (!this.frameworkStateStore) {
-      this.pendingFrameworkSystemState = shouldEnable;
       return;
     }
 
@@ -1182,7 +1156,6 @@ export class Application {
         ? 'Framework system enabled via configuration toggles'
         : 'Framework system disabled via configuration toggles');
     this.frameworkStateStore.setFrameworkSystemEnabled(shouldEnable, resolvedReason);
-    this.pendingFrameworkSystemState = undefined;
   }
 
   private describeDisabledFrameworkFeatures(config: FrameworksConfig): string[] {

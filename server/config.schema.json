@@ -324,6 +324,62 @@
       }
     },
 
+    "telemetry": {
+      "type": "object",
+      "description": "OpenTelemetry observability: tracing, metrics, and attribute policy. Separate from resources.observability (MCP resource toggles).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Master switch for the telemetry subsystem. When false, no OTel SDK is initialized."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["off", "traces", "full"],
+          "default": "off",
+          "description": "Export mode: 'off' (disabled), 'traces' (spans/events only), 'full' (spans + OTel metrics)"
+        },
+        "exporterEndpoint": {
+          "type": "string",
+          "default": "http://localhost:4318",
+          "description": "OTLP HTTP exporter endpoint URL"
+        },
+        "samplingRate": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Head sampling rate for traces (0.0–1.0). 1.0 = sample everything, 0.0 = sample nothing."
+        },
+        "attributePolicy": {
+          "type": "object",
+          "description": "Controls which attributes are included in trace spans and events for data safety.",
+          "properties": {
+            "businessContext": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include safe business-context attributes (cpm.prompt.id, cpm.execution.mode, etc.)"
+            },
+            "rawCommands": {
+              "type": "boolean",
+              "default": false,
+              "description": "Include raw command text in traces. WARNING: may contain sensitive data."
+            },
+            "rawResponses": {
+              "type": "boolean",
+              "default": false,
+              "description": "Include raw user responses in traces. WARNING: may contain sensitive data."
+            },
+            "allowlist": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Custom attribute names to explicitly include in traces"
+            }
+          }
+        }
+      }
+    },
+
     "logging": {
       "type": "object",
       "description": "Server logging configuration",

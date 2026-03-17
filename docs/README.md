@@ -75,5 +75,5 @@ This is the map for the Claude Prompts MCP server. Canonical operational docs ar
 - **Decisions**: `docs/adr/`
 - **Portfolio**: `docs/portfolio/`
 - **Plans**: `plans/`
-- **Changelog**: `server/CHANGELOG.md`
+- **Changelog**: `CHANGELOG.md`
 - **Contributing**: `CONTRIBUTING.md`

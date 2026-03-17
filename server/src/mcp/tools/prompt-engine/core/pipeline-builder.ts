@@ -374,7 +374,8 @@ export class PipelineBuilder {
       formattingStage,
       postFormattingStage,
       deps.logger,
-      deps.getAnalyticsService
+      deps.getAnalyticsService,
+      deps.hookRegistry
     );
   }
 

@@ -269,7 +269,7 @@ Script tools enable validation scripts that auto-trigger on schema match. See [S
 
 This repo uses a Release PR flow to ensure the npm package version and changelog are committed before publishing.
 
-- Changelog: `server/CHANGELOG.md`
+- Changelog: `CHANGELOG.md`
 - Package version: `server/package.json#version`
 - Tag format: `vX.Y.Z` (created by release-please)
 
@@ -282,7 +282,7 @@ This repo uses a Release PR flow to ensure the npm package version and changelog
 **Release steps**
 
 1. Merge normal work into `main`.
-2. Release Please opens a Release PR; review the version bump + `server/CHANGELOG.md`.
+2. Release Please opens a Release PR; review the version bump + `CHANGELOG.md`.
 3. Merge the Release PR.
 4. Publish the draft GitHub Release created for the new tag (this triggers the npm publish workflow).
 

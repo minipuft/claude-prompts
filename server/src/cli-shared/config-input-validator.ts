@@ -70,6 +70,13 @@ export const CONFIG_VALID_KEYS = [
   'verification.isolation.permissionMode',
   'versioning.enabled',
   'versioning.autoVersion',
+  'telemetry.enabled',
+  'telemetry.mode',
+  'telemetry.exporterEndpoint',
+  'telemetry.samplingRate',
+  'telemetry.attributePolicy.businessContext',
+  'telemetry.attributePolicy.rawCommands',
+  'telemetry.attributePolicy.rawResponses',
 ] as const;
 
 export type ConfigKey = (typeof CONFIG_VALID_KEYS)[number];
@@ -78,6 +85,8 @@ export const CONFIG_RESTART_REQUIRED_KEYS: ConfigKey[] = [
   'server.port',
   'server.transport',
   'analysis.semanticAnalysis.llmIntegration.mode',
+  'telemetry.mode',
+  'telemetry.exporterEndpoint',
 ];
 
 export interface ConfigInputValidationResult {
@@ -428,6 +437,57 @@ export function validateConfigInput(key: string, value: string): ConfigInputVali
         };
       }
       return { valid: true, convertedValue: retries, valueType: 'number' };
+    }
+
+    case 'telemetry.enabled':
+    case 'telemetry.attributePolicy.businessContext':
+    case 'telemetry.attributePolicy.rawCommands':
+    case 'telemetry.attributePolicy.rawResponses': {
+      const telBoolValue = value.trim().toLowerCase();
+      if (!['true', 'false'].includes(telBoolValue)) {
+        return {
+          valid: false,
+          error: "Value must be 'true' or 'false'",
+        };
+      }
+      return {
+        valid: true,
+        convertedValue: telBoolValue === 'true',
+        valueType: 'boolean',
+      };
+    }
+
+    case 'telemetry.mode': {
+      const telMode = value.trim().toLowerCase();
+      if (!['off', 'traces', 'full'].includes(telMode)) {
+        return {
+          valid: false,
+          error: "Telemetry mode must be 'off', 'traces', or 'full'",
+        };
+      }
+      return { valid: true, convertedValue: telMode, valueType: 'string' };
+    }
+
+    case 'telemetry.exporterEndpoint': {
+      const endpoint = value.trim();
+      if (endpoint.length === 0) {
+        return {
+          valid: false,
+          error: 'Exporter endpoint cannot be empty',
+        };
+      }
+      return { valid: true, convertedValue: endpoint, valueType: 'string' };
+    }
+
+    case 'telemetry.samplingRate': {
+      const rate = parseFloat(value);
+      if (isNaN(rate) || rate < 0.0 || rate > 1.0) {
+        return {
+          valid: false,
+          error: 'Sampling rate must be a number between 0.0 and 1.0',
+        };
+      }
+      return { valid: true, convertedValue: rate, valueType: 'number' };
     }
 
     case 'advanced.sessions.timeoutMinutes':

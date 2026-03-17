@@ -16,6 +16,7 @@ import type {
   ExecutionConfig,
   VersioningConfig,
   ResourcesConfig,
+  TelemetryConfig,
   TransportMode,
 } from './core-config.js';
 import type { InjectionConfig } from './injection.js';
@@ -47,6 +48,7 @@ export interface ConfigManager {
   isJudgeEnabled(): boolean;
   getVersioningConfig(): VersioningConfig;
   getResourcesConfig(): ResourcesConfig;
+  getTelemetryConfig(): TelemetryConfig;
   getInjectionConfig(): InjectionConfig;
 
   // ── Path resolution ──────────────────────────────────────────────────

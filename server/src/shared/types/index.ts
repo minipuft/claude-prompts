@@ -97,8 +97,11 @@ export type {
   DelegationProfile,
   IdentityLaunchDefaults,
   IdentityPolicyMode,
+  TelemetryMode,
+  TelemetryAttributePolicy,
+  TelemetryConfig,
 } from './core-config.js';
-export { DEFAULT_VERSIONING_CONFIG } from './core-config.js';
+export { DEFAULT_VERSIONING_CONFIG, DEFAULT_TELEMETRY_CONFIG } from './core-config.js';
 
 // Request identity types (workspace/organization scoping)
 export type {
@@ -630,6 +633,31 @@ export interface ChainSessionRouterPort {
 }
 
 /**
+ * Telemetry runtime interface (engine/ contract).
+ * Provides read-only telemetry status for layers that don't need tracer access.
+ * Concrete: infra/observability/telemetry/runtime.ts TelemetryRuntimeImpl
+ */
+export interface TelemetryRuntimePort {
+  /** Whether telemetry is active and collecting. */
+  isEnabled(): boolean;
+  /** Get runtime status snapshot (enabled, mode, endpoint, sampling). */
+  getStatus(): { enabled: boolean; mode: string; exporterEndpoint: string; samplingRate: number };
+}
+
+/**
+ * Lightweight hook execution context for pipeline emissions.
+ * Compatible with HookExecutionContext in infra/hooks/.
+ */
+export interface PipelineHookContext {
+  readonly executionId: string;
+  readonly executionType: 'single' | 'chain';
+  readonly chainId?: string;
+  readonly currentStep?: number;
+  readonly frameworkEnabled: boolean;
+  readonly frameworkId?: string;
+}
+
+/**
  * Hook registry interface (mcp/ contract).
  * mcp/ stores and forwards to engine/ pipeline stages.
  * Concrete: infra/hooks/hook-registry.ts HookRegistry
@@ -637,6 +665,9 @@ export interface ChainSessionRouterPort {
 export interface HookRegistryPort {
   getCounts(): { pipeline: number; gate: number; chain: number };
   clearAll(): void;
+  emitBeforeStage(stage: string, context: PipelineHookContext): Promise<void>;
+  emitAfterStage(stage: string, context: PipelineHookContext): Promise<void>;
+  emitStageError(stage: string, error: Error, context: PipelineHookContext): Promise<void>;
 }
 
 /**

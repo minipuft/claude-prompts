@@ -71,20 +71,15 @@ try {
   process.exit(1);
 }
 
-const changelogPaths = [join(repoRoot, 'CHANGELOG.md'), join(serverDir, 'CHANGELOG.md')];
-const changelogMatches = changelogPaths.some((path) => {
-  try {
-    const content = readFileSync(path, 'utf-8');
-    return content.includes(`## [${coreVersion}]`);
-  } catch {
-    return false;
+const changelogPath = join(repoRoot, 'CHANGELOG.md');
+try {
+  const content = readFileSync(changelogPath, 'utf-8');
+  if (!content.includes(`## [${coreVersion}]`)) {
+    console.error(`\n❌ Missing changelog entry for ${coreVersion} in CHANGELOG.md`);
+    process.exit(1);
   }
-});
-
-if (!changelogMatches) {
-  console.error(
-    `\n❌ Missing changelog entry for ${coreVersion} in CHANGELOG.md or server/CHANGELOG.md`
-  );
+} catch (err) {
+  console.error(`\n❌ Unable to read ${changelogPath}: ${err.message}`);
   process.exit(1);
 }
 

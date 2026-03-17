@@ -1,6 +1,8 @@
 // @lifecycle canonical - Coordinates prompt execution across ordered stages.
 import { randomUUID } from 'crypto';
 
+import { trace, SpanStatusCode, context as otelContext } from '@opentelemetry/api';
+
 import { ExecutionContext } from '../context/index.js';
 
 import type { PipelineStage } from './stage.js';
@@ -14,7 +16,10 @@ import type {
   PipelineStageMetric,
   McpToolRequest,
   ToolResponse,
+  HookRegistryPort,
+  PipelineHookContext,
 } from '../../../shared/types/index.js';
+import type { Span } from '@opentelemetry/api';
 
 /**
  * Canonical Prompt Execution Pipeline orchestrator.
@@ -23,6 +28,7 @@ export class PromptExecutionPipeline {
   private stages: PipelineStage[] = [];
   private readonly logger: Logger;
   private readonly metricsProvider: (() => MetricsCollector | undefined) | undefined;
+  private readonly hookRegistry: HookRegistryPort | undefined;
 
   constructor(
     private readonly requestStage: PipelineStage,
@@ -49,10 +55,12 @@ export class PromptExecutionPipeline {
     private readonly formattingStage: PipelineStage,
     private readonly postFormattingStage: PipelineStage,
     logger: Logger,
-    metricsProvider?: () => MetricsCollector | undefined
+    metricsProvider?: () => MetricsCollector | undefined,
+    hookRegistry?: HookRegistryPort
   ) {
     this.logger = logger;
     this.metricsProvider = metricsProvider;
+    this.hookRegistry = hookRegistry;
     this.registerStages();
   }
 
@@ -61,26 +69,44 @@ export class PromptExecutionPipeline {
    */
   async execute(mcpRequest: McpToolRequest): Promise<ToolResponse> {
     const context = new ExecutionContext(mcpRequest, this.logger);
+    const rootSpan = this.startRootSpan(context);
 
+    // If telemetry active, wrap execution in root span context
+    // so trace.getActiveSpan() works for hook observer events
+    if (rootSpan !== undefined) {
+      return otelContext.with(trace.setSpan(otelContext.active(), rootSpan), () =>
+        this.executePipelineStages(context, rootSpan)
+      );
+    }
+    return this.executePipelineStages(context);
+  }
+
+  private async executePipelineStages(
+    context: ExecutionContext,
+    rootSpan?: Span
+  ): Promise<ToolResponse> {
     this.logger.info('[Pipeline] Starting execution', {
-      command: mcpRequest.command ?? '<response-only>',
-      chainId: mcpRequest.chain_id,
+      command: context.mcpRequest.command ?? '<response-only>',
+      chainId: context.mcpRequest.chain_id,
     });
 
     const pipelineStart = Date.now();
     const commandMetricId = this.createCommandMetricId();
     context.metadata['commandMetricId'] = commandMetricId;
     const stageMetrics: StageMetricSummary[] = [];
+    const skippedStages: string[] = [];
     let previousState = this.captureContextState(context);
     let commandStatus: MetricStatus = 'success';
     let commandError: string | undefined;
 
     try {
-      for (const stage of this.stages) {
+      for (let i = 0; i < this.stages.length; i++) {
+        const stage = this.stages[i] as PipelineStage;
         const stageStart = Date.now();
         const memoryBefore = process.memoryUsage();
         let stageStatus: PipelineStageStatus = 'success';
         let stageError: string | undefined;
+        const stageSpan = this.startStageSpan(stage.name, i);
 
         this.logger.info('[Pipeline] -> Stage start', {
           stage: stage.name,
@@ -88,12 +114,19 @@ export class PromptExecutionPipeline {
         });
 
         try {
+          await this.emitBeforeStage(stage.name, context);
           await stage.execute(context);
+          await this.emitAfterStage(stage.name, context);
         } catch (error) {
           const durationMs = Date.now() - stageStart;
           const message = error instanceof Error ? error.message : String(error);
           stageStatus = 'error';
           stageError = message;
+          await this.emitStageError(
+            stage.name,
+            error instanceof Error ? error : new Error(message),
+            context
+          );
           this.logger.error('[Pipeline] Stage failed', {
             stage: stage.name,
             durationMs,
@@ -115,6 +148,11 @@ export class PromptExecutionPipeline {
             stageError,
             memoryBefore,
             memoryAfter
+          );
+          this.endSpanWithStatus(
+            stageSpan,
+            stageStatus,
+            stageError ? new Error(stageError) : undefined
           );
 
           const currentState = this.captureContextState(context);
@@ -139,6 +177,12 @@ export class PromptExecutionPipeline {
             totalDurationMs: Date.now() - pipelineStart,
             stages: stageMetrics,
           });
+          this.enrichRootSpan(rootSpan, context, stageMetrics, skippedStages, pipelineStart);
+          this.endSpanWithStatus(
+            rootSpan,
+            commandStatus,
+            commandError ? new Error(commandError) : undefined
+          );
           return context.response;
         }
       }
@@ -156,6 +200,12 @@ export class PromptExecutionPipeline {
         totalDurationMs: Date.now() - pipelineStart,
         stages: stageMetrics,
       });
+      this.enrichRootSpan(rootSpan, context, stageMetrics, skippedStages, pipelineStart);
+      this.endSpanWithStatus(
+        rootSpan,
+        commandStatus,
+        commandError ? new Error(commandError) : undefined
+      );
       return context.response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -165,6 +215,12 @@ export class PromptExecutionPipeline {
         error: message,
         stages: stageMetrics,
       });
+      this.enrichRootSpan(rootSpan, context, stageMetrics, skippedStages, pipelineStart, message);
+      this.endSpanWithStatus(
+        rootSpan,
+        'error',
+        error instanceof Error ? error : new Error(message)
+      );
       throw error instanceof Error ? error : new Error(message);
     } finally {
       this.recordCommandExecutionMetric(
@@ -428,6 +484,158 @@ export class PromptExecutionPipeline {
 
     const text = response.content.find((item) => typeof item.text === 'string')?.text;
     return text?.slice(0, 200);
+  }
+
+  // ===== Phase 1.3b: Hook Emissions =====
+
+  private buildHookContext(context: ExecutionContext): PipelineHookContext {
+    return {
+      executionId: String(context.metadata['commandMetricId'] || 'unknown'),
+      executionType: context.isChainExecution() ? 'chain' : 'single',
+      chainId: context.getSessionId(),
+      currentStep: context.sessionContext?.currentStep,
+      frameworkEnabled: Boolean(context.frameworkContext),
+      frameworkId: context.frameworkContext?.selectedFramework?.id,
+    };
+  }
+
+  private async emitBeforeStage(stageName: string, context: ExecutionContext): Promise<void> {
+    if (this.hookRegistry === undefined) return;
+    try {
+      await this.hookRegistry.emitBeforeStage(stageName, this.buildHookContext(context));
+    } catch (error) {
+      this.logger.debug('[Pipeline] Hook emitBeforeStage error', { stageName, error });
+    }
+  }
+
+  private async emitAfterStage(stageName: string, context: ExecutionContext): Promise<void> {
+    if (this.hookRegistry === undefined) return;
+    try {
+      await this.hookRegistry.emitAfterStage(stageName, this.buildHookContext(context));
+    } catch (error) {
+      this.logger.debug('[Pipeline] Hook emitAfterStage error', { stageName, error });
+    }
+  }
+
+  private async emitStageError(
+    stageName: string,
+    stageError: Error,
+    context: ExecutionContext
+  ): Promise<void> {
+    if (this.hookRegistry === undefined) return;
+    try {
+      await this.hookRegistry.emitStageError(stageName, stageError, this.buildHookContext(context));
+    } catch (error) {
+      this.logger.debug('[Pipeline] Hook emitStageError error', { stageName, error });
+    }
+  }
+
+  // ===== Phase 1.4: OTel Span Instrumentation =====
+
+  private startRootSpan(context: ExecutionContext): Span | undefined {
+    // OTel global API: returns real tracer when SDK is registered, no-op tracer otherwise.
+    // No DI needed — TelemetryRuntimeImpl.start() registers the global provider.
+    const tracer = trace.getTracer('prompt_engine');
+    // Check if the tracer is recording (SDK registered) by probing a span
+    const probeSpan = tracer.startSpan('__probe__');
+    const isRecording = probeSpan.isRecording();
+    probeSpan.end();
+    if (!isRecording) return undefined;
+
+    return tracer.startSpan('prompt_engine.request', {
+      attributes: {
+        'cpm.execution.id': (context.metadata['commandMetricId'] as string) ?? 'unknown',
+        'cpm.command.type': context.mcpRequest.command ?? 'response-only',
+        'cpm.execution.mode': context.isChainExecution() ? 'chain' : 'single',
+      },
+    });
+  }
+
+  private startStageSpan(stageName: string, stageIndex: number): Span | undefined {
+    // Only create stage spans when root span is active (telemetry SDK registered)
+    const activeSpan = trace.getActiveSpan();
+    if (!activeSpan?.isRecording()) return undefined;
+
+    return trace.getTracer('prompt_engine').startSpan(`pipeline.stage.${stageName}`, {
+      attributes: {
+        'cpm.stage.name': stageName,
+        'cpm.stage.index': stageIndex,
+      },
+    });
+  }
+
+  // ===== Wide-Event Enrichment (per /observability skill) =====
+
+  private enrichRootSpan(
+    span: Span | undefined,
+    context: ExecutionContext,
+    stageMetrics: StageMetricSummary[],
+    skippedStages: string[],
+    pipelineStart: number,
+    errorType?: string
+  ): void {
+    if (!span?.isRecording()) return;
+
+    // Determine early exit from whether all registered stages actually ran
+    const hadEarlyExit = stageMetrics.length < this.stages.length;
+
+    // Find slowest stage from timing data already collected
+    const slowest = stageMetrics.reduce((max, s) => (s.durationMs > max.durationMs ? s : max), {
+      stage: 'none',
+      durationMs: 0,
+    } as Pick<StageMetricSummary, 'stage' | 'durationMs'>);
+
+    // Aggregate gate state from pipeline internal state
+    const gateState = context.state.gates;
+    const allGateIds = [
+      ...gateState.temporaryGateIds,
+      ...gateState.methodologyGateIds,
+      ...gateState.registeredInlineGateIds,
+    ];
+    const failedCount = gateState.blockedGateIds?.length ?? 0;
+
+    span.setAttributes({
+      // Performance summary
+      'cpm.duration.total_ms': Date.now() - pipelineStart,
+      'cpm.stages.executed_count': stageMetrics.length,
+      'cpm.stages.skipped': skippedStages.join(','),
+      'cpm.stages.slowest': slowest.stage,
+      'cpm.stages.slowest_ms': slowest.durationMs,
+      'cpm.had_early_exit': hadEarlyExit,
+      // Gate summary
+      'cpm.gates.names': allGateIds.join(','),
+      'cpm.gates.passed_count': allGateIds.length - failedCount,
+      'cpm.gates.failed_count': failedCount,
+      'cpm.gates.blocked': gateState.responseBlocked ?? false,
+      'cpm.gates.retry_exhausted': gateState.retryLimitExceeded ?? false,
+      'cpm.gates.enforcement_mode': gateState.enforcementMode ?? 'standard',
+      // Chain context
+      'cpm.chain.is_chain': context.isChainExecution(),
+      'cpm.chain.step_index': context.sessionContext?.currentStep ?? 0,
+      'cpm.chain.id': context.sessionContext?.chainId ?? '',
+      // Framework
+      'cpm.framework.id': context.frameworkContext?.selectedFramework?.id ?? '',
+      'cpm.framework.enabled': Boolean(context.frameworkContext),
+      // Scope
+      'cpm.scope.source': context.state.scope.source ?? 'default',
+      // Error categorization
+      ...(errorType ? { 'cpm.error.type': errorType } : {}),
+    });
+  }
+
+  private endSpanWithStatus(
+    span: Span | undefined,
+    status: PipelineStageStatus,
+    error?: Error
+  ): void {
+    if (span === undefined) return;
+    if (status === 'error') {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error?.message });
+      if (error !== undefined) span.recordException(error);
+    } else {
+      span.setStatus({ code: SpanStatusCode.OK });
+    }
+    span.end();
   }
 
   private mapStageType(stageName: string): PipelineStageType {

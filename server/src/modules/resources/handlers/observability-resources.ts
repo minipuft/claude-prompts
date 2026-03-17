@@ -62,6 +62,12 @@ export function registerObservabilityResources(
     );
   }
 
+  // Register telemetry status resource if TelemetryRuntime is available
+  if (dependencies.telemetryRuntime !== undefined) {
+    registerTelemetryResources(server, dependencies);
+    logger.debug('[ObservabilityResources] Telemetry resources registered');
+  }
+
   // Register log resources if LogManager is available
   if (dependencies.logManager !== undefined) {
     registerLogResources(server, dependencies);
@@ -427,4 +433,53 @@ export function registerLogResources(server: McpServer, dependencies: ResourceDe
   );
 
   logger.info('[LogResources] Registered log resources');
+}
+
+/**
+ * Register telemetry runtime status resource.
+ * Exposes runtime health/config for operator visibility (no sensitive payload).
+ */
+function registerTelemetryResources(server: McpServer, dependencies: ResourceDependencies): void {
+  const { logger, telemetryRuntime } = dependencies;
+
+  if (telemetryRuntime === undefined) {
+    return;
+  }
+
+  server.registerResource(
+    'telemetry-status',
+    RESOURCE_URI_PATTERNS.TELEMETRY_STATUS,
+    {
+      description: 'OpenTelemetry runtime status: enabled state, mode, endpoint, sampling rate',
+      mimeType: 'application/json',
+    },
+    async (): Promise<ReadResourceResult> => {
+      logger.debug('[ObservabilityResources] Reading telemetry status');
+
+      const status = telemetryRuntime.getStatus();
+      const uptimeMs = status.startedAt !== undefined ? Date.now() - status.startedAt : undefined;
+
+      return {
+        contents: [
+          {
+            uri: RESOURCE_URI_PATTERNS.TELEMETRY_STATUS,
+            mimeType: 'application/json',
+            text: JSON.stringify(
+              {
+                enabled: status.enabled,
+                mode: status.mode,
+                exporterEndpoint: status.exporterEndpoint,
+                samplingRate: status.samplingRate,
+                uptimeMs,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  logger.info('[TelemetryResources] Registered telemetry status resource');
 }

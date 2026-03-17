@@ -33,7 +33,7 @@ flowchart LR
         B[STDIO/SSE]
     end
 
-    subgraph Pipeline["PromptExecutionPipeline (22 stages)"]
+    subgraph Pipeline["PromptExecutionPipeline (23 stages)"]
         direction TB
         C1[Parse & Validate]
         C2[Plan & Enhance]
@@ -416,7 +416,7 @@ In addition to tools, the server exposes **MCP Resources** for token-efficient r
 | Category | Resources | Purpose |
 |----------|-----------|---------|
 | Content | `prompt/`, `gate/`, `methodology/` | Discover and inspect templates/configs |
-| Observability | `session/`, `metrics/pipeline` | Monitor active chains and system health |
+| Observability | `session/`, `metrics/pipeline`, `telemetry/status` | Monitor active chains, system health, and telemetry runtime |
 
 **Token Efficiency**: Resources are 4-30x more efficient than tool-based operations. Metrics reduced from ~15KB (raw samples) to ~500 bytes (lean aggregates).
 
@@ -754,6 +754,20 @@ Transport auto-detects at startup. All modes share the same message handling.
 - **Manager**: Orchestrates gate lifecycle and validation
 - **Registry**: Hot-reloaded gate definitions from `server/gates/`
 - **Services**: Gate resolution, guidance rendering, compositional gates
+
+### Telemetry (`src/infra/observability/telemetry/`)
+
+OpenTelemetry-based tracing with data safety enforcement:
+
+- **Runtime**: NodeSDK lifecycle (start/shutdown/graceful degradation)
+- **Attribute Policy**: 7-rule evaluator blocks raw payloads, allows safe business context
+- **Metric View Policy**: Low-cardinality metric label enforcement
+- **Hook Observer**: Converts HookRegistry events to OTel trace events
+- **Pipeline Instrumentation**: Root span (`prompt_engine.request`) + per-stage child spans
+
+The hook system is the single fan-out point for pipeline/gate/chain events. The telemetry hook observer registers as a consumer — no parallel event paths.
+
+See [Telemetry & Observability Guide](../guides/telemetry-observability.md) for configuration, attribute reference, and troubleshooting.
 
 ### Styles (`src/styles/`)
 

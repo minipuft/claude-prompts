@@ -1,0 +1,119 @@
+# OpenTelemetry Collector Tail Sampling Policy
+#
+# Reference configuration for OTel Collector's tail_sampling processor.
+# Applies to traces exported by the Claude Prompts MCP server.
+#
+# See: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/tailsamplingprocessor
+#
+# Policy priorities (higher = more likely to keep):
+# 1. Error traces (100%)
+# 2. Gate-blocked/retry-exhausted traces (100%)
+# 3. Shell verification failures (100%)
+# 4. Slow traces (100%)
+# 5. Successful chain executions (25%)
+# 6. Successful single executions (5%)
+
+processors:
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
+    expected_new_traces_per_sec: 100
+
+    policies:
+      # P1: Keep all error traces
+      - name: error-traces
+        type: status_code
+        status_code:
+          status_codes:
+            - ERROR
+
+      # P2: Keep all gate-blocked traces (response blocked by gate failure)
+      - name: gate-blocked-traces
+        type: string_attribute
+        string_attribute:
+          key: cpm.gate.blocks_response
+          values:
+            - "true"
+
+      # P3: Keep all slow traces (root span > 5s)
+      - name: slow-root-traces
+        type: latency
+        latency:
+          threshold_ms: 5000
+
+      # P4: Keep all traces with slow stages (any stage > 1.5s)
+      # Note: requires span-level latency check via composite policy
+      - name: slow-stage-traces
+        type: and
+        and:
+          and_sub_policy:
+            - name: is-stage-span
+              type: string_attribute
+              string_attribute:
+                key: cpm.stage.name
+                values: ["*"]  # Any stage
+            - name: stage-latency
+              type: latency
+              latency:
+                threshold_ms: 1500
+
+      # P5: Sample 25% of successful chain executions
+      - name: successful-chains
+        type: and
+        and:
+          and_sub_policy:
+            - name: is-chain
+              type: string_attribute
+              string_attribute:
+                key: cpm.execution.mode
+                values:
+                  - chain
+            - name: is-success
+              type: status_code
+              status_code:
+                status_codes:
+                  - OK
+            - name: sample-25pct
+              type: probabilistic
+              probabilistic:
+                sampling_percentage: 25
+
+      # P6: Sample 5% of successful single executions
+      - name: successful-singles
+        type: and
+        and:
+          and_sub_policy:
+            - name: is-single
+              type: string_attribute
+              string_attribute:
+                key: cpm.execution.mode
+                values:
+                  - single
+            - name: is-success
+              type: status_code
+              status_code:
+                status_codes:
+                  - OK
+            - name: sample-5pct
+              type: probabilistic
+              probabilistic:
+                sampling_percentage: 5
+
+# Example collector pipeline config:
+#
+# service:
+#   pipelines:
+#     traces:
+#       receivers: [otlp]
+#       processors: [tail_sampling, batch]
+#       exporters: [otlp/backend]
+#
+# receivers:
+#   otlp:
+#     protocols:
+#       http:
+#         endpoint: "0.0.0.0:4318"
+#
+# exporters:
+#   otlp/backend:
+#     endpoint: "your-backend:4317"

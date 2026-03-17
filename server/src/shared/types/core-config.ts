@@ -308,6 +308,64 @@ export const DEFAULT_VERSIONING_CONFIG: VersioningConfig = {
   auto_version: true,
 };
 
+// ===== Telemetry Configuration Types =====
+
+/**
+ * Telemetry export mode.
+ * - 'off': Telemetry disabled (no SDK initialized)
+ * - 'traces': Span/event emission only
+ * - 'full': Spans + OTel metrics export
+ */
+export type TelemetryMode = 'off' | 'traces' | 'full';
+
+/**
+ * Attribute policy for telemetry data safety.
+ * Controls which attributes are included in trace spans and events.
+ * Enforces acceptance criteria: no raw payload data in default telemetry.
+ */
+export interface TelemetryAttributePolicy {
+  /** Include safe business-context attributes in traces (default: true) */
+  businessContext?: boolean;
+  /** Include raw command text in traces (default: false — redacted for safety) */
+  rawCommands?: boolean;
+  /** Include raw user responses in traces (default: false — redacted for safety) */
+  rawResponses?: boolean;
+  /** Custom attribute allowlist — trace attribute names to explicitly include */
+  allowlist?: string[];
+}
+
+/**
+ * Configuration for OpenTelemetry-based observability.
+ * Separate from resources.observability (MCP resource toggles).
+ */
+export interface TelemetryConfig {
+  /** Master switch for telemetry subsystem (default: false) */
+  enabled: boolean;
+  /** Export mode: 'off', 'traces', or 'full' (default: 'off') */
+  mode: TelemetryMode;
+  /** OTLP HTTP exporter endpoint (default: 'http://localhost:4318') */
+  exporterEndpoint: string;
+  /** Head sampling rate for traces, 0.0–1.0 (default: 1.0 = sample everything) */
+  samplingRate: number;
+  /** Attribute policy for data safety enforcement */
+  attributePolicy: TelemetryAttributePolicy;
+}
+
+/**
+ * Default telemetry configuration — disabled, safe defaults.
+ */
+export const DEFAULT_TELEMETRY_CONFIG: TelemetryConfig = {
+  enabled: false,
+  mode: 'off',
+  exporterEndpoint: 'http://localhost:4318',
+  samplingRate: 1.0,
+  attributePolicy: {
+    businessContext: true,
+    rawCommands: false,
+    rawResponses: false,
+  },
+};
+
 // ===== Identity & Scope Types =====
 
 /**
@@ -386,6 +444,9 @@ export interface Config {
   advanced?: AdvancedConfig;
   /** MCP Resources configuration */
   resources?: ResourcesConfig;
+
+  /** OpenTelemetry observability configuration (tracing, metrics, attribute policy) */
+  telemetry?: TelemetryConfig;
 
   /** Identity and workspace scoping configuration */
   identity?: {

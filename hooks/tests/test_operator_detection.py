@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from operators import OPERATORS, detect_all_operators, detect_operator, get_delimiter_symbols
 
-
 # ── SSOT Registry Tests ──
 
 

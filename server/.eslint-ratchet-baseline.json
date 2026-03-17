@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-03-09T15:08:48.140Z",
+  "generatedAt": "2026-03-17T10:07:50.897Z",
   "eslintTarget": "src",
   "totals": {
-    "errors": 3664,
-    "warnings": 1536
+    "errors": 3623,
+    "warnings": 1504
   },
   "byRule": {
     "@typescript-eslint/no-explicit-any": {
-      "errors": 368,
+      "errors": 365,
       "warnings": 0
     },
     "complexity": {
       "errors": 0,
-      "warnings": 272
+      "warnings": 268
     },
     "sonarjs/cognitive-complexity": {
       "errors": 0,
-      "warnings": 106
+      "warnings": 103
     },
     "@typescript-eslint/strict-boolean-expressions": {
-      "errors": 2337,
+      "errors": 2319,
       "warnings": 0
     },
     "@typescript-eslint/no-non-null-assertion": {
@@ -29,10 +29,10 @@
     },
     "max-params": {
       "errors": 0,
-      "warnings": 52
+      "warnings": 53
     },
     "@typescript-eslint/prefer-nullish-coalescing": {
-      "errors": 285,
+      "errors": 279,
       "warnings": 0
     },
     "@typescript-eslint/explicit-module-boundary-types": {
@@ -41,18 +41,18 @@
     },
     "@typescript-eslint/no-unsafe-assignment": {
       "errors": 0,
-      "warnings": 280
+      "warnings": 275
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "errors": 0,
-      "warnings": 511
+      "warnings": 505
     },
     "@typescript-eslint/no-unused-vars": {
-      "errors": 68,
+      "errors": 63,
       "warnings": 0
     },
     "@typescript-eslint/no-unnecessary-condition": {
-      "errors": 460,
+      "errors": 462,
       "warnings": 0
     },
     "@typescript-eslint/no-unsafe-call": {
@@ -60,12 +60,12 @@
       "warnings": 55
     },
     "@typescript-eslint/explicit-function-return-type": {
-      "errors": 32,
+      "errors": 31,
       "warnings": 0
     },
     "max-depth": {
       "errors": 0,
-      "warnings": 45
+      "warnings": 31
     },
     "@typescript-eslint/prefer-optional-chain": {
       "errors": 1,
@@ -85,18 +85,18 @@
     },
     "no-console": {
       "errors": 0,
-      "warnings": 80
+      "warnings": 79
     },
     "import/order": {
-      "errors": 8,
-      "warnings": 0
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "errors": 14,
+      "errors": 7,
       "warnings": 0
     },
     "@typescript-eslint/await-thenable": {
       "errors": 2,
+      "warnings": 0
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "errors": 5,
       "warnings": 0
     },
     "max-lines": {
