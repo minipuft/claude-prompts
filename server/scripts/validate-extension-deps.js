@@ -23,7 +23,13 @@ const SERVER_DIR = join(__dirname, '..');
 // These are packages that don't bundle cleanly due to CJS/ESM interop issues
 const MCPB_REQUIRED_DEPS = [
   '@modelcontextprotocol/sdk',
-  'cors',
+  '@opentelemetry/api',
+  '@opentelemetry/exporter-trace-otlp-http',
+  '@opentelemetry/resources',
+  '@opentelemetry/sdk-node',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/semantic-conventions',
+  'ajv',
   'diff',
   'express',
   'js-yaml',
