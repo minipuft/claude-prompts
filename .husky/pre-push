@@ -22,7 +22,8 @@ npm --prefix "$SERVER_DIR" run lint:ratchet || { echo "❌ Lint ratchet failed (
 
 echo ""
 echo "3/6 Format checking..."
-ROOT_FORMATTABLE=$(printf '%s\n' "$PUSHED_FILES" | grep -v '^server/' | grep -E '\.(json|md|ya?ml)$' || true)
+# Filter to existing files only (deleted files still appear in git diff --name-only)
+ROOT_FORMATTABLE=$(printf '%s\n' "$PUSHED_FILES" | grep -v '^server/' | grep -E '\.(json|md|ya?ml)$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
 if [ -n "$ROOT_FORMATTABLE" ]; then
   printf '%s\n' "$ROOT_FORMATTABLE" | xargs npx --prefix "$SERVER_DIR" prettier --check
 else
