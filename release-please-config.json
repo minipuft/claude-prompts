@@ -3,7 +3,6 @@
   "release-type": "node",
   "packages": {
     ".": {
-      "release-as": "2.1.0",
       "component": "claude-prompts",
       "package-name": "claude-prompts",
       "changelog-path": "CHANGELOG.md",
