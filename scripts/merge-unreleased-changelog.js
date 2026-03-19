@@ -115,17 +115,32 @@ function main() {
 
   const unreleasedStart = unreleasedMatch.index + unreleasedMatch[0].length;
 
-  // Find the next versioned section (## [X.Y.Z])
-  const versionedPattern = /^## \[\d+\.\d+\.\d+\]/m;
-  const afterUnreleased = content.slice(unreleasedStart);
-  const versionedMatch = afterUnreleased.match(versionedPattern);
+  // Find the nearest versioned section — could be ABOVE [Unreleased] (Release Please)
+  // or BELOW it (standard Keep a Changelog). Search both directions.
+  const versionedPattern = /^## \[(\d+\.\d+\.\d+)\]/gm;
+  let bestMatch = null;
+  let match;
 
-  if (!versionedMatch) {
-    console.log('No versioned section found after [Unreleased]. Nothing to merge into.');
+  while ((match = versionedPattern.exec(content)) !== null) {
+    // Take the first versioned section found (highest in file = newest version)
+    if (!bestMatch) {
+      bestMatch = match;
+      break;
+    }
+  }
+
+  if (!bestMatch) {
+    console.log('No versioned section found. Nothing to merge into.');
     process.exit(0);
   }
 
-  const unreleasedText = afterUnreleased.slice(0, versionedMatch.index).trim();
+  // Extract [Unreleased] content (between [Unreleased] heading and the next ## heading after it)
+  const afterUnreleased = content.slice(unreleasedStart);
+  const nextHeadingAfterUnreleased = afterUnreleased.match(/^## \[/m);
+  const unreleasedText = nextHeadingAfterUnreleased
+    ? afterUnreleased.slice(0, nextHeadingAfterUnreleased.index).trim()
+    : afterUnreleased.trim();
+
   if (!unreleasedText) {
     console.log('[Unreleased] is empty. Nothing to merge.');
     process.exit(0);
@@ -138,8 +153,8 @@ function main() {
     process.exit(0);
   }
 
-  // Find the versioned section's content (between its heading and the next ## heading)
-  const versionedAbsoluteStart = unreleasedStart + versionedMatch.index;
+  // Find the versioned section's content boundaries
+  const versionedAbsoluteStart = bestMatch.index;
   const versionedHeadingEnd = content.indexOf('\n', versionedAbsoluteStart) + 1;
   const versionedHeading = content.slice(versionedAbsoluteStart, versionedHeadingEnd);
 
@@ -156,21 +171,25 @@ function main() {
   const merged = mergeSections(manualSections, versionedSections);
   const mergedText = renderSections(merged);
 
-  // Reconstruct changelog
-  const before = content.slice(0, unreleasedMatch.index);
-  const after = content.slice(versionedEnd);
+  // Reconstruct: replace versioned section with merged content
+  const beforeVersioned = content.slice(0, versionedAbsoluteStart);
+  const afterVersioned = content.slice(versionedEnd);
 
-  const newContent = [
-    before.trimEnd(),
-    '',
-    '## [Unreleased]',
+  let newContent = [
+    beforeVersioned.trimEnd(),
     '',
     versionedHeading.trimEnd(),
     '',
     mergedText.trimEnd(),
     '',
-    after.trimStart(),
+    afterVersioned.trimStart(),
   ].join('\n');
+
+  // Clear [Unreleased] entries (keep heading, remove content until next ## heading)
+  newContent = newContent.replace(
+    /(## \[Unreleased\]\s*\n)[\s\S]*?(?=\n## \[)/m,
+    '$1\n'
+  );
 
   fs.writeFileSync(CHANGELOG_PATH, newContent, 'utf-8');
 
