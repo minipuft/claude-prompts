@@ -1,0 +1,197 @@
+{
+  "$ref": "#/definitions/PhasesDefinition",
+  "definitions": {
+    "PhasesDefinition": {
+      "type": "object",
+      "properties": {
+        "processingSteps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "methodologyBasis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "order": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "section_header": {
+                "type": "string"
+              },
+              "guards": {
+                "type": "object",
+                "properties": {
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "min_length": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "max_length": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "contains_any": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "contains_all": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "matches_pattern": {
+                    "type": "string"
+                  },
+                  "forbidden_terms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "description",
+              "methodologyBasis",
+              "order",
+              "required"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "executionSteps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "action": {
+                "type": "string",
+                "minLength": 1
+              },
+              "methodologyPhase": {
+                "type": "string",
+                "minLength": 1
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "expected_output": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "action",
+              "methodologyPhase",
+              "expected_output"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "templateEnhancements": {
+          "type": "object",
+          "properties": {
+            "systemPromptAdditions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "userPromptModifications": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "contextualHints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "executionFlow": {
+          "type": "object",
+          "properties": {
+            "preProcessingSteps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "postProcessingSteps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "validationSteps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "qualityIndicators": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "executionTypeEnhancements": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Phases Definition",
+  "description": "Schema for phases.yaml — defines processing steps, execution steps, phase guards, and quality indicators for a methodology."
+}
