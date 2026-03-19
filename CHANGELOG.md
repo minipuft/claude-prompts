@@ -7,59 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.1.0](https://github.com/minipuft/claude-prompts/compare/v2.0.0...v2.1.0) (2026-03-19)
 
-
-### ⚠ BREAKING CHANGES
-
-* **runtime:** Individual per-resource env vars and CLI flags removed. Use MCP_WORKSPACE with resources/ subdirectory structure instead.
-
-### Added
-
-* **ci:** auto-merge manual changelog entries into Release Please releases ([d2f2f52](https://github.com/minipuft/claude-prompts/commit/d2f2f52f330f3063f394a80988c011de692f7717))
-* **runtime:** multi-source resource overlay and path consolidation ([2f5d751](https://github.com/minipuft/claude-prompts/commit/2f5d75106605d254679a54871deb5d0e7ee46649))
-* **server:** add OpenTelemetry instrumentation and observability infrastructure ([48e720f](https://github.com/minipuft/claude-prompts/commit/48e720f684f8fc5822c66c7242aa414bc2e4740f))
-
-
-### Fixed
-
-* **ci:** add checkout step before changelog merge in Release Please workflow ([d68d0f1](https://github.com/minipuft/claude-prompts/commit/d68d0f19781079c114c46d29543d1f780a1edda9))
-* **ci:** centralize downstream version sync in extension-publish ([e8c25e0](https://github.com/minipuft/claude-prompts/commit/e8c25e0d7bb925ce517c2aa72e226d4c4ebf0be0))
-* **ci:** fix changelog merge target and set release-as 2.1.0 ([cc2ed76](https://github.com/minipuft/claude-prompts/commit/cc2ed76cb5bf9e760743aad6201049e983227396))
-* **deps:** update dependency chokidar to v5 ([b10476f](https://github.com/minipuft/claude-prompts/commit/b10476f3547051ea5c7296e275c69f2d0561eb5b))
-* **hooks:** register delegation-enforce.py in PreToolUse hooks ([0c7c3a4](https://github.com/minipuft/claude-prompts/commit/0c7c3a4f3ebd78527bacbe821991c248214ad8c5))
-* **hooks:** resolve generated operators Ruff typing issue ([a956fb2](https://github.com/minipuft/claude-prompts/commit/a956fb2a7df0f0439d5bd39f7343c3dfb071a452))
-* **hooks:** use SSOT registry for operator detection in prompt-suggest hook ([2fe7a4f](https://github.com/minipuft/claude-prompts/commit/2fe7a4f58ef93632e70cd2087af9746e00be9108))
-* **hot-reload:** support chokidar 5 upgrade ([1db39c8](https://github.com/minipuft/claude-prompts/commit/1db39c8982706e36d70b2eec1580631594d99fa3))
-* **mcp-tools:** fix prompt update field clearing and simplify update workflow ([5a2800e](https://github.com/minipuft/claude-prompts/commit/5a2800e6f925796c6d8c679d6aeaff3672f8aa33))
-* **mcp-tools:** remove section/section_content from router pass-through ([61072df](https://github.com/minipuft/claude-prompts/commit/61072df2c71ae61ed7002dd21802b8f06c9dd8c2))
-* **parsers:** strip leading delegation operators before argument extraction ([07ed2ee](https://github.com/minipuft/claude-prompts/commit/07ed2ee7498956b5690fa555c94bf63db95acbe0))
-* **scripts:** check dependency range instead of package version for opencode ([3f3fa9e](https://github.com/minipuft/claude-prompts/commit/3f3fa9e6fd4089c0202e3bee74ce4f8cd379790c))
-* **scripts:** generate Ruff-compatible Python operator types ([aa201d7](https://github.com/minipuft/claude-prompts/commit/aa201d7166d35dd7b91cc6fa0eded6ea848e10c9))
-* **scripts:** update extension deps list and lint ratchet baseline ([bffac0d](https://github.com/minipuft/claude-prompts/commit/bffac0d0ca73ecca35eb8373ae349182ebba5d6f))
-
-
-### Changed
-
-* **hooks:** improve Python hook type safety and reduce pyrefly baseline ([69cc281](https://github.com/minipuft/claude-prompts/commit/69cc281d4b6ab3d137b0713b4730be55ffac4288))
-* **runtime:** replace ServerRootDetector with resolvePackageRoot() ([3c2bd7f](https://github.com/minipuft/claude-prompts/commit/3c2bd7ffb1c04c4949397119cb1680126481f3e2))
-* **server:** decompose Tier 5 oversized files to meet size advisories ([adbc670](https://github.com/minipuft/claude-prompts/commit/adbc6706e94b5047f494aaa2f00ee8f9d364e2f7))
-* **server:** enforce architecture boundaries via DatabasePort injection ([5b39be0](https://github.com/minipuft/claude-prompts/commit/5b39be009cad1221ad3d2471c243282897d11723))
-* **server:** replace codegen with hand-written schemas and resource-driven overlays ([84b74cf](https://github.com/minipuft/claude-prompts/commit/84b74cfa8863497028d4fa9b2b0cb67fcc92619b))
-
-
-### Documentation
-
-* **cleanup:** record chokidar post-upgrade rationale ([b6740e2](https://github.com/minipuft/claude-prompts/commit/b6740e21d11bf20a324c3e511a97ad67c28924c9))
-* modernize CONTRIBUTING.md, add GitHub templates, align project config ([3afbe39](https://github.com/minipuft/claude-prompts/commit/3afbe39c475ddc5dc4054b5ffd30f5bc90a29cd6))
-* record open PR validation wave ([81d383a](https://github.com/minipuft/claude-prompts/commit/81d383a51191570cf4314caeec29e7d9dcbb540c))
-* record package wave results ([0e7de90](https://github.com/minipuft/claude-prompts/commit/0e7de90a611b5151f6e4a095ed4e49bfa49ba9ff))
-* record remaining package wave ([d398fe5](https://github.com/minipuft/claude-prompts/commit/d398fe54b37d279dc23616453033350a5d1784d8))
-* remove orphaned [Unreleased] section from pre-v2.0.0 changelog ([73ad697](https://github.com/minipuft/claude-prompts/commit/73ad69785c60ddccdd6decf52b6f86f57701ac74))
-* standardize inline doc links with TIP callouts across README ([ebd6241](https://github.com/minipuft/claude-prompts/commit/ebd62412b08b03a0f335b12850750f8d0546144e))
-* update changelog for unreleased changes ([25c659e](https://github.com/minipuft/claude-prompts/commit/25c659e21230b1adca71789541dadd1ac1416996))
-* update demo video plan to WebP format and re-recording schedule ([b87aef7](https://github.com/minipuft/claude-prompts/commit/b87aef7f106f7502ee1e2e253deb05606b4b5d4c))
-
-## [Unreleased]
-
 ### Added
 
 - **Multi-source resource overlay**: Custom workspace resources now load alongside bundled ones for all resource types (prompts, gates, methodologies, styles). Set `MCP_WORKSPACE` to a directory with `resources/` subdirs — custom resources with the same ID as bundled ones take priority
@@ -77,15 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Response Format Overlays**: Methodologies and styles can define `responseFormat` in YAML to guide LLM response structure at the tool description level
   - Methodology `responseFormat` woven into tool descriptions at synchronization time (global)
   - Style `responseFormat` available for per-execution system prompt injection
-
-### Fixed
-
-- **Prompt update field clearing**: Sending empty strings (e.g., `system_message:""`) now correctly clears the field instead of silently preserving the old value. Update handler migrated from `||` fallback to `!== undefined` pattern matching the methodology handler
-
-### Improved
-
-- **Prompt update workflow for LLMs**: Update fields directly — `update(id, description:"new")` — only provided fields change, omitted fields are preserved. Tool description now includes a compact UPDATE hint for discoverability
-- **Update handler maintainability**: Replaced 8 individual if-checks with `UPDATE_FIELDS` map loop for field-level overrides. Adding new updatable fields is now a single map entry
+* **ci:** auto-merge manual changelog entries into Release Please releases ([d2f2f52](https://github.com/minipuft/claude-prompts/commit/d2f2f52f330f3063f394a80988c011de692f7717))
+* **runtime:** multi-source resource overlay and path consolidation ([2f5d751](https://github.com/minipuft/claude-prompts/commit/2f5d75106605d254679a54871deb5d0e7ee46649))
+* **server:** add OpenTelemetry instrumentation and observability infrastructure ([48e720f](https://github.com/minipuft/claude-prompts/commit/48e720f684f8fc5822c66c7242aa414bc2e4740f))
 
 ### Changed
 
@@ -107,10 +48,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MCP Tool Schemas**: Hand-written Zod schema factories replace codegen `mcp-schemas.ts`, enabling methodology-aware description overlays without generated code
 - **Operator Patterns**: Loaded from JSON registry at import time via esbuild inlining, eliminating the `generate-operators` codegen step and Python hook codegen
 - **Style Guidance**: Served exclusively from YAML definitions via StyleManager, removing hardcoded legacy fallback
+* **hooks:** improve Python hook type safety and reduce pyrefly baseline ([69cc281](https://github.com/minipuft/claude-prompts/commit/69cc281d4b6ab3d137b0713b4730be55ffac4288))
+* **runtime:** replace ServerRootDetector with resolvePackageRoot() ([3c2bd7f](https://github.com/minipuft/claude-prompts/commit/3c2bd7ffb1c04c4949397119cb1680126481f3e2))
+* **server:** decompose Tier 5 oversized files to meet size advisories ([adbc670](https://github.com/minipuft/claude-prompts/commit/adbc6706e94b5047f494aaa2f00ee8f9d364e2f7))
+* **server:** enforce architecture boundaries via DatabasePort injection ([5b39be0](https://github.com/minipuft/claude-prompts/commit/5b39be009cad1221ad3d2471c243282897d11723))
+* **server:** replace codegen with hand-written schemas and resource-driven overlays ([84b74cf](https://github.com/minipuft/claude-prompts/commit/84b74cfa8863497028d4fa9b2b0cb67fcc92619b))
 
 ### Removed
 
 - **Legacy `prompt_manager` MCP tool**: Prompt lifecycle now exclusively via `resource_manager`. The standalone `prompt_manager` tool registration has been removed.
+
+### Fixed
+
+- **Prompt update field clearing**: Sending empty strings (e.g., `system_message:""`) now correctly clears the field instead of silently preserving the old value. Update handler migrated from `||` fallback to `!== undefined` pattern matching the methodology handler
+* **ci:** add checkout step before changelog merge in Release Please workflow ([d68d0f1](https://github.com/minipuft/claude-prompts/commit/d68d0f19781079c114c46d29543d1f780a1edda9))
+* **ci:** centralize downstream version sync in extension-publish ([e8c25e0](https://github.com/minipuft/claude-prompts/commit/e8c25e0d7bb925ce517c2aa72e226d4c4ebf0be0))
+* **ci:** fix changelog merge target and set release-as 2.1.0 ([cc2ed76](https://github.com/minipuft/claude-prompts/commit/cc2ed76cb5bf9e760743aad6201049e983227396))
+* **deps:** update dependency chokidar to v5 ([b10476f](https://github.com/minipuft/claude-prompts/commit/b10476f3547051ea5c7296e275c69f2d0561eb5b))
+* **hooks:** register delegation-enforce.py in PreToolUse hooks ([0c7c3a4](https://github.com/minipuft/claude-prompts/commit/0c7c3a4f3ebd78527bacbe821991c248214ad8c5))
+* **hooks:** resolve generated operators Ruff typing issue ([a956fb2](https://github.com/minipuft/claude-prompts/commit/a956fb2a7df0f0439d5bd39f7343c3dfb071a452))
+* **hooks:** use SSOT registry for operator detection in prompt-suggest hook ([2fe7a4f](https://github.com/minipuft/claude-prompts/commit/2fe7a4f58ef93632e70cd2087af9746e00be9108))
+* **hot-reload:** support chokidar 5 upgrade ([1db39c8](https://github.com/minipuft/claude-prompts/commit/1db39c8982706e36d70b2eec1580631594d99fa3))
+* **mcp-tools:** fix prompt update field clearing and simplify update workflow ([5a2800e](https://github.com/minipuft/claude-prompts/commit/5a2800e6f925796c6d8c679d6aeaff3672f8aa33))
+* **mcp-tools:** remove section/section_content from router pass-through ([61072df](https://github.com/minipuft/claude-prompts/commit/61072df2c71ae61ed7002dd21802b8f06c9dd8c2))
+* **parsers:** strip leading delegation operators before argument extraction ([07ed2ee](https://github.com/minipuft/claude-prompts/commit/07ed2ee7498956b5690fa555c94bf63db95acbe0))
+* **scripts:** check dependency range instead of package version for opencode ([3f3fa9e](https://github.com/minipuft/claude-prompts/commit/3f3fa9e6fd4089c0202e3bee74ce4f8cd379790c))
+* **scripts:** generate Ruff-compatible Python operator types ([aa201d7](https://github.com/minipuft/claude-prompts/commit/aa201d7166d35dd7b91cc6fa0eded6ea848e10c9))
+* **scripts:** update extension deps list and lint ratchet baseline ([bffac0d](https://github.com/minipuft/claude-prompts/commit/bffac0d0ca73ecca35eb8373ae349182ebba5d6f))
+
+### Improved
+
+- **Prompt update workflow for LLMs**: Update fields directly — `update(id, description:"new")` — only provided fields change, omitted fields are preserved. Tool description now includes a compact UPDATE hint for discoverability
+- **Update handler maintainability**: Replaced 8 individual if-checks with `UPDATE_FIELDS` map loop for field-level overrides. Adding new updatable fields is now a single map entry
 
 ### Documentation
 
@@ -119,6 +88,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Telemetry observability guide**: Restructured attribute reference into Initial/Wide-Event/Other sections with incident query examples per attribute. Fixed chain events incorrectly documented as active (now marked Planned). Updated architecture diagram to show wide-event enrichment flow.
 - **CONTRIBUTING.md modernization**: Restructured contributor guide with quick-start path, contribution type routing (code/prompts/gates/methodologies/docs), commit scope reference, testing decision matrix, and progressive disclosure via collapsible sections
 - **GitHub issue and PR templates**: Added YAML-based issue forms (bug report, feature request) with project-specific dropdowns (transport, MCP tool, area), preflight checkboxes, and structured fields following Next.js/Vite/Claude Code conventions. Minimal PR template complements existing CI `pr-summary` bot
+* **cleanup:** record chokidar post-upgrade rationale ([b6740e2](https://github.com/minipuft/claude-prompts/commit/b6740e21d11bf20a324c3e511a97ad67c28924c9))
+* modernize CONTRIBUTING.md, add GitHub templates, align project config ([3afbe39](https://github.com/minipuft/claude-prompts/commit/3afbe39c475ddc5dc4054b5ffd30f5bc90a29cd6))
+* record open PR validation wave ([81d383a](https://github.com/minipuft/claude-prompts/commit/81d383a51191570cf4314caeec29e7d9dcbb540c))
+* record package wave results ([0e7de90](https://github.com/minipuft/claude-prompts/commit/0e7de90a611b5151f6e4a095ed4e49bfa49ba9ff))
+* record remaining package wave ([d398fe5](https://github.com/minipuft/claude-prompts/commit/d398fe54b37d279dc23616453033350a5d1784d8))
+* remove orphaned [Unreleased] section from pre-v2.0.0 changelog ([73ad697](https://github.com/minipuft/claude-prompts/commit/73ad69785c60ddccdd6decf52b6f86f57701ac74))
+* standardize inline doc links with TIP callouts across README ([ebd6241](https://github.com/minipuft/claude-prompts/commit/ebd62412b08b03a0f335b12850750f8d0546144e))
+* update changelog for unreleased changes ([25c659e](https://github.com/minipuft/claude-prompts/commit/25c659e21230b1adca71789541dadd1ac1416996))
+* update demo video plan to WebP format and re-recording schedule ([b87aef7](https://github.com/minipuft/claude-prompts/commit/b87aef7f106f7502ee1e2e253deb05606b4b5d4c))
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** Individual per-resource env vars and CLI flags removed. Use MCP_WORKSPACE with resources/ subdirectory structure instead.
+
+## [Unreleased]
+
+
 
 ## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
 
