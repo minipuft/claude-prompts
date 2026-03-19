@@ -161,8 +161,6 @@ export class ResourceManagerRouter {
       tools: args.tools,
       gate_configuration: args.gate_configuration,
       execution_hint: args.execution_hint,
-      section: args.section,
-      section_content: args.section_content,
       filter: args.filter,
       format: args.format,
       detail: args.detail,
