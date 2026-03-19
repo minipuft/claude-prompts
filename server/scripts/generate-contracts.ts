@@ -3,7 +3,7 @@
  * Contract Generator (TypeScript)
  *
  * - Validates tool contract manifests under tooling/contracts
- * - Emits Markdown snippets for docs
+ * - Generates TypeScript constants and tool description JSON
  * - Supports --check mode to fail when generated output is stale
  *
  * Imports schemas from src/mcp/contracts/schemas/types.ts (SSOT) to eliminate duplication.
@@ -20,8 +20,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const CONTRACTS_DIR = path.join(ROOT, 'tooling', 'contracts');
 const GENERATED_META_DIR = path.join(ROOT, 'src', 'mcp', 'contracts', 'schemas', '_generated');
-const DOCS_DIR = path.join(ROOT, '..', 'docs');
-const GENERATED_DIR = path.join(DOCS_DIR, '_generated');
 
 interface ToolDescriptionsConfig {
   version: string;
@@ -66,33 +64,6 @@ async function readJsonIfExists(filePath: string): Promise<ToolDescriptionsConfi
   }
 }
 
-function renderParamTable(contract: ToolContract): string {
-  const rows = contract.parameters
-    .filter((p) => p.status !== 'hidden')
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((p) => {
-      const status = p.status === 'working' ? 'working' : `**${p.status}**`;
-      const required = p.required ? 'yes' : 'no';
-      const descParts = [escapePipes(p.description)];
-      if (p.compatibility && p.compatibility !== 'canonical') {
-        descParts.push(`(${p.compatibility})`);
-      }
-      if (p.notes?.length) {
-        descParts.push(p.notes.map(escapePipes).join(' '));
-      }
-      return `| \`${p.name}\` | ${escapePipes(p.type)} | ${status} | ${required} | ${descParts.join(' ')} |`;
-    });
-
-  const header = [
-    '| Name | Type | Status | Required | Description |',
-    '| --- | --- | --- | --- | --- |',
-  ];
-  return header.concat(rows).join('\n');
-}
-
-function escapePipes(text: string): string {
-  return text.replace(/\|/g, '\\|');
-}
 
 async function writeFileIfChanged(
   filePath: string,
@@ -193,12 +164,6 @@ async function main(): Promise<void> {
   let changed = false;
 
   for (const contract of contracts) {
-    // Generate docs markdown
-    const snippet = renderParamTable(contract);
-    const snippetPath = path.join(GENERATED_DIR, `${contract.tool}-params.md`);
-    const wrote = await writeFileIfChanged(snippetPath, `${snippet}\n`, checkMode);
-    changed = changed || wrote;
-
     // Skip .generated.ts for contracts without toolDescription (deprecated tools)
     if (!contract.toolDescription) {
       console.log(
