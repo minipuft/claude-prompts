@@ -9,6 +9,7 @@ import { PromptAnalyzer } from '../analysis/prompt-analyzer.js';
 import { PromptResourceContext } from '../core/context.js';
 import { FileOperations } from '../operations/file-operations.js';
 import {
+  UPDATE_FIELDS,
   normalizePromptId,
   validatePromptId,
   validateRequiredFields,
@@ -206,38 +207,39 @@ export class PromptLifecycleProcessor {
       }
     }
 
+    // Build base from existing prompt, then override only explicitly provided fields
     const promptData: any = {
       id: args.id,
-      name: args.name || currentPrompt?.name || args.id,
-      category: args.category || currentPrompt?.category || 'general',
-      description: args.description || currentPrompt?.description || '',
-      systemMessage: args.system_message || currentPrompt?.systemMessage,
-      userMessageTemplate: args.user_message_template || currentPrompt?.userMessageTemplate || '',
-      arguments: args.arguments || currentPrompt?.arguments || [],
-      chainSteps: args.chain_steps || currentPrompt?.chainSteps || [],
+      name: currentPrompt?.name ?? args.id,
+      category: currentPrompt?.category ?? 'general',
+      description: currentPrompt?.description ?? '',
+      systemMessage: currentPrompt?.systemMessage,
+      userMessageTemplate: currentPrompt?.userMessageTemplate ?? '',
+      arguments: currentPrompt?.arguments ?? [],
+      chainSteps: currentPrompt?.chainSteps ?? [],
       tools: args.tools,
-      gateConfiguration:
-        args['gate_configuration'] || args.gates || currentPrompt?.gateConfiguration,
+      gateConfiguration: currentPrompt?.gateConfiguration,
     };
 
-    const typedArgsForRef = args as {
-      id: string;
-      user_message_template?: string;
-      system_message?: string;
-    };
+    for (const [argKey, dataKey] of Object.entries(UPDATE_FIELDS)) {
+      if (args[argKey] !== undefined) {
+        promptData[dataKey] = args[argKey];
+      }
+    }
+    // gate_configuration has alias handling (special case)
+    if (args.gate_configuration !== undefined || args.gates !== undefined) {
+      promptData.gateConfiguration = args.gate_configuration ?? args.gates;
+    }
+
+    // Reference validation for template changes
     const hasTemplateChange =
-      typeof typedArgsForRef.user_message_template === 'string' ||
-      typeof typedArgsForRef.system_message === 'string';
+      typeof args.user_message_template === 'string' || typeof args.system_message === 'string';
     if (hasTemplateChange) {
-      const typedPromptData = promptData as {
-        userMessageTemplate: string;
-        systemMessage?: string;
-      };
       const refValidator = new PromptReferenceValidator(this.getConvertedPrompts());
       const refValidation = refValidator.validate(
-        typedArgsForRef.id,
-        typedPromptData.userMessageTemplate,
-        typedPromptData.systemMessage
+        args.id,
+        promptData.userMessageTemplate as string,
+        promptData.systemMessage as string | undefined
       );
 
       if (!refValidation.valid) {

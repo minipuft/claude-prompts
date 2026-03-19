@@ -11,6 +11,20 @@ import type { PromptResourceActionId } from '../../../../metadata/definitions/pr
 import type { ToolDefinitionInput } from '../../core/types.js';
 
 /**
+ * Maps MCP parameter names (snake_case) to internal promptData field names (camelCase).
+ * Used by updatePrompt() to apply only explicitly provided fields.
+ */
+export const UPDATE_FIELDS: Record<string, string> = {
+  name: 'name',
+  category: 'category',
+  description: 'description',
+  system_message: 'systemMessage',
+  user_message_template: 'userMessageTemplate',
+  arguments: 'arguments',
+  chain_steps: 'chainSteps',
+};
+
+/**
  * Action-specific parameter requirements and examples
  */
 const ACTION_REQUIREMENTS: Record<string, { required: string[]; example: string }> = {
@@ -20,7 +34,7 @@ const ACTION_REQUIREMENTS: Record<string, { required: string[]; example: string 
   },
   update: {
     required: ['id'],
-    example: `{action:'update', id:'existing_prompt', description:'Updated description', gate_configuration:{include:['validation']}}`,
+    example: `{action:'update', id:'existing_prompt', description:'Updated description'}`,
   },
   delete: {
     required: ['id'],
@@ -266,6 +280,7 @@ export function validateToolDefinitions(tools: ToolDefinitionInput[]): string[] 
 
   return errors;
 }
+
 
 /**
  * Sanitize user input for safe processing

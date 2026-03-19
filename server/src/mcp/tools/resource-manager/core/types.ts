@@ -137,8 +137,6 @@ export interface ResourceManagerInput {
   execution_hint?: 'single' | 'chain';
   is_chain?: boolean;
   full_restart?: boolean;
-  section?: string;
-  section_content?: string;
   filter?: string;
   format?: 'table' | 'json' | 'text';
   detail?: 'summary' | 'full';

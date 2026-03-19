@@ -3,7 +3,7 @@
   "version": 1,
   "summary": "Unified resource management for prompts, gates, methodologies, and checkpoints. Use resource_type to specify the resource kind, then action for the operation.",
   "toolDescription": {
-    "description": "\ud83d\uddc2\ufe0f RESOURCE MANAGER: CRUD for prompts, gates, methodologies, checkpoints.\n\nresource_manager(resource_type, action, id?, name?, description?)\n\nTYPES: prompt | gate | methodology | checkpoint\nACTIONS: create | update | delete | list | inspect | reload | guide | switch | history | rollback | compare | clear\n\nVERSIONING: history (view versions), rollback (restore), compare (diff versions)\nCHECKPOINT: create (save state), rollback (restore), list (show all), delete (remove), clear (remove all)\n\nCREATION GUIDES:\n\u2022 >>create_methodology - Framework creation with validation\n\u2022 >>create_gate - Quality gate creation\n\u2022 >>create_prompt - Prompt/chain creation",
+    "description": "\ud83d\uddc2\ufe0f RESOURCE MANAGER: CRUD for prompts, gates, methodologies, checkpoints.\n\nresource_manager(resource_type, action, id?, name?, description?)\n\nTYPES: prompt | gate | methodology | checkpoint\nACTIONS: create | update | delete | list | inspect | reload | guide | switch | history | rollback | compare | clear\n\nUPDATE: update(id, description:\"new\") \u2014 only provided fields change. inspect(id, detail:\"full\") to see current content first.\n\nVERSIONING: history (view versions), rollback (restore), compare (diff versions)\nCHECKPOINT: create (save state), rollback (restore), list (show all), delete (remove), clear (remove all)\n\nCREATION GUIDES:\n\u2022 >>create_methodology - Framework creation with validation\n\u2022 >>create_gate - Quality gate creation\n\u2022 >>create_prompt - Prompt/chain creation",
     "shortDescription": "Manage prompts, gates, methodologies, and checkpoints",
     "category": "management",
     "frameworkAware": {
@@ -115,20 +115,6 @@
       "name": "execution_hint",
       "type": "enum[single|chain]",
       "description": "[Prompt] Hint for execution type on creation.",
-      "status": "working",
-      "includeInDescription": false
-    },
-    {
-      "name": "section",
-      "type": "enum[name|description|system_message|user_message_template|arguments|chain_steps]",
-      "description": "[Prompt] Targeted update section.",
-      "status": "working",
-      "includeInDescription": false
-    },
-    {
-      "name": "section_content",
-      "type": "string",
-      "description": "[Prompt] Content for targeted section updates.",
       "status": "working",
       "includeInDescription": false
     },
@@ -302,17 +288,20 @@
     },
     {
       "id": "prompt:update",
-      "summary": "Update prompt fields or targeted sections.",
+      "summary": "Update prompt fields. Only provided fields change; omitted fields are preserved.",
       "parameters": [
         "resource_type",
         "action",
         "id",
-        "section",
-        "section_content",
         "name",
         "description",
+        "category",
         "user_message_template",
-        "tools"
+        "system_message",
+        "arguments",
+        "chain_steps",
+        "tools",
+        "gate_configuration"
       ]
     },
     {

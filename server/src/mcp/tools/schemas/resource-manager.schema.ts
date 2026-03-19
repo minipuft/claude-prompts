@@ -79,19 +79,6 @@ export const resourceManagerInputSchema = z
     gate_configuration: z.record(z.unknown()).optional(),
     /** [Prompt] Hint for execution type on creation. */
     execution_hint: z.enum(['single', 'chain']).optional(),
-    /** [Prompt] Targeted update section. */
-    section: z
-      .enum([
-        'name',
-        'description',
-        'system_message',
-        'user_message_template',
-        'arguments',
-        'chain_steps',
-      ])
-      .optional(),
-    /** [Prompt] Content for targeted section updates. */
-    section_content: z.string().optional(),
     /** [Prompt] List filter query. */
     filter: z.string().optional(),
     /** [Prompt] Output format for list/inspect. */

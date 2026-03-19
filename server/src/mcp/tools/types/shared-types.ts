@@ -342,16 +342,7 @@ export type PromptResourceAction =
       name: string;
       user_message_template: string;
     } & BasePromptResourceArgs)
-  | ({ action: 'update'; id: string } & BasePromptResourceArgs & {
-        section?:
-          | 'name'
-          | 'description'
-          | 'system_message'
-          | 'user_message_template'
-          | 'arguments'
-          | 'chain_steps';
-        section_content?: string;
-      })
+  | ({ action: 'update'; id: string } & BasePromptResourceArgs)
   | { action: 'delete'; id: string }
   | { action: 'reload' }
   | ({ action: 'list' } & Pick<BasePromptResourceArgs, 'filter' | 'format'>)

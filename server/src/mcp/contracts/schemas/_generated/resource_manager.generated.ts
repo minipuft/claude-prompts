@@ -38,8 +38,6 @@ export type resource_managerParamName =
   | 'tools'
   | 'gate_configuration'
   | 'execution_hint'
-  | 'section'
-  | 'section_content'
   | 'filter'
   | 'format'
   | 'detail'
@@ -184,22 +182,6 @@ export const resource_managerParameters: ToolParameter[] = [
     name: 'execution_hint',
     type: 'enum[single|chain]',
     description: '[Prompt] Hint for execution type on creation.',
-    status: 'working',
-    compatibility: 'canonical',
-    includeInDescription: false,
-  },
-  {
-    name: 'section',
-    type: 'enum[name|description|system_message|user_message_template|arguments|chain_steps]',
-    description: '[Prompt] Targeted update section.',
-    status: 'working',
-    compatibility: 'canonical',
-    includeInDescription: false,
-  },
-  {
-    name: 'section_content',
-    type: 'string',
-    description: '[Prompt] Content for targeted section updates.',
     status: 'working',
     compatibility: 'canonical',
     includeInDescription: false,
@@ -401,17 +383,20 @@ export const resource_managerCommands: ToolCommand[] = [
   },
   {
     id: 'prompt:update',
-    summary: 'Update prompt fields or targeted sections.',
+    summary: 'Update prompt fields. Only provided fields change; omitted fields are preserved.',
     parameters: [
       'resource_type',
       'action',
       'id',
-      'section',
-      'section_content',
       'name',
       'description',
+      'category',
       'user_message_template',
+      'system_message',
+      'arguments',
+      'chain_steps',
       'tools',
+      'gate_configuration',
     ],
     status: 'working',
   },

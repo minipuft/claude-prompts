@@ -29,8 +29,6 @@
 | `resource_type` | enum[prompt\|gate\|methodology\|checkpoint] | working | yes | Type of resource to manage. Routes to appropriate handler. |
 | `retry_config` | object | working | no | [Gate] Retry configuration: max_attempts, improvement_hints. |
 | `search_query` | string | working | no | [Prompt] Search query for filtering (list action). |
-| `section` | enum[name\|description\|system_message\|user_message_template\|arguments\|chain_steps] | working | no | [Prompt] Targeted update section. |
-| `section_content` | string | working | no | [Prompt] Content for targeted section updates. |
 | `skip_version` | boolean | working | no | [Versioning] Skip auto-versioning on update. Default: false. |
 | `system_message` | string | working | no | [Prompt] Optional system message for the prompt. |
 | `system_prompt_guidance` | string | working | no | [Methodology] System prompt guidance injected when active. |

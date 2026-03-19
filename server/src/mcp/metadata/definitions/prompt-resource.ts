@@ -147,8 +147,6 @@ const PROMPT_RESOURCE_PARAMETER_NAMES: resource_managerParamName[] = [
   'tools',
   'gate_configuration',
   'execution_hint',
-  'section',
-  'section_content',
   'filter',
   'format',
   'detail',
