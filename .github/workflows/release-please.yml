@@ -32,6 +32,23 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Merge manual changelog entries
+        if: steps.release.outputs.pr && steps.release.outputs.release_created != 'true'
+        env:
+          PR_JSON: ${{ steps.release.outputs.pr }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: |
+          PR_BRANCH=$(echo "$PR_JSON" | jq -r '.headBranchName')
+          gh pr checkout "$PR_BRANCH"
+          node scripts/merge-unreleased-changelog.js
+          if git diff --quiet CHANGELOG.md; then
+            echo "No manual entries to merge"
+          else
+            git add CHANGELOG.md
+            git commit -m "chore(docs): merge manual changelog entries into release"
+            git push
+          fi
+
       - name: Summary
         if: always()
         env:

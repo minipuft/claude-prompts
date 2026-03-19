@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Methodology `responseFormat` woven into tool descriptions at synchronization time (global)
   - Style `responseFormat` available for per-execution system prompt injection
 
+### Fixed
+
+- **Prompt update field clearing**: Sending empty strings (e.g., `system_message:""`) now correctly clears the field instead of silently preserving the old value. Update handler migrated from `||` fallback to `!== undefined` pattern matching the methodology handler
+
+### Improved
+
+- **Prompt update workflow for LLMs**: Update fields directly — `update(id, description:"new")` — only provided fields change, omitted fields are preserved. Tool description now includes a compact UPDATE hint for discoverability
+- **Update handler maintainability**: Replaced 8 individual if-checks with `UPDATE_FIELDS` map loop for field-level overrides. Adding new updatable fields is now a single map entry
+
 ### Changed
 
 - **BREAKING**: Path resolution consolidated to `MCP_WORKSPACE` as single source of truth. Individual per-resource env vars (`MCP_PROMPTS_PATH`, `MCP_METHODOLOGIES_PATH`, `MCP_GATES_PATH`, `MCP_STYLES_PATH`, `MCP_SCRIPTS_PATH`) and CLI flags (`--prompts`, `--methodologies`, `--gates`, `--scripts`, `--styles`) removed
