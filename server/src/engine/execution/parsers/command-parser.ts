@@ -17,6 +17,7 @@ import {
   stripStyleOperators,
   findFrameworkOperatorOutsideQuotes,
   stripFrameworkOperatorOutsideQuotes,
+  hasOperatorOutsideQuotes,
 } from './parser-utils.js';
 import { SymbolicCommandParser, createSymbolicCommandParser } from './symbolic-operator-parser.js';
 import { Logger } from '../../../infra/logging/index.js';
@@ -296,8 +297,9 @@ export class UnifiedCommandParser {
         // Note: Bare ? in natural language (e.g., "is there a bug?") should NOT trigger symbolic
         const hasConditionalOperator =
           /\s*\?\s*["'](.+?)["']\s*:\s*(?:>>)?\s*([A-Za-z0-9_-]+)/.test(command);
-        const hasChainGateOrOther =
-          /-->|(::|=)\s*\S|\+|\s+\*\s*\d+/.test(command) || hasConditionalOperator;
+        // Quote-aware operator detection: operators inside quoted argument values
+        // (e.g., "R3F + Visx" or "modes: (1)") must NOT trigger symbolic parsing
+        const hasChainGateOrOther = hasConditionalOperator || hasOperatorOutsideQuotes(command);
         const hasStyleOperator = /(?:^|\s)#[A-Za-z][A-Za-z0-9_-]*(?=\s|$|>>)/.test(command);
         // Use quote-aware detection for framework operators to avoid matching @word inside quotes
         const hasFrameworkOperator = findFrameworkOperatorOutsideQuotes(command) !== null;
@@ -371,8 +373,7 @@ export class UnifiedCommandParser {
         const hasConditionalOp = /\s*\?\s*["'](.+?)["']\s*:\s*(?:>>)?\s*([A-Za-z0-9_-]+)/.test(
           trimmed
         );
-        const hasOtherOperators =
-          /-->|\s(::|=)\s*\S|\+|\s+\*\s*\d+/.test(trimmed) || hasConditionalOp;
+        const hasOtherOperators = hasConditionalOp || hasOperatorOutsideQuotes(trimmed);
         const hasFrameworkOp = findFrameworkOperatorOutsideQuotes(trimmed) !== null;
         if (hasOtherOperators || hasFrameworkOp) return false;
         // Accept with or without >> or / prefix (bare prompt names now supported)

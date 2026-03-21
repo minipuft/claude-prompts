@@ -28,6 +28,14 @@ const basePrompts: ConvertedPrompt[] = [
     arguments: [],
     userMessageTemplate: 'Summarize {{input}}',
   },
+  {
+    id: 'implementation_plan',
+    name: 'Implementation Plan',
+    description: 'Creates implementation plans',
+    category: 'planning',
+    arguments: [{ name: 'feature', type: 'string', description: 'Feature to implement' }],
+    userMessageTemplate: '{{feature}}',
+  },
 ] as ConvertedPrompt[];
 
 describe('UnifiedCommandParser symbolic behavior', () => {
@@ -60,6 +68,30 @@ describe('UnifiedCommandParser symbolic behavior', () => {
       throw new Error('Expected framework operator');
     }
     expect(frameworkOperator.frameworkId).toBe('cageerf');
+  });
+
+  test('resolves prompt when arguments contain special characters (parentheses, colons, slashes, plus)', async () => {
+    // Regression: "+" inside quoted args triggered symbolic canHandle, gate-stripping
+    // regex then corrupted the prompt ID. See plans/command-parser-special-chars-fix.md
+    const result = await parser.parseCommand(
+      '>>implementation_plan feature:"Two modes: (1) standalone on port 3200, (2) embedded /dashboard + SSE"',
+      basePrompts
+    );
+
+    expect(result.promptId).toBe('implementation_plan');
+    expect(result.rawArgs).toContain('(1)');
+    expect(result.rawArgs).toContain('/dashboard');
+    expect(result.rawArgs).toContain('+ SSE');
+  });
+
+  test('resolves prompt with multiple key:value args containing special characters', async () => {
+    const result = await parser.parseCommand(
+      '>>implementation_plan feature:"R3F + Visx charts" constraints:"target <200KB, works with node:sqlite"',
+      basePrompts
+    );
+
+    expect(result.promptId).toBe('implementation_plan');
+    expect(result.rawArgs).toContain('R3F + Visx');
   });
 
   test('detects chain command types from symbolic strings', async () => {

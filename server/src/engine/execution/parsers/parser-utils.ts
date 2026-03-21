@@ -93,6 +93,28 @@ export function isPositionInsideQuotes(str: string, position: number): boolean {
 }
 
 /**
+ * Check whether symbolic operators (-->, ::, =, +, *N) exist outside quoted strings.
+ * Prevents argument values like `"R3F + Visx"` or `"modes: (1)"` from
+ * falsely triggering the symbolic command parser.
+ *
+ * Uses `\s` before `(::|=)` to avoid matching argument assignment syntax
+ * like `input=test` or `key:value`. Gate operators always have preceding whitespace.
+ */
+export function hasOperatorOutsideQuotes(command: string): boolean {
+  // Note: \s before (::|=) prevents matching key=value argument assignment
+  const operatorPattern = /-->|\s(::|=)\s*\S|\+|\s+\*\s*\d+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = operatorPattern.exec(command)) !== null) {
+    if (!isPositionInsideQuotes(command, match.index)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Result of finding a framework operator outside quotes.
  */
 export interface FrameworkOperatorMatch {
