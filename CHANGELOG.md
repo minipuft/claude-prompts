@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Command tokenizer refactor**: Replaced duplicated operator detection across 3 parsing strategies with a single-pass, quote-aware `tokenizeCommand()` function
+  - `command-parser.ts`: 771→710 lines; symbolic `canHandle` reduced from 20 lines to 1; gate/framework/style stripping regex (~25 lines) replaced by `tokens.promptId`/`tokens.rawArgs`
+  - `parser-utils.ts`: 198→156 lines; removed `hasOperatorOutsideQuotes` and `stripFrameworkOperatorOutsideQuotes` (zero consumers — tokenizer subsumes)
+  - Strategies now consume `TokenizedCommand` instead of re-detecting operators: `canHandle(command, tokens)` reads `tokens.format` and `tokens.hasSymbolicOperators`
+  - Eliminates the class of bugs where special characters inside quoted arguments (e.g., `"R3F + Visx"`, `"modes: (1)"`) triggered false operator detection
+
+### Added
+
+- **`command-tokenizer.ts`**: Pure function `tokenizeCommand()` with quote-aware detection for all 8 operator types (chain, delegation, gate, parallel, repetition, conditional, framework, style). Includes delimiter overlap filtering to prevent `==>` from false-matching as gate operator
+- **`command-tokenizer.test.ts`**: 56 tests covering all operator types, quoted argument regression suite, mixed operators, prompt ID extraction, cleaned command generation, and edge cases
+
 ## [2.1.0](https://github.com/minipuft/claude-prompts/compare/v2.0.0...v2.1.0) (2026-03-19)
 
 ### Added
@@ -24,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Response Format Overlays**: Methodologies and styles can define `responseFormat` in YAML to guide LLM response structure at the tool description level
   - Methodology `responseFormat` woven into tool descriptions at synchronization time (global)
   - Style `responseFormat` available for per-execution system prompt injection
+
 * **ci:** auto-merge manual changelog entries into Release Please releases ([d2f2f52](https://github.com/minipuft/claude-prompts/commit/d2f2f52f330f3063f394a80988c011de692f7717))
 * **runtime:** multi-source resource overlay and path consolidation ([2f5d751](https://github.com/minipuft/claude-prompts/commit/2f5d75106605d254679a54871deb5d0e7ee46649))
 * **server:** add OpenTelemetry instrumentation and observability infrastructure ([48e720f](https://github.com/minipuft/claude-prompts/commit/48e720f684f8fc5822c66c7242aa414bc2e4740f))
@@ -48,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MCP Tool Schemas**: Hand-written Zod schema factories replace codegen `mcp-schemas.ts`, enabling methodology-aware description overlays without generated code
 - **Operator Patterns**: Loaded from JSON registry at import time via esbuild inlining, eliminating the `generate-operators` codegen step and Python hook codegen
 - **Style Guidance**: Served exclusively from YAML definitions via StyleManager, removing hardcoded legacy fallback
+
 * **hooks:** improve Python hook type safety and reduce pyrefly baseline ([69cc281](https://github.com/minipuft/claude-prompts/commit/69cc281d4b6ab3d137b0713b4730be55ffac4288))
 * **runtime:** replace ServerRootDetector with resolvePackageRoot() ([3c2bd7f](https://github.com/minipuft/claude-prompts/commit/3c2bd7ffb1c04c4949397119cb1680126481f3e2))
 * **server:** decompose Tier 5 oversized files to meet size advisories ([adbc670](https://github.com/minipuft/claude-prompts/commit/adbc6706e94b5047f494aaa2f00ee8f9d364e2f7))
@@ -61,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Prompt update field clearing**: Sending empty strings (e.g., `system_message:""`) now correctly clears the field instead of silently preserving the old value. Update handler migrated from `||` fallback to `!== undefined` pattern matching the methodology handler
+
 * **ci:** add checkout step before changelog merge in Release Please workflow ([d68d0f1](https://github.com/minipuft/claude-prompts/commit/d68d0f19781079c114c46d29543d1f780a1edda9))
 * **ci:** centralize downstream version sync in extension-publish ([e8c25e0](https://github.com/minipuft/claude-prompts/commit/e8c25e0d7bb925ce517c2aa72e226d4c4ebf0be0))
 * **ci:** fix changelog merge target and set release-as 2.1.0 ([cc2ed76](https://github.com/minipuft/claude-prompts/commit/cc2ed76cb5bf9e760743aad6201049e983227396))
@@ -88,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Telemetry observability guide**: Restructured attribute reference into Initial/Wide-Event/Other sections with incident query examples per attribute. Fixed chain events incorrectly documented as active (now marked Planned). Updated architecture diagram to show wide-event enrichment flow.
 - **CONTRIBUTING.md modernization**: Restructured contributor guide with quick-start path, contribution type routing (code/prompts/gates/methodologies/docs), commit scope reference, testing decision matrix, and progressive disclosure via collapsible sections
 - **GitHub issue and PR templates**: Added YAML-based issue forms (bug report, feature request) with project-specific dropdowns (transport, MCP tool, area), preflight checkboxes, and structured fields following Next.js/Vite/Claude Code conventions. Minimal PR template complements existing CI `pr-summary` bot
+
 * **cleanup:** record chokidar post-upgrade rationale ([b6740e2](https://github.com/minipuft/claude-prompts/commit/b6740e21d11bf20a324c3e511a97ad67c28924c9))
 * modernize CONTRIBUTING.md, add GitHub templates, align project config ([3afbe39](https://github.com/minipuft/claude-prompts/commit/3afbe39c475ddc5dc4054b5ffd30f5bc90a29cd6))
 * record open PR validation wave ([81d383a](https://github.com/minipuft/claude-prompts/commit/81d383a51191570cf4314caeec29e7d9dcbb540c))
@@ -100,11 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
-* **runtime:** Individual per-resource env vars and CLI flags removed. Use MCP_WORKSPACE with resources/ subdirectory structure instead.
+- **runtime:** Individual per-resource env vars and CLI flags removed. Use MCP_WORKSPACE with resources/ subdirectory structure instead.
 
 ## [Unreleased]
-
-
 
 ## [2.0.0](https://github.com/minipuft/claude-prompts/compare/v1.7.0...v2.0.0) (2026-03-11)
 

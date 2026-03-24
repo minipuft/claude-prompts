@@ -281,7 +281,6 @@ export function validateToolDefinitions(tools: ToolDefinitionInput[]): string[] 
   return errors;
 }
 
-
 /**
  * Sanitize user input for safe processing
  */

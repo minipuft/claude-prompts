@@ -12,17 +12,13 @@
  * - Command validation and sanitization
  */
 
-import {
-  normalizeSymbolicPrefixes,
-  stripStyleOperators,
-  findFrameworkOperatorOutsideQuotes,
-  stripFrameworkOperatorOutsideQuotes,
-  hasOperatorOutsideQuotes,
-} from './parser-utils.js';
+import { tokenizeCommand } from './command-tokenizer.js';
+import { normalizeSymbolicPrefixes } from './parser-utils.js';
 import { SymbolicCommandParser, createSymbolicCommandParser } from './symbolic-operator-parser.js';
 import { Logger } from '../../../infra/logging/index.js';
 import { PromptError, ValidationError, safeJsonParse } from '../../../shared/utils/index.js';
 
+import type { TokenizedCommand } from './command-tokenizer.js';
 import type { ConvertedPrompt, ExecutionModifier, ExecutionModifiers } from '../types.js';
 import type { CommandParseResultBase } from './types/command-parse-types.js';
 import type {
@@ -51,8 +47,8 @@ const VALID_MODIFIERS: Record<string, ExecutionModifier> = {
  */
 interface ParsingStrategy {
   name: string;
-  canHandle: (command: string) => boolean;
-  parse: (command: string) => CommandParseResult | null;
+  canHandle: (command: string, tokens: TokenizedCommand) => boolean;
+  parse: (command: string, tokens: TokenizedCommand) => CommandParseResult | null;
   confidence: number;
 }
 
@@ -184,13 +180,16 @@ export class UnifiedCommandParser {
       `Parsing command: "${preprocessed.substring(0, 100)}..."${hadPrefixes ? ' (prefixes normalized)' : ''}${hadRepetition ? ' (repetition expanded)' : ''}`
     );
 
+    // Tokenize once — strategies consume tokens instead of re-detecting operators
+    const tokens = tokenizeCommand(preprocessed);
+
     // Try each strategy in order of confidence (now operating on preprocessed command)
     const sortedStrategies = [...this.strategies].sort((a, b) => b.confidence - a.confidence);
 
     for (const strategy of sortedStrategies) {
-      if (strategy.canHandle(preprocessed)) {
+      if (strategy.canHandle(preprocessed, tokens)) {
         try {
-          const result = strategy.parse(preprocessed);
+          const result = strategy.parse(preprocessed, tokens);
           if (result) {
             // Preserve original command in metadata for debugging/error messages
             if (!result.metadata) {
@@ -271,7 +270,7 @@ export class UnifiedCommandParser {
   }
 
   /**
-   * Initialize parsing strategies (STREAMLINED: 2 core strategies)
+   * Initialize parsing strategies (symbolic, simple, JSON)
    */
   private initializeStrategies(): ParsingStrategy[] {
     return [
@@ -285,71 +284,28 @@ export class UnifiedCommandParser {
     return {
       name: 'symbolic',
       confidence: 0.97,
-      canHandle: (command: string) => {
-        // Match symbolic operators:
-        // - --> (chain)
-        // - :: or = followed by any value (quoted or unquoted)
-        // - @FRAMEWORK at start OR after whitespace (ONLY outside quoted strings)
-        // - + (parallel)
-        // - ? "condition" : >>branch (conditional - must match full pattern, not bare ?)
-        // - #id style selector (e.g., #analytical, #procedural)
-        // - * N repetition (e.g., >>prompt *3)
-        // Note: Bare ? in natural language (e.g., "is there a bug?") should NOT trigger symbolic
-        const hasConditionalOperator =
-          /\s*\?\s*["'](.+?)["']\s*:\s*(?:>>)?\s*([A-Za-z0-9_-]+)/.test(command);
-        // Quote-aware operator detection: operators inside quoted argument values
-        // (e.g., "R3F + Visx" or "modes: (1)") must NOT trigger symbolic parsing
-        const hasChainGateOrOther = hasConditionalOperator || hasOperatorOutsideQuotes(command);
-        const hasStyleOperator = /(?:^|\s)#[A-Za-z][A-Za-z0-9_-]*(?=\s|$|>>)/.test(command);
-        // Use quote-aware detection for framework operators to avoid matching @word inside quotes
-        const hasFrameworkOperator = findFrameworkOperatorOutsideQuotes(command) !== null;
-
-        return hasChainGateOrOther || hasStyleOperator || hasFrameworkOperator;
-      },
-      parse: (command: string): SymbolicCommandParseResult | null => {
-        // Command arrives already preprocessed (repetition expanded in parseCommand)
+      canHandle: (_command: string, tokens: TokenizedCommand) => tokens.hasSymbolicOperators,
+      parse: (command: string, tokens: TokenizedCommand): SymbolicCommandParseResult | null => {
+        // Full operator detection still needed for execution plan building
+        // (tokenizer detects presence; symbolic parser produces ChainOperator, GateOperator, etc.)
         const operators = this.symbolicParser.detectOperators(command);
         if (!operators.hasOperators) {
           return null;
         }
 
-        // Strip framework operator from command (quote-aware to preserve @word in quoted args)
-        let cleanCommand = stripFrameworkOperatorOutsideQuotes(command);
-        // Strip ALL gate operators - handles both named and anonymous formats:
-        // - Named colon: :: id:"criteria" or :: id:'criteria'
-        // - Named paren: :: id(criteria)
-        // - Anonymous quoted: :: "criteria" or :: 'criteria'
-        // - Anonymous unquoted: :: criteria (canonical refs or plain text)
-        cleanCommand = cleanCommand.replace(
-          /\s+(::|=)\s*(?:[a-z][a-z0-9_-]*:["'][^"']+["']|[a-z][a-z0-9_-]*\([^)]+\)|["'][^"']+["']|[^\s"']+)/gi,
-          ''
-        );
-        // Strip trailing verify options that follow gate operators:
-        // :fast, :full, :extended (presets), loop:true/false, max:N, timeout:N
-        cleanCommand = cleanCommand.replace(
-          /\s+(?::(fast|full|extended)\b|loop:(true|false)\b|max:\d+\b|timeout:\d+\b)/gi,
-          ''
-        );
-        // Strip style selector to avoid polluting base args
-        cleanCommand = stripStyleOperators(cleanCommand);
-
-        const baseSegment =
-          cleanCommand
-            .replace(/^\s*(?:==>\s*)+/, '')
-            .split(/-->|\+|\?/)[0]
-            ?.trim() ?? '';
-        const firstPromptMatch = baseSegment.match(/^(?:>>)?([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/);
-        if (!firstPromptMatch) {
+        // Use tokenizer's pre-extracted prompt info instead of manual stripping
+        // (replaces ~20 lines of framework/gate/style/verify regex removal)
+        const basePromptId = tokens.promptId;
+        if (basePromptId === null) {
           return null;
         }
 
-        const basePromptId = firstPromptMatch[1];
-        if (!basePromptId) {
-          return null;
-        }
-        const baseArgs = (firstPromptMatch[2] ?? '').trim();
-
-        return this.symbolicParser.buildParseResult(command, operators, basePromptId, baseArgs);
+        return this.symbolicParser.buildParseResult(
+          command,
+          operators,
+          basePromptId,
+          tokens.rawArgs
+        );
       },
     };
   }
@@ -361,25 +317,12 @@ export class UnifiedCommandParser {
     return {
       name: 'simple',
       confidence: 0.95, // Increased confidence for primary strategy
-      canHandle: (command: string) => {
-        const trimmed = command.trim();
-        // Skip if JSON-like (handled by JSON strategy)
-        if (trimmed.startsWith('{') || trimmed.startsWith('"')) return false;
-        // Skip if has symbolic operators (handled by symbolic strategy)
-        // Note: Gate operators (:: or =) must be preceded by whitespace to avoid
-        // matching argument assignment syntax like input="value"
-        // Note: Bare ? is allowed (natural language questions); only full conditional pattern triggers symbolic
-        // Use quote-aware detection for framework operators
-        const hasConditionalOp = /\s*\?\s*["'](.+?)["']\s*:\s*(?:>>)?\s*([A-Za-z0-9_-]+)/.test(
-          trimmed
-        );
-        const hasOtherOperators = hasConditionalOp || hasOperatorOutsideQuotes(trimmed);
-        const hasFrameworkOp = findFrameworkOperatorOutsideQuotes(trimmed) !== null;
-        if (hasOtherOperators || hasFrameworkOp) return false;
-        // Accept with or without >> or / prefix (bare prompt names now supported)
-        return /^(?:>>|\/)?[a-zA-Z][a-zA-Z0-9_-]*(?:\s|$)/.test(trimmed);
+      canHandle: (_command: string, tokens: TokenizedCommand) => {
+        if (tokens.format !== 'simple') return false;
+        // Validate prompt name pattern (format check alone doesn't guarantee valid prompt name)
+        return /^(?:>>|\/)?[a-zA-Z][a-zA-Z0-9_-]*(?:\s|$)/.test(tokens.raw.trim());
       },
-      parse: (command: string): CommandParseResult | null => {
+      parse: (command: string, _tokens: TokenizedCommand): CommandParseResult | null => {
         // Enhanced regex to handle more natural command formats
         // Prefix (>> or /) is now optional to support bare prompt names
         // Prompt name: starts with letter, contains letters/numbers/underscores/hyphens (no spaces)
@@ -432,11 +375,8 @@ export class UnifiedCommandParser {
     return {
       name: 'json',
       confidence: 0.85,
-      canHandle: (command: string) => {
-        const trimmed = command.trim();
-        return trimmed.startsWith('{') && trimmed.endsWith('}');
-      },
-      parse: (command: string): CommandParseResult | null => {
+      canHandle: (_command: string, tokens: TokenizedCommand) => tokens.format === 'json',
+      parse: (command: string, _tokens: TokenizedCommand): CommandParseResult | null => {
         const parseResult = safeJsonParse(command);
         if (!parseResult.success || !parseResult.data) {
           return null;
@@ -491,22 +431,21 @@ export class UnifiedCommandParser {
           String(actualCommand)
         );
 
-        // Recursively parse the inner command - try both strategies
-        // The symbolic strategy handles commands with operators (-->, ::, @, etc.)
-        // The simple strategy handles plain prompt names
+        // Recursively parse the inner command - tokenize and try both strategies
         const symbolicStrategy = this.createSymbolicCommandStrategy();
         const simpleStrategy = this.createSimpleCommandStrategy();
+        const innerTokens = tokenizeCommand(innerCommand);
 
         let innerResult: CommandParseResult | null = null;
 
         // Try symbolic strategy first (for chains and operators)
-        if (symbolicStrategy.canHandle(innerCommand)) {
-          innerResult = symbolicStrategy.parse(innerCommand);
+        if (symbolicStrategy.canHandle(innerCommand, innerTokens)) {
+          innerResult = symbolicStrategy.parse(innerCommand, innerTokens);
         }
 
         // Fall back to simple strategy (for plain prompt names)
-        if (!innerResult && simpleStrategy.canHandle(innerCommand)) {
-          innerResult = simpleStrategy.parse(innerCommand);
+        if (!innerResult && simpleStrategy.canHandle(innerCommand, innerTokens)) {
+          innerResult = simpleStrategy.parse(innerCommand, innerTokens);
         }
 
         if (!innerResult) return null;

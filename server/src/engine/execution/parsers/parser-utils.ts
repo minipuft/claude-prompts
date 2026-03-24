@@ -93,28 +93,6 @@ export function isPositionInsideQuotes(str: string, position: number): boolean {
 }
 
 /**
- * Check whether symbolic operators (-->, ::, =, +, *N) exist outside quoted strings.
- * Prevents argument values like `"R3F + Visx"` or `"modes: (1)"` from
- * falsely triggering the symbolic command parser.
- *
- * Uses `\s` before `(::|=)` to avoid matching argument assignment syntax
- * like `input=test` or `key:value`. Gate operators always have preceding whitespace.
- */
-export function hasOperatorOutsideQuotes(command: string): boolean {
-  // Note: \s before (::|=) prevents matching key=value argument assignment
-  const operatorPattern = /-->|\s(::|=)\s*\S|\+|\s+\*\s*\d+/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = operatorPattern.exec(command)) !== null) {
-    if (!isPositionInsideQuotes(command, match.index)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
  * Result of finding a framework operator outside quotes.
  */
 export interface FrameworkOperatorMatch {
@@ -175,23 +153,4 @@ export function findFrameworkOperatorOutsideQuotes(str: string): FrameworkOperat
   }
 
   return null;
-}
-
-/**
- * Strip framework operator from command, respecting quoted strings.
- * Only removes the first framework operator found outside quotes.
- *
- * @param str - The command string
- * @returns The string with framework operator removed (if found outside quotes)
- */
-export function stripFrameworkOperatorOutsideQuotes(str: string): string {
-  const found = findFrameworkOperatorOutsideQuotes(str);
-  if (!found) return str;
-
-  // Remove the matched operator
-  const before = str.slice(0, found.position);
-  const after = str.slice(found.position + found.fullMatch.length);
-
-  // Normalize whitespace: ensure single space between parts
-  return (before + ' ' + after).replace(/\s+/g, ' ').trim();
 }
