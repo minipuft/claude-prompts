@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.1](https://github.com/minipuft/claude-prompts/compare/v2.1.0...v2.1.1) (2026-04-01)
+
+### Added
+
+- **`command-tokenizer.ts`**: Pure function `tokenizeCommand()` with quote-aware detection for all 8 operator types (chain, delegation, gate, parallel, repetition, conditional, framework, style). Includes delimiter overlap filtering to prevent `==>` from false-matching as gate operator
+- **`command-tokenizer.test.ts`**: 56 tests covering all operator types, quoted argument regression suite, mixed operators, prompt ID extraction, cleaned command generation, and edge cases
 
 ### Changed
 
@@ -14,11 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `parser-utils.ts`: 198→156 lines; removed `hasOperatorOutsideQuotes` and `stripFrameworkOperatorOutsideQuotes` (zero consumers — tokenizer subsumes)
   - Strategies now consume `TokenizedCommand` instead of re-detecting operators: `canHandle(command, tokens)` reads `tokens.format` and `tokens.hasSymbolicOperators`
   - Eliminates the class of bugs where special characters inside quoted arguments (e.g., `"R3F + Visx"`, `"modes: (1)"`) triggered false operator detection
+* **parsers:** centralize operator detection in single-pass command tokenizer ([1dab41b](https://github.com/minipuft/claude-prompts/commit/1dab41bd182872178cd3bc7c4b365eda8445cc6d))
+* **resources:** consolidate write paths, remove dead JSON format ([4e8bdf6](https://github.com/minipuft/claude-prompts/commit/4e8bdf608cf4886b23c499b1bfab45383c82d9e3))
 
-### Added
+### Fixed
 
-- **`command-tokenizer.ts`**: Pure function `tokenizeCommand()` with quote-aware detection for all 8 operator types (chain, delegation, gate, parallel, repetition, conditional, framework, style). Includes delimiter overlap filtering to prevent `==>` from false-matching as gate operator
-- **`command-tokenizer.test.ts`**: 56 tests covering all operator types, quoted argument regression suite, mixed operators, prompt ID extraction, cleaned command generation, and edge cases
+* **hooks:** filter deleted files from pre-push prettier check ([5ee1fb2](https://github.com/minipuft/claude-prompts/commit/5ee1fb28bb02faa497846c2e8a6c8e8ecb370f8d))
+* **hooks:** use --diff-filter=ACMR instead of shell workaround ([edb9526](https://github.com/minipuft/claude-prompts/commit/edb95267b3055cadf7198a38fd7b3dc0580069fb))
+* **parsers:** quote-aware operator detection prevents special chars in args from breaking prompt resolution ([0beb3ff](https://github.com/minipuft/claude-prompts/commit/0beb3ff2009a487bb5a39d0367429b8e07934be1))
+
+## [Unreleased]
+
+
 
 ## [2.1.0](https://github.com/minipuft/claude-prompts/compare/v2.0.0...v2.1.0) (2026-03-19)
 
