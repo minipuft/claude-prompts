@@ -67,6 +67,7 @@ export async function safeWriteFile(
  * @param operations Array of async functions that perform file operations
  * @param rollbacks Array of async functions that undo the operations
  * @returns Result of the last operation if successful
+ * @deprecated Use ResourceMutationTransaction from modules/resources/services for snapshot-based rollback.
  */
 export async function performTransactionalFileOperations<T>(
   operations: Array<() => Promise<any>>,

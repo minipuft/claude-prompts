@@ -1,15 +1,12 @@
-// @lifecycle canonical - Single source of truth for prompt JSON/YAML validation
+// @lifecycle canonical - Single source of truth for prompt YAML validation
 /**
  * Prompt Schema (Zod)
  *
- * Defines the canonical schema for prompt definitions in prompts.json files.
+ * Defines canonical schemas for prompt definitions (YAML directory format).
  * Used by:
  * - PromptLoader (runtime validation)
  * - PromptConverter (content validation)
- * - (Future) CI validation scripts
- * - (Future) YAML prompt format validation
- *
- * This ensures SSOT - any schema change is enforced everywhere.
+ * - ResourceVerificationService (MCP tool validation)
  *
  * @see gate-schema.ts for the pattern this follows
  * @see methodology-schema.ts for the pattern this follows
@@ -155,7 +152,7 @@ export type CategoryYaml = z.infer<typeof CategorySchema>;
 // ============================================
 
 /**
- * Schema for prompt definitions in prompts.json files.
+ * Schema for prompt definitions (JSON-compatible, used by PromptDataSchema consumers).
  *
  * @example
  * ```json
@@ -203,35 +200,8 @@ export const PromptDataSchema = z
 
 export type PromptDataYaml = z.infer<typeof PromptDataSchema>;
 
-// ============================================
-// Prompts File Schema (prompts.json)
-// ============================================
-
-/**
- * Schema for category-level prompts.json files.
- */
-export const PromptsFileSchema = z.object({
-  /** Array of prompt definitions */
-  prompts: z.array(PromptDataSchema),
-});
-
-export type PromptsFileYaml = z.infer<typeof PromptsFileSchema>;
-
-// ============================================
-// Prompts Config Schema (promptsConfig.json)
-// ============================================
-
-/**
- * Schema for the main promptsConfig.json file.
- */
-export const PromptsConfigSchema = z.object({
-  /** Available categories for organizing prompts */
-  categories: z.array(CategorySchema),
-  /** Paths to prompts.json files to import */
-  imports: z.array(z.string()),
-});
-
-export type PromptsConfigYaml = z.infer<typeof PromptsConfigSchema>;
+// PromptsFileSchema and PromptsConfigSchema removed — JSON prompts.json format deprecated.
+// Use PromptYamlSchema for YAML directory-based prompt validation.
 
 // ============================================
 // YAML Directory Format Schema (Phase 2)
@@ -555,114 +525,7 @@ export function validatePromptSchema(
   return schemaValidationResult;
 }
 
-/**
- * Validate a prompts.json file against the schema.
- *
- * @param data - Raw JSON data to validate
- * @returns Validation result with errors and warnings
- */
-export function validatePromptsFile(data: unknown): {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
-  data?: PromptsFileYaml;
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  const result = PromptsFileSchema.safeParse(data);
-  if (!result.success) {
-    for (const issue of result.error.issues) {
-      const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
-      errors.push(`${path}${issue.message}`);
-    }
-    return { valid: false, errors, warnings };
-  }
-
-  // Validate each prompt individually for detailed warnings
-  for (const prompt of result.data.prompts) {
-    const promptResult = validatePromptSchema(prompt);
-    warnings.push(...promptResult.warnings.map((w) => `[${prompt.id}] ${w}`));
-  }
-
-  // Check for duplicate IDs
-  const ids = result.data.prompts.map((p) => p.id);
-  const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
-  if (duplicates.length > 0) {
-    errors.push(`Duplicate prompt IDs found: ${[...new Set(duplicates)].join(', ')}`);
-  }
-
-  const validationResult: {
-    valid: boolean;
-    errors: string[];
-    warnings: string[];
-    data?: PromptsFileYaml;
-  } = {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-
-  if (errors.length === 0) {
-    validationResult.data = result.data;
-  }
-
-  return validationResult;
-}
-
-/**
- * Validate a promptsConfig.json file against the schema.
- *
- * @param data - Raw JSON data to validate
- * @returns Validation result with errors and warnings
- */
-export function validatePromptsConfig(data: unknown): {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
-  data?: PromptsConfigYaml;
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  const result = PromptsConfigSchema.safeParse(data);
-  if (!result.success) {
-    for (const issue of result.error.issues) {
-      const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
-      errors.push(`${path}${issue.message}`);
-    }
-    return { valid: false, errors, warnings };
-  }
-
-  // Check for duplicate category IDs
-  const categoryIds = result.data.categories.map((c) => c.id);
-  const duplicates = categoryIds.filter((id, index) => categoryIds.indexOf(id) !== index);
-  if (duplicates.length > 0) {
-    errors.push(`Duplicate category IDs found: ${[...new Set(duplicates)].join(', ')}`);
-  }
-
-  // Warn about empty imports
-  if (result.data.imports.length === 0) {
-    warnings.push('No import paths defined - no prompts will be loaded');
-  }
-
-  const configValidationResult: {
-    valid: boolean;
-    errors: string[];
-    warnings: string[];
-    data?: PromptsConfigYaml;
-  } = {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-
-  if (errors.length === 0) {
-    configValidationResult.data = result.data;
-  }
-
-  return configValidationResult;
-}
+// validatePromptsFile and validatePromptsConfig removed — JSON prompts.json format deprecated.
 
 /**
  * Check if a value is a valid prompt definition.

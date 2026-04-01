@@ -1,6 +1,5 @@
 # Architecture Guide
 
-
 How a prompt goes from what you type to a structured, validated response — and where each piece plugs in.
 
 **Read this when** you want to understand the system internals: how requests flow, where validation and reasoning guidance get injected, and which files to look at when debugging or extending.
@@ -106,13 +105,13 @@ flowchart LR
 
 ### What Each Layer Does
 
-| Layer            | Components                    | Responsibility                                             |
-| ---------------- | ----------------------------- | ---------------------------------------------------------- |
-| **MCP Protocol** | 3 registered tools            | Receive MCP requests, validate schemas, return responses   |
-| **Routing**      | resource_manager router       | Routes CRUD operations to specialized managers             |
-| **Execution**    | Pipeline + 22 stages          | Transform request → parse → enhance → execute → format     |
-| **Service**      | Managers + registries         | Business logic for prompts, frameworks, gates, styles, sessions |
-| **Persistence**  | File system + SQLite           | Hot-reload sources (YAML/MD), runtime state (SQLite)       |
+| Layer            | Components              | Responsibility                                                  |
+| ---------------- | ----------------------- | --------------------------------------------------------------- |
+| **MCP Protocol** | 3 registered tools      | Receive MCP requests, validate schemas, return responses        |
+| **Routing**      | resource_manager router | Routes CRUD operations to specialized managers                  |
+| **Execution**    | Pipeline + 22 stages    | Transform request → parse → enhance → execute → format          |
+| **Service**      | Managers + registries   | Business logic for prompts, frameworks, gates, styles, sessions |
+| **Persistence**  | File system + SQLite    | Hot-reload sources (YAML/MD), runtime state (SQLite)            |
 
 ### Why The Pipeline Matters
 
@@ -132,14 +131,14 @@ This design means:
 
 ### Key Design Decisions
 
-| Decision                     | Rationale                                                |
-| ---------------------------- | -------------------------------------------------------- |
-| **3-Tool Architecture**      | Token economy: fewer tools = less context overhead       |
-| **resource_manager Routing** | Single entry point fans out to specialized managers      |
-| **SQLite State**             | WAL mode for concurrent access, single state.db file     |
-| **Optional Frameworks**      | Disabled by default for performance                      |
-| **Hot Reload**               | Prompt/gate/style changes without server restart         |
-| **Pipeline-First**           | Every request flows through the same staged pipeline     |
+| Decision                     | Rationale                                                       |
+| ---------------------------- | --------------------------------------------------------------- |
+| **3-Tool Architecture**      | Token economy: fewer tools = less context overhead              |
+| **resource_manager Routing** | Single entry point fans out to specialized managers             |
+| **SQLite State**             | WAL mode for concurrent access, single state.db file            |
+| **Optional Frameworks**      | Disabled by default for performance                             |
+| **Hot Reload**               | Prompt/gate/style changes without server restart                |
+| **Pipeline-First**           | Every request flows through the same staged pipeline            |
 | **Contracts as SSOT**        | Tool descriptions and Zod schemas generated from JSON contracts |
 
 ---
@@ -220,34 +219,34 @@ server/resources/               # Hot-reloaded resource definitions
 
 ### Common Tasks
 
-| Task                  | Where to Look                                                          |
-| --------------------- | ---------------------------------------------------------------------- |
-| Add new prompt        | `server/prompts/[category]/` - create `.md` + update `prompts.json`    |
-| Modify pipeline stage | `server/src/execution/pipeline/stages/`                                |
-| Add methodology       | `server/resources/methodologies/{id}/` - create YAML + MD files        |
-| Add/modify gate       | `server/resources/gates/{id}/` - create `gate.yaml` + `guidance.md`    |
-| Add/modify style      | `server/resources/styles/{id}/` - create `style.yaml` + `guidance.md`  |
-| Debug session issues  | `server/src/chain-session/` + `runtime-state/state.db`              |
-| Update configuration  | `server/config.json`                                                |
-| Modify tool schemas   | `server/tooling/contracts/*.json` then `npm run generate:contracts` |
+| Task                  | Where to Look                                                         |
+| --------------------- | --------------------------------------------------------------------- |
+| Add new prompt        | `server/prompts/[category]/` - create `.md` + update `prompts.json`   |
+| Modify pipeline stage | `server/src/execution/pipeline/stages/`                               |
+| Add methodology       | `server/resources/methodologies/{id}/` - create YAML + MD files       |
+| Add/modify gate       | `server/resources/gates/{id}/` - create `gate.yaml` + `guidance.md`   |
+| Add/modify style      | `server/resources/styles/{id}/` - create `style.yaml` + `guidance.md` |
+| Debug session issues  | `server/src/chain-session/` + `runtime-state/state.db`                |
+| Update configuration  | `server/config.json`                                                  |
+| Modify tool schemas   | `server/tooling/contracts/*.json` then `npm run generate:contracts`   |
 
 ### Entry Points
 
-| File                                                  | Purpose                     |
-| ----------------------------------------------------- | --------------------------- |
-| `src/index.ts`                                        | Server startup              |
-| `src/mcp-tools/index.ts`                              | Tool registration           |
-| `src/mcp-tools/prompt-engine/core/prompt-executor.ts` | Prompt engine orchestration |
-| `src/mcp-tools/prompt-engine/core/pipeline-builder.ts`| Pipeline construction (22 stages) |
-| `src/execution/pipeline/prompt-execution-pipeline.ts` | Pipeline stage execution    |
-| `src/mcp-tools/system-control/core/system-control.ts` | System control routing      |
-| `src/prompts/registry.ts`                             | Prompt management           |
-| `src/frameworks/framework-manager.ts`                 | Framework logic             |
-| `src/gates/gate-manager.ts`                           | Gate orchestration          |
-| `src/gates/registry/gate-registry.ts`                 | Gate lifecycle management   |
-| `src/styles/style-manager.ts`                         | Style orchestration         |
-| `src/tracking/resource-change-tracker.ts`             | Change audit logging        |
-| `src/database/sqlite-engine.ts`                       | SQLite persistence layer    |
+| File                                                   | Purpose                           |
+| ------------------------------------------------------ | --------------------------------- |
+| `src/index.ts`                                         | Server startup                    |
+| `src/mcp-tools/index.ts`                               | Tool registration                 |
+| `src/mcp-tools/prompt-engine/core/prompt-executor.ts`  | Prompt engine orchestration       |
+| `src/mcp-tools/prompt-engine/core/pipeline-builder.ts` | Pipeline construction (22 stages) |
+| `src/execution/pipeline/prompt-execution-pipeline.ts`  | Pipeline stage execution          |
+| `src/mcp-tools/system-control/core/system-control.ts`  | System control routing            |
+| `src/prompts/registry.ts`                              | Prompt management                 |
+| `src/frameworks/framework-manager.ts`                  | Framework logic                   |
+| `src/gates/gate-manager.ts`                            | Gate orchestration                |
+| `src/gates/registry/gate-registry.ts`                  | Gate lifecycle management         |
+| `src/styles/style-manager.ts`                          | Style orchestration               |
+| `src/tracking/resource-change-tracker.ts`              | Change audit logging              |
+| `src/database/sqlite-engine.ts`                        | SQLite persistence layer          |
 
 ---
 
@@ -319,10 +318,10 @@ User Input → ScriptExecution → ScriptAutoExecute → Template Context
                                    Call MCP tool
 ```
 
-| Stage | Trigger | Output |
-|-------|---------|--------|
-| **ScriptExecution** | User args match tool's `schema.json` | Script result → `{{tool_<id>}}` |
-| **ScriptAutoExecute** | Script returns `auto_execute` block | MCP tool response → `{{tool_<id>_result}}` |
+| Stage                 | Trigger                              | Output                                     |
+| --------------------- | ------------------------------------ | ------------------------------------------ |
+| **ScriptExecution**   | User args match tool's `schema.json` | Script result → `{{tool_<id>}}`            |
+| **ScriptAutoExecute** | Script returns `auto_execute` block  | MCP tool response → `{{tool_<id>_result}}` |
 
 **Use case**: Meta-prompts like `>>create_gate` that validate input and auto-create resources.
 
@@ -371,11 +370,11 @@ The server exposes **3 MCP tools** to clients but internally uses **5 specialize
 
 ### Tool Responsibilities
 
-| Tool | Purpose | Internal Target |
-|------|---------|-----------------|
-| `prompt_engine` | Execute prompts and chains | PromptExecutor → PipelineBuilder → PromptExecutionPipeline |
-| `resource_manager` | CRUD for prompts, gates, methodologies | Router → Handler → Processors (lifecycle/discovery/versioning per resource type) |
-| `system_control` | System status, framework switching, analytics | SystemControl router → 10 specialized action handlers |
+| Tool               | Purpose                                       | Internal Target                                                                  |
+| ------------------ | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| `prompt_engine`    | Execute prompts and chains                    | PromptExecutor → PipelineBuilder → PromptExecutionPipeline                       |
+| `resource_manager` | CRUD for prompts, gates, methodologies        | Router → Handler → Processors (lifecycle/discovery/versioning per resource type) |
+| `system_control`   | System status, framework switching, analytics | SystemControl router → 10 specialized action handlers                            |
 
 ### Why This Design?
 
@@ -413,9 +412,9 @@ In addition to tools, the server exposes **MCP Resources** for token-efficient r
 
 **Resource Categories**:
 
-| Category | Resources | Purpose |
-|----------|-----------|---------|
-| Content | `prompt/`, `gate/`, `methodology/` | Discover and inspect templates/configs |
+| Category      | Resources                                          | Purpose                                                     |
+| ------------- | -------------------------------------------------- | ----------------------------------------------------------- |
+| Content       | `prompt/`, `gate/`, `methodology/`                 | Discover and inspect templates/configs                      |
 | Observability | `session/`, `metrics/pipeline`, `telemetry/status` | Monitor active chains, system health, and telemetry runtime |
 
 **Token Efficiency**: Resources are 4-30x more efficient than tool-based operations. Metrics reduced from ~15KB (raw samples) to ~500 bytes (lean aggregates).
@@ -486,11 +485,11 @@ context.diagnostics.info(this.name, "Gate enhancement complete", {
 
 Assertions (structural, deterministic) and LLM quality gates (subjective) check orthogonal dimensions. When both are active, their results compose rather than compete:
 
-| Gate Type | Stage | Checks | Nature |
-|-----------|-------|--------|--------|
-| Assertion gates (`__assertion_structural__`) | 09b | Structure — are required sections present, minimum length met? | Deterministic |
-| Shell verification (`:: verify:`) | 08b | Command output — does shell command pass? | Deterministic |
-| LLM quality gates | 08 | Content quality — depth of analysis, actionability? | Subjective |
+| Gate Type                                    | Stage | Checks                                                         | Nature        |
+| -------------------------------------------- | ----- | -------------------------------------------------------------- | ------------- |
+| Assertion gates (`__assertion_structural__`) | 09b   | Structure — are required sections present, minimum length met? | Deterministic |
+| Shell verification (`:: verify:`)            | 08b   | Command output — does shell command pass?                      | Deterministic |
+| LLM quality gates                            | 08    | Content quality — depth of analysis, actionability?            | Subjective    |
 
 **Composition contract**: When Stage 09b assertions pass and a pending LLM gate review exists, the assertion results are **merged into** the gate review prompt as pre-validated structural context. The LLM reviewer sees "Structure: PASS (N/N phases)" and focuses on content quality. The gate review is retained — not cleared.
 
@@ -510,26 +509,26 @@ Pipeline stages are thin orchestrators (~60-210 lines). Domain logic lives in se
 
 ### Gate Domain (`engine/gates/`)
 
-| Service | Location | Purpose | Stage |
-|---------|----------|---------|-------|
-| `GateEnhancementService` | `gates/services/` | Gate selection, methodology coordination, prompt enhancement | 05 GateEnhancement |
-| `TemporaryGateRegistrar` | `gates/services/` | Inline/temp gate normalization and registration | 05 GateEnhancement |
-| `GateMetricsRecorder` | `gates/services/` | Gate usage analytics | 05 GateEnhancement |
-| `GateVerdictProcessor` | `gates/services/` | Verdict parsing, gate action handling, deferred verdicts | 08 ResponseCapture |
-| `InlineGateProcessor` | `gates/services/` | `::` criteria parsing, shell-verify extraction, temp gate creation | 02 InlineGate |
-| `GateShellVerifyRunner` | `gates/services/` | Shell command execution for `:: verify:` gates | 08b ShellVerification |
-| `JudgeResourceCollector` | `gates/judge/` | Collect styles/frameworks/gates for judge selection | 06a JudgeSelection |
-| `JudgeMenuFormatter` | `gates/judge/` | Format resource menus for two-phase judge flow | 06a JudgeSelection |
+| Service                  | Location          | Purpose                                                            | Stage                 |
+| ------------------------ | ----------------- | ------------------------------------------------------------------ | --------------------- |
+| `GateEnhancementService` | `gates/services/` | Gate selection, methodology coordination, prompt enhancement       | 05 GateEnhancement    |
+| `TemporaryGateRegistrar` | `gates/services/` | Inline/temp gate normalization and registration                    | 05 GateEnhancement    |
+| `GateMetricsRecorder`    | `gates/services/` | Gate usage analytics                                               | 05 GateEnhancement    |
+| `GateVerdictProcessor`   | `gates/services/` | Verdict parsing, gate action handling, deferred verdicts           | 08 ResponseCapture    |
+| `InlineGateProcessor`    | `gates/services/` | `::` criteria parsing, shell-verify extraction, temp gate creation | 02 InlineGate         |
+| `GateShellVerifyRunner`  | `gates/services/` | Shell command execution for `:: verify:` gates                     | 08b ShellVerification |
+| `JudgeResourceCollector` | `gates/judge/`    | Collect styles/frameworks/gates for judge selection                | 06a JudgeSelection    |
+| `JudgeMenuFormatter`     | `gates/judge/`    | Format resource menus for two-phase judge flow                     | 06a JudgeSelection    |
 
 ### Execution Domain (`engine/execution/`)
 
-| Service | Location | Purpose | Stage |
-|---------|----------|---------|-------|
-| `ChainBlueprintResolver` | `execution/parsers/` | Restore chain session blueprints for response-only mode | 01 CommandParsing |
-| `SymbolicCommandBuilder` | `execution/parsers/` | Build ParsedCommand from symbolic operator parse results | 01 CommandParsing |
-| `StepCaptureService` | `execution/capture/` | Step result capture, placeholder generation | 08 ResponseCapture |
-| `ResponseAssembler` | `execution/formatting/` | Response formatting, chain footer building, usage CTA, gate validation info | 10 ResponseFormatting |
-| `ChainOperatorExecutor` | `execution/operators/` | Chain step rendering, delegation CTA building | 09 StepExecution |
+| Service                  | Location                | Purpose                                                                     | Stage                 |
+| ------------------------ | ----------------------- | --------------------------------------------------------------------------- | --------------------- |
+| `ChainBlueprintResolver` | `execution/parsers/`    | Restore chain session blueprints for response-only mode                     | 01 CommandParsing     |
+| `SymbolicCommandBuilder` | `execution/parsers/`    | Build ParsedCommand from symbolic operator parse results                    | 01 CommandParsing     |
+| `StepCaptureService`     | `execution/capture/`    | Step result capture, placeholder generation                                 | 08 ResponseCapture    |
+| `ResponseAssembler`      | `execution/formatting/` | Response formatting, chain footer building, usage CTA, gate validation info | 10 ResponseFormatting |
+| `ChainOperatorExecutor`  | `execution/operators/`  | Chain step rendering, delegation CTA building                               | 09 StepExecution      |
 
 ### See Also
 
@@ -581,16 +580,16 @@ const review = chainSessionManager.getPendingGateReview(sessionId);
 
 Survives server restarts. All state persisted in `runtime-state/state.db` (SQLite via `node:sqlite`).
 
-| State               | Store                    | SQLite Table              |
-| ------------------- | ------------------------ | ------------------------- |
-| Framework selection | `FrameworkStateStore`    | `framework_state`         |
-| Gate system enabled | `GateStateStore`         | `gate_system_state`       |
-| Chain sessions      | `ChainSessionStore`      | `chain_sessions`          |
-| Chain run tracking  | `ChainRunRegistry`       | `chain_run_registry`      |
-| Argument history    | `ArgumentHistoryTracker` | `argument_history`        |
-| Resource index      | `ResourceIndexer`        | `resource_index`          |
-| Resource hashes     | `ResourceIndexer`        | `resource_hash_cache`     |
-| Resource changes    | `ResourceChangeTracker`  | `resource_changes`        |
+| State               | Store                    | SQLite Table          |
+| ------------------- | ------------------------ | --------------------- |
+| Framework selection | `FrameworkStateStore`    | `framework_state`     |
+| Gate system enabled | `GateStateStore`         | `gate_system_state`   |
+| Chain sessions      | `ChainSessionStore`      | `chain_sessions`      |
+| Chain run tracking  | `ChainRunRegistry`       | `chain_run_registry`  |
+| Argument history    | `ArgumentHistoryTracker` | `argument_history`    |
+| Resource index      | `ResourceIndexer`        | `resource_index`      |
+| Resource hashes     | `ResourceIndexer`        | `resource_hash_cache` |
+| Resource changes    | `ResourceChangeTracker`  | `resource_changes`    |
 
 ### State Flow Diagram
 
@@ -626,6 +625,57 @@ const fromSession = chainSessionManager.getPendingGateReview(sessionId); // Pers
 // CORRECT: Single source of truth
 const isExceeded = chainSessionManager.isRetryLimitExceeded(sessionId); // Always persistent
 ```
+
+---
+
+## Write-Path Coherence
+
+Resources (prompts, gates, methodologies, styles) can be written by multiple systems. This section documents how writes from different sources converge to a consistent state.
+
+### Write Paths
+
+| Writer                      | Resources                          | Transactional                 | Validated       | Versioned      |
+| --------------------------- | ---------------------------------- | ----------------------------- | --------------- | -------------- |
+| `resource_manager` MCP tool | Prompts, gates, methodologies      | `ResourceMutationTransaction` | Schema-verified | Auto-versioned |
+| HTTP API (`api.ts`)         | Categories (directory creation)    | No                            | No              | No             |
+| CLI (`cli-shared/`)         | All types (scaffold, rename, move) | Rollback on failure           | Schema-verified | No             |
+
+### Coherence Model
+
+All writers persist resources as YAML files on disk. The server detects changes through the `FileObserver`, which watches all resource directories:
+
+```
+Writer (MCP tool / CLI / HTTP API)
+  |
+  v
+YAML files written to disk
+  |
+  v
+FileObserver detects change (~500ms debounce)
+  |
+  v
+HotReloadObserver triggers fullServerRefresh()
+  |
+  v
+ResourceIndexer.syncAll() updates SQLite index
+PromptAssetManager reloads prompt cache
+MCP notification sent to clients
+```
+
+### Watched Directories
+
+| Resource      | Directory Source                           | Registration                                         |
+| ------------- | ------------------------------------------ | ---------------------------------------------------- |
+| Prompts       | `getPromptsDirectory()` + category subdirs | `buildWatchTargets()` in `prompt-watch-setup.ts`     |
+| Gates         | `getGatesDirectory()`                      | `createGateHotReloadRegistration()` auxiliary reload |
+| Methodologies | `runtimeLoader.getMethodologiesDir()`      | `methodology-hot-reload.ts` auxiliary reload         |
+| Styles        | `loader.getStylesDir()`                    | `style-hot-reload.ts` auxiliary reload               |
+
+### Limitations
+
+- **Debounce delay**: FileObserver uses ~500ms debounce, so rapid successive writes may batch into a single reload event.
+- **No write coordination**: If the MCP tool and CLI write the same resource simultaneously, the last write wins. This is acceptable because concurrent writes to the same resource are not an expected usage pattern.
+- **CLI writes are invisible until detected**: After a CLI write, the MCP server sees stale state until the FileObserver fires. Next MCP tool call after the debounce window will see updated state.
 
 ---
 
@@ -685,11 +735,11 @@ graph TB
 
 ### Injection Types
 
-| Type | Injects | Default Frequency (Chains) |
-|------|---------|---------------------------|
-| `system-prompt` | Framework methodology (CAGEERF phases, ReACT loop) | Every 2 steps |
-| `gate-guidance` | Quality validation criteria | Every step |
-| `style-guidance` | Response formatting hints | First step only |
+| Type             | Injects                                            | Default Frequency (Chains) |
+| ---------------- | -------------------------------------------------- | -------------------------- |
+| `system-prompt`  | Framework methodology (CAGEERF phases, ReACT loop) | Every 2 steps              |
+| `gate-guidance`  | Quality validation criteria                        | Every step                 |
+| `style-guidance` | Response formatting hints                          | First step only            |
 
 ### Resolution Hierarchy
 
@@ -702,6 +752,7 @@ Modifier → Runtime Override → Step Config → Chain Config → Category Conf
 ```
 
 **Key internals**:
+
 - `HierarchyResolver` walks the config tree for each injection type
 - `ConditionEvaluator` handles conditional rules (gate status, step position)
 - Decisions are cached per-request in `InjectionDecisionService`
@@ -724,13 +775,14 @@ Four-phase startup:
 
 ### Transports (`src/server/transport/`)
 
-| Transport           | Protocol                       | Use Case                     | Status          |
-| ------------------- | ------------------------------ | ---------------------------- | --------------- |
-| STDIO               | Line-based JSON                | Claude Desktop, Claude Code  | Active          |
-| Streamable HTTP     | HTTP POST/GET with SSE streams | Web dashboards, remote APIs  | **Recommended** |
-| SSE                 | HTTP Server-Sent Events        | Legacy integrations          | Deprecated      |
+| Transport       | Protocol                       | Use Case                    | Status          |
+| --------------- | ------------------------------ | --------------------------- | --------------- |
+| STDIO           | Line-based JSON                | Claude Desktop, Claude Code | Active          |
+| Streamable HTTP | HTTP POST/GET with SSE streams | Web dashboards, remote APIs | **Recommended** |
+| SSE             | HTTP Server-Sent Events        | Legacy integrations         | Deprecated      |
 
 **Streamable HTTP** (`--transport=streamable-http`):
+
 - One endpoint (`/mcp`) handles POST, GET, DELETE—no separate message paths
 - Sessions tracked via `mcp-session-id` header
 - Use this for web clients and remote APIs. SSE is deprecated.
@@ -833,11 +885,11 @@ See [MCP Contract Standards](../../.claude/rules/mcp-contracts.md) for maintenan
 
 ## Where to Go Next
 
-| Topic                      | Guide                                               |
-| -------------------------- | --------------------------------------------------- |
-| MCP command syntax         | [MCP Tooling Guide](../reference/mcp-tools.md)      |
-| Quality gates & validation | [Gates](../guides/gates.md)                         |
-| Multi-step workflows       | [Chains](../guides/chains.md)                       |
+| Topic                      | Guide                                                         |
+| -------------------------- | ------------------------------------------------------------- |
+| MCP command syntax         | [MCP Tooling Guide](../reference/mcp-tools.md)                |
+| Quality gates & validation | [Gates](../guides/gates.md)                                   |
+| Multi-step workflows       | [Chains](../guides/chains.md)                                 |
 | Prompt templates           | [Prompt Authoring Guide](../guides/prompt-authoring-guide.md) |
-| Common issues              | [Troubleshooting](../guides/troubleshooting.md)     |
-| Design decisions           | [Design Decisions](../portfolio/design-decisions.md) |
+| Common issues              | [Troubleshooting](../guides/troubleshooting.md)               |
+| Design decisions           | [Design Decisions](../portfolio/design-decisions.md)          |

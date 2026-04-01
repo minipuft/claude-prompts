@@ -193,7 +193,7 @@ export class PromptResourceHandler implements PromptResourceHandlerPort {
       ) {
         const operation =
           action === 'create' ? 'added' : action === 'delete' ? 'removed' : 'modified';
-        const promptsDir = this.dependencies.configManager.getResolvedPromptsFilePath();
+        const promptsDir = this.dependencies.configManager.getResolvedPromptsDirectory();
         const category = (args['category'] as string | undefined) ?? 'general';
         const filePath = `${promptsDir}/${category.toLowerCase().replace(/\s+/g, '-')}/${resourceId}/prompt.yaml`;
         void logMcpToolChange(this.logger, {

@@ -7,13 +7,14 @@
  */
 
 import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'path';
 
 import {
-  performTransactionalFileOperations,
-  safeWriteFile,
-} from '../../../../shared/utils/file-transactions.js';
+  ResourceMutationTransaction,
+  ResourceVerificationService,
+} from '../../../../modules/resources/services/index.js';
+import { safeWriteFile } from '../../../../shared/utils/file-transactions.js';
 import { loadYamlFile } from '../../../../shared/utils/yaml/yaml-file-loader.js';
 import { serializeYaml } from '../../../../shared/utils/yaml/yaml-parser.js';
 
@@ -27,6 +28,8 @@ import type { MethodologyCreationData } from '../core/types.js';
 export interface MethodologyFileWriterDependencies {
   logger: Logger;
   configManager: ConfigManager;
+  resourceVerificationService?: ResourceVerificationService;
+  resourceMutationTransaction?: ResourceMutationTransaction;
 }
 
 export interface ExistingMethodologyData {
@@ -53,10 +56,16 @@ export interface MethodologyFileResult {
 export class MethodologyFileWriter {
   private logger: Logger;
   private configManager: ConfigManager;
+  private readonly verificationService: ResourceVerificationService;
+  private readonly mutationTransaction: ResourceMutationTransaction;
 
   constructor(deps: MethodologyFileWriterDependencies) {
     this.logger = deps.logger;
     this.configManager = deps.configManager;
+    this.verificationService =
+      deps.resourceVerificationService ?? new ResourceVerificationService();
+    this.mutationTransaction =
+      deps.resourceMutationTransaction ?? new ResourceMutationTransaction();
   }
 
   // ==========================================================================
@@ -299,105 +308,82 @@ export class MethodologyFileWriter {
     existingData?: ExistingMethodologyData | null
   ): Promise<MethodologyFileResult> {
     const methodologyDir = this.getMethodologyDir(data.id);
-    const paths: string[] = [];
-    const operations: Array<() => Promise<void>> = [];
-    const rollbacks: Array<() => Promise<void>> = [];
+    const methodologyYamlPath = join(methodologyDir, 'methodology.yaml');
 
-    try {
-      // Ensure directory exists
-      await mkdir(methodologyDir, { recursive: true });
-      paths.push(methodologyDir);
+    const txResult = await this.mutationTransaction.run({
+      targets: [{ path: methodologyDir, kind: 'directory' }],
+      mutate: async () => {
+        const paths: string[] = [];
 
-      // Build and merge methodology.yaml
-      const newMethodologyData = this.buildMethodologyYamlData(data);
-      const finalMethodologyData =
-        existingData !== undefined && existingData !== null
-          ? this.deepMerge(existingData.methodology, newMethodologyData)
-          : newMethodologyData;
+        await mkdir(methodologyDir, { recursive: true });
+        paths.push(methodologyDir);
 
-      const methodologyPath = join(methodologyDir, 'methodology.yaml');
-      const methodologyContent = serializeYaml(finalMethodologyData, { sortKeys: false });
-      const originalMethodologyContent =
-        existingData !== undefined && existingData !== null
-          ? serializeYaml(existingData.methodology, { sortKeys: false })
-          : null;
+        // Build and merge methodology.yaml
+        const newMethodologyData = this.buildMethodologyYamlData(data);
+        const finalMethodologyData =
+          existingData !== undefined && existingData !== null
+            ? this.deepMerge(existingData.methodology, newMethodologyData)
+            : newMethodologyData;
 
-      operations.push(() => safeWriteFile(methodologyPath, methodologyContent));
-      rollbacks.push(async () => {
-        if (originalMethodologyContent !== null) {
-          await writeFile(methodologyPath, originalMethodologyContent, 'utf8');
-        }
-      });
-      paths.push(methodologyPath);
+        const methodologyContent = serializeYaml(finalMethodologyData, { sortKeys: false });
+        await safeWriteFile(methodologyYamlPath, methodologyContent);
+        paths.push(methodologyYamlPath);
 
-      // Handle phases.yaml
-      const existingPhases = existingData?.phases ?? null;
-      const needsPhasesFile = this.needsPhasesFile(data) || existingPhases !== null;
-      if (needsPhasesFile) {
-        const newPhasesData = this.buildPhasesYamlData(data);
-        const hasNewPhasesData = Object.keys(newPhasesData).length > 0;
-        const finalPhasesData =
-          existingPhases !== null && hasNewPhasesData
-            ? this.deepMerge(existingPhases, newPhasesData)
-            : (existingPhases ?? newPhasesData);
+        // Handle phases.yaml
+        const existingPhases = existingData?.phases ?? null;
+        const needsPhasesFile = this.needsPhasesFile(data) || existingPhases !== null;
+        if (needsPhasesFile) {
+          const newPhasesData = this.buildPhasesYamlData(data);
+          const hasNewPhasesData = Object.keys(newPhasesData).length > 0;
+          const finalPhasesData =
+            existingPhases !== null && hasNewPhasesData
+              ? this.deepMerge(existingPhases, newPhasesData)
+              : (existingPhases ?? newPhasesData);
 
-        if (Object.keys(finalPhasesData).length > 0) {
-          const phasesPath = join(methodologyDir, 'phases.yaml');
-          const phasesContent = serializeYaml(finalPhasesData, { sortKeys: false });
-          const originalPhasesContent =
-            existingPhases !== null ? serializeYaml(existingPhases, { sortKeys: false }) : null;
-
-          operations.push(() => safeWriteFile(phasesPath, phasesContent));
-          rollbacks.push(async () => {
-            if (originalPhasesContent !== null) {
-              await writeFile(phasesPath, originalPhasesContent, 'utf8');
-            }
-          });
-          paths.push(phasesPath);
-        }
-      }
-
-      // Handle system-prompt.md
-      const systemPromptPath = join(methodologyDir, 'system-prompt.md');
-      const existingSystemPrompt = existingData?.systemPrompt ?? '';
-      const systemPromptContent = data.system_prompt_guidance ?? existingSystemPrompt;
-      if (systemPromptContent !== '') {
-        operations.push(() => safeWriteFile(systemPromptPath, systemPromptContent));
-        rollbacks.push(async () => {
-          if (existingSystemPrompt !== '') {
-            await writeFile(systemPromptPath, existingSystemPrompt, 'utf8');
+          if (Object.keys(finalPhasesData).length > 0) {
+            const phasesPath = join(methodologyDir, 'phases.yaml');
+            const phasesContent = serializeYaml(finalPhasesData, { sortKeys: false });
+            await safeWriteFile(phasesPath, phasesContent);
+            paths.push(phasesPath);
           }
-        });
-        paths.push(systemPromptPath);
-      }
-
-      // Handle judge-prompt.md
-      const existingJudgePrompt = existingData?.judgePrompt ?? null;
-      const hasJudgePrompt = data.judge_prompt !== undefined || existingJudgePrompt !== null;
-      if (hasJudgePrompt) {
-        const judgePromptPath = join(methodologyDir, 'judge-prompt.md');
-        const judgePromptContent = data.judge_prompt ?? existingJudgePrompt ?? '';
-        if (judgePromptContent !== '') {
-          operations.push(() => safeWriteFile(judgePromptPath, judgePromptContent));
-          rollbacks.push(async () => {
-            if (existingJudgePrompt !== null) {
-              await writeFile(judgePromptPath, existingJudgePrompt, 'utf8');
-            }
-          });
-          paths.push(judgePromptPath);
         }
-      }
 
-      // Execute all operations transactionally
-      await performTransactionalFileOperations(operations, rollbacks);
+        // Handle system-prompt.md
+        const systemPromptPath = join(methodologyDir, 'system-prompt.md');
+        const systemPromptContent = data.system_prompt_guidance ?? existingData?.systemPrompt ?? '';
+        if (systemPromptContent !== '') {
+          await safeWriteFile(systemPromptPath, systemPromptContent);
+          paths.push(systemPromptPath);
+        }
 
-      return { success: true, paths };
-    } catch (error) {
+        // Handle judge-prompt.md
+        const existingJudgePrompt = existingData?.judgePrompt ?? null;
+        const hasJudgePrompt = data.judge_prompt !== undefined || existingJudgePrompt !== null;
+        if (hasJudgePrompt) {
+          const judgePromptPath = join(methodologyDir, 'judge-prompt.md');
+          const judgePromptContent = data.judge_prompt ?? existingJudgePrompt ?? '';
+          if (judgePromptContent !== '') {
+            await safeWriteFile(judgePromptPath, judgePromptContent);
+            paths.push(judgePromptPath);
+          }
+        }
+
+        return { paths };
+      },
+      validate: () =>
+        this.verificationService.validateFile('methodologies', data.id, methodologyYamlPath),
+    });
+
+    if (!txResult.success) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: txResult.rolledBack
+          ? `Methodology write failed and was rolled back: ${txResult.error}`
+          : `Methodology write failed: ${txResult.error}`,
       };
     }
+
+    return { success: true, paths: txResult.result?.paths ?? [] };
   }
 
   // ==========================================================================

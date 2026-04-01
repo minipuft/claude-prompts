@@ -77,7 +77,7 @@ export async function compareResourceBaseline(
 
   try {
     // Get prompts directory
-    const promptsPath = configManager.getResolvedPromptsFilePath();
+    const promptsPath = configManager.getResolvedPromptsDirectory();
     const fs = await import('node:fs');
     const fsPromises = await import('node:fs/promises');
 
@@ -183,7 +183,7 @@ export function buildResourceChangeTrackerAuxiliaryReloadConfig(
   // Get directories to watch
   const directories: string[] = [];
 
-  const promptsPath = configManager.getResolvedPromptsFilePath();
+  const promptsPath = configManager.getResolvedPromptsDirectory();
   if (promptsPath !== '') {
     directories.push(promptsPath);
   }

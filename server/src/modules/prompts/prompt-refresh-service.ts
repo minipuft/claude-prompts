@@ -20,7 +20,7 @@ export interface PromptReloadResult {
   promptsData: PromptData[];
   categories: Category[];
   convertedPrompts: ConvertedPrompt[];
-  promptsFilePath: string;
+  promptsDirectory: string;
 }
 
 interface PromptReloadOptions {
@@ -35,15 +35,13 @@ interface PromptReloadOptions {
  * MCP tools, API caches) so every transport observes the same prompt metadata.
  */
 export async function reloadPromptData(options: PromptReloadOptions): Promise<PromptReloadResult> {
-  const promptsFilePath = options.configManager.getResolvedPromptsFilePath(
-    options.promptsFileOverride
-  );
+  const promptsDir = options.configManager.getResolvedPromptsDirectory(options.promptsFileOverride);
 
   // Clear loader cache to ensure fresh content is read from disk
   // (fixes hot-reload not picking up direct file edits)
   options.promptManager.clearLoaderCache();
 
-  const result = await options.promptManager.loadAndConvertPrompts(promptsFilePath);
+  const result = await options.promptManager.loadAndConvertPrompts(promptsDir);
 
   if (options.mcpToolsManager) {
     options.mcpToolsManager.updateData(
@@ -55,6 +53,6 @@ export async function reloadPromptData(options: PromptReloadOptions): Promise<Pr
 
   return {
     ...result,
-    promptsFilePath,
+    promptsDirectory: promptsDir,
   };
 }

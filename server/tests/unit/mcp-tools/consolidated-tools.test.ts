@@ -56,8 +56,8 @@ describe('Consolidated MCP tool factories', () => {
           definitionsDirectory: 'gates',
         },
       }),
-      getPromptsFilePath: () => '/test/prompts.json',
       getPromptsDirectory: () => '/test/prompts',
+      getResolvedPromptsDirectory: () => '/test/prompts',
       getFrameworksConfig: () => ({
         enableSystemPromptInjection: false,
         enableMethodologyGates: false,

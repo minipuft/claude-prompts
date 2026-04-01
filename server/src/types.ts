@@ -42,10 +42,4 @@ export type { GatesConfig } from './shared/types/core-config.js';
 export type { PromptArgument } from './shared/types/index.js';
 
 // Re-export prompt types from modules/prompts
-export type {
-  Category,
-  PromptData,
-  PromptsFile,
-  PromptFile,
-  PromptsConfigFile,
-} from './modules/prompts/types.js';
+export type { Category, PromptData, PromptFile } from './modules/prompts/types.js';

@@ -48,25 +48,7 @@ export interface PromptFile {
   userMessageTemplate: string;
 }
 
-/**
- * Structure of the prompts registry file
- */
-export interface PromptsFile {
-  /** Available categories for organizing prompts */
-  categories: Category[];
-  /** Available prompts */
-  prompts: PromptData[];
-}
-
-/**
- * Configuration for the prompts subsystem with category imports
- */
-export interface PromptsConfigFile {
-  /** Available categories for organizing prompts */
-  categories: Category[];
-  /** Paths to prompts.json files to import from category folders */
-  imports: string[];
-}
+// PromptsFile and PromptsConfigFile removed — JSON prompts.json format deprecated.
 
 // PromptsConfig definition moved to shared/types/core-config.ts (canonical source).
 // Re-export for backward compatibility.

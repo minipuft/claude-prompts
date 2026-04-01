@@ -55,10 +55,8 @@ export interface ConfigManager {
 
   getPort(): number;
   getConfigPath(): string;
-  /** @deprecated Use getPromptsDirectory() for YAML-based prompt discovery */
-  getPromptsFilePath(): string;
   getPromptsDirectory(): string;
-  getResolvedPromptsFilePath(overridePath?: string): string;
+  getResolvedPromptsDirectory(overridePath?: string): string;
   getServerRoot(): string;
   getGatesDirectory(): string;
 

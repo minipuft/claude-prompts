@@ -662,7 +662,7 @@ async function main(): Promise<void> {
         try {
           const tempConfigManager = new ConfigLoader(configPath);
           await tempConfigManager.loadConfig();
-          const promptsConfigPath = tempConfigManager.getPromptsFilePath();
+          const promptsConfigPath = tempConfigManager.getPromptsDirectory();
           debugLog(`DEBUG: Prompts config path: ${promptsConfigPath}`);
           debugLog(`DEBUG: Prompts config exists: ${fs.existsSync(promptsConfigPath)}`);
         } catch (tempError) {

@@ -468,17 +468,7 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
   }
 
   /**
-   * Get prompts directory path relative to config directory
-   * @deprecated Use getPromptsDirectory() for YAML-based prompt discovery
-   */
-  getPromptsFilePath(): string {
-    const configDir = path.dirname(this.configPath);
-    return path.join(configDir, this.config.prompts.directory);
-  }
-
-  /**
    * Get prompts directory path (for YAML-based prompt discovery)
-   * Resolves the prompts directory from config
    */
   getPromptsDirectory(): string {
     const configDir = path.dirname(this.configPath);
@@ -495,11 +485,11 @@ export class ConfigLoader extends EventEmitter implements ConfigManager {
    * Note: PathResolver is the preferred source of truth for path resolution.
    * This method exists for backward compatibility and simple use cases.
    */
-  getResolvedPromptsFilePath(overridePath?: string): string {
+  getResolvedPromptsDirectory(overridePath?: string): string {
     const baseDir = path.dirname(this.configPath);
 
     // Priority: overridePath > config
-    let resolvedPath = overridePath ?? this.getPromptsFilePath();
+    let resolvedPath = overridePath ?? this.getPromptsDirectory();
 
     if (!path.isAbsolute(resolvedPath)) {
       resolvedPath = path.resolve(baseDir, resolvedPath);

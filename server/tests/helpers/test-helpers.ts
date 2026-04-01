@@ -191,8 +191,8 @@ export class MockConfigManager {
     };
   }
 
-  getPromptsFilePath() {
-    return '/test/prompts.json';
+  getResolvedPromptsDirectory(overridePath?: string) {
+    return overridePath ?? '/test/prompts';
   }
 
   getFrameworksConfig() {

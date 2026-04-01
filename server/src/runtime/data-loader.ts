@@ -45,7 +45,7 @@ export interface PromptDataLoadResult {
   promptsData: PromptData[];
   categories: Category[];
   convertedPrompts: ConvertedPrompt[];
-  promptsFilePath: string;
+  promptsDirectory: string;
 }
 
 export async function loadPromptData(params: PromptDataLoadParams): Promise<PromptDataLoadResult> {
@@ -53,7 +53,7 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
   const isVerbose = runtimeOptions.verbose;
   const isQuiet = runtimeOptions.quiet;
 
-  // Resolve prompts path (directory or file)
+  // Resolve prompts directory path
   // Priority: PathResolver > ConfigManager.getPromptsDirectory()
   const config = configManager.getConfig();
   let promptsPath = pathResolver
@@ -156,7 +156,7 @@ export async function loadPromptData(params: PromptDataLoadParams): Promise<Prom
     promptsData,
     categories,
     convertedPrompts,
-    promptsFilePath: promptsPath,
+    promptsDirectory: promptsPath,
   };
 }
 

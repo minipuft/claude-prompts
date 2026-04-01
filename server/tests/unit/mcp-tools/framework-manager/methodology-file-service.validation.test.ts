@@ -29,19 +29,36 @@ describe('MethodologyFileWriter canonical writes', () => {
     rmSync(workspaceDir, { recursive: true, force: true });
   });
 
-  it('writes id-only methodology payloads with defaults', async () => {
+  it('rolls back id-only methodology payloads that fail schema validation', async () => {
     const service = new MethodologyFileWriter({ logger, configManager });
     const result = await service.writeMethodologyFiles({
       id: 'incomplete-method',
     });
 
-    expect(result.success).toBe(true);
+    // id-only payload lacks required fields (name, methodology) — validation rejects and rolls back
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('rolled back');
     const methodologyDir = service.getMethodologyDir('incomplete-method');
+    expect(existsSync(methodologyDir)).toBe(false);
+  });
+
+  it('writes valid methodology payloads with all required fields', async () => {
+    const service = new MethodologyFileWriter({ logger, configManager });
+    const result = await service.writeMethodologyFiles({
+      id: 'complete-method',
+      name: 'Complete Method',
+      methodology: 'COMPLETE',
+      system_prompt_guidance: 'Apply complete principles.',
+    });
+
+    expect(result.success).toBe(true);
+    const methodologyDir = service.getMethodologyDir('complete-method');
     const methodologyPath = join(methodologyDir, 'methodology.yaml');
     expect(existsSync(methodologyPath)).toBe(true);
 
     const content = readFileSync(methodologyPath, 'utf8');
-    expect(content).toContain('id: incomplete-method');
+    expect(content).toContain('id: complete-method');
+    expect(content).toContain('name: Complete Method');
     expect(content).toContain('enabled: true');
     expect(content).toMatch(/version:\s*["']?1\.0\.0["']?/);
   });

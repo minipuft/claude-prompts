@@ -146,8 +146,8 @@ export class PromptAssetManager {
     categories: Category[];
     convertedPrompts: ConvertedPrompt[];
   }> {
-    const isConfigFile = configPathOrDir.endsWith('.json');
-    const promptsDir = isConfigFile ? path.dirname(configPathOrDir) : configPathOrDir;
+    // Always treat input as a directory (JSON prompts.json format removed)
+    const promptsDir = configPathOrDir;
 
     this.logger.info(`Loading prompts from: ${promptsDir}`);
     const { promptsData, categories } = await this.loadFromDirectories(promptsDir);

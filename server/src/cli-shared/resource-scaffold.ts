@@ -31,7 +31,7 @@ export interface CreateResourceResult {
 // ── Template generators ─────────────────────────────────────────────────────
 
 function promptYaml(id: string, opts: CreateResourceOptions): string {
-  const desc = opts.description || `${opts.name ?? id} prompt`;
+  const desc = opts.description ?? `${opts.name ?? id} prompt`;
   return [
     `id: ${id}`,
     `name: ${opts.name ?? id}`,
@@ -80,7 +80,7 @@ function promptYaml(id: string, opts: CreateResourceOptions): string {
 }
 
 function gateYaml(id: string, opts: CreateResourceOptions): string {
-  const desc = opts.description || `${opts.name ?? id} validation gate`;
+  const desc = opts.description ?? `${opts.name ?? id} validation gate`;
   return [
     `id: ${id}`,
     `name: ${opts.name ?? id}`,
@@ -121,7 +121,7 @@ function gateYaml(id: string, opts: CreateResourceOptions): string {
 
 function methodologyYaml(id: string, opts: CreateResourceOptions): string {
   const name = opts.name ?? id;
-  const desc = opts.description || `${name} methodology`;
+  const desc = opts.description ?? `${name} methodology`;
   return [
     `id: ${id}`,
     `name: ${name}`,
@@ -157,7 +157,7 @@ function methodologyYaml(id: string, opts: CreateResourceOptions): string {
 }
 
 function styleYaml(id: string, opts: CreateResourceOptions): string {
-  const desc = opts.description || `${opts.name ?? id} response style`;
+  const desc = opts.description ?? `${opts.name ?? id} response style`;
   return [
     `id: ${id}`,
     `name: ${opts.name ?? id}`,
@@ -242,7 +242,7 @@ export function resourceExists(
   id: string,
   category?: string
 ): boolean {
-  if (type === 'prompts' && category) {
+  if (type === 'prompts' && category !== undefined && category !== '') {
     return existsSync(join(baseDir, category, id, ENTRY_FILES[type]));
   }
   return existsSync(join(baseDir, id, ENTRY_FILES[type]));
@@ -251,59 +251,101 @@ export function resourceExists(
 /**
  * Create a resource directory with template YAML and companion file.
  */
+function resolveResourceDir(
+  baseDir: string,
+  type: ResourceType,
+  id: string,
+  category?: string
+): string {
+  if (type === 'prompts') {
+    return join(baseDir, category ?? 'general', id);
+  }
+  return join(baseDir, id);
+}
+
 export function createResourceDir(
   baseDir: string,
   type: ResourceType,
   id: string,
   opts: CreateResourceOptions = {}
 ): CreateResourceResult {
-  try {
-    let resourceDir: string;
+  const resourceDir = resolveResourceDir(baseDir, type, id, opts.category);
+  const dirExistedBefore = existsSync(resourceDir);
 
-    if (type === 'prompts') {
-      const category = opts.category ?? 'general';
-      resourceDir = join(baseDir, category, id);
-    } else {
-      resourceDir = join(baseDir, id);
-    }
-
-    if (existsSync(join(resourceDir, ENTRY_FILES[type]))) {
-      return { success: false, error: `Resource '${id}' already exists at ${resourceDir}` };
-    }
-
-    mkdirSync(resourceDir, { recursive: true });
-
-    const yamlContent = YAML_GENERATORS[type](id, opts);
-    const entryPath = join(resourceDir, ENTRY_FILES[type]);
-    writeFileSync(entryPath, yamlContent, 'utf8');
-
-    const companion = COMPANION_FILES[type];
-    writeFileSync(join(resourceDir, companion.name), companion.content, 'utf8');
-
-    if (opts.validate !== false) {
-      const validation = validateResourceFile(type, id, entryPath);
-      if (!validation.valid) {
-        const rollback = deleteResourceDir(resourceDir);
-        if (type === 'prompts') {
-          cleanupEmptyPromptCategory(resourceDir);
-        }
-
-        return {
-          success: false,
-          validation,
-          rolledBack: rollback.success,
-          error: rollback.success
-            ? 'Created resource failed validation; rolled back.'
-            : `Created resource failed validation; rollback failed: ${rollback.error ?? 'unknown rollback error'}`,
-        };
-      }
-    }
-
-    return { success: true, path: resourceDir };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+  if (existsSync(join(resourceDir, ENTRY_FILES[type]))) {
+    return { success: false, error: `Resource '${id}' already exists at ${resourceDir}` };
   }
+
+  try {
+    writeResourceFiles(resourceDir, type, id, opts);
+    return validateAndFinalize(resourceDir, type, id, dirExistedBefore, opts.validate !== false);
+  } catch (error) {
+    cleanupCreatedDir(resourceDir, dirExistedBefore, type);
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message, rolledBack: true };
+  }
+}
+
+function writeResourceFiles(
+  resourceDir: string,
+  type: ResourceType,
+  id: string,
+  opts: CreateResourceOptions
+): void {
+  mkdirSync(resourceDir, { recursive: true });
+  const yamlContent = YAML_GENERATORS[type](id, opts);
+  writeFileSync(join(resourceDir, ENTRY_FILES[type]), yamlContent, 'utf8');
+  const companion = COMPANION_FILES[type];
+  writeFileSync(join(resourceDir, companion.name), companion.content, 'utf8');
+}
+
+// eslint-disable-next-line max-params
+function validateAndFinalize(
+  resourceDir: string,
+  type: ResourceType,
+  id: string,
+  dirExistedBefore: boolean,
+  shouldValidate: boolean
+): CreateResourceResult {
+  if (!shouldValidate) {
+    return { success: true, path: resourceDir };
+  }
+
+  const entryPath = join(resourceDir, ENTRY_FILES[type]);
+  const validation = validateResourceFile(type, id, entryPath);
+  if (validation.valid) {
+    return { success: true, path: resourceDir };
+  }
+
+  const rollback = cleanupCreatedDir(resourceDir, dirExistedBefore, type);
+  return {
+    success: false,
+    validation,
+    rolledBack: rollback.success,
+    error: rollback.success
+      ? 'Created resource failed validation; rolled back.'
+      : `Created resource failed validation; rollback failed: ${rollback.error ?? 'unknown'}`,
+  };
+}
+
+/**
+ * Clean up a newly-created resource directory on failure.
+ * Only removes if the directory didn't exist before creation.
+ */
+function cleanupCreatedDir(
+  resourceDir: string,
+  dirExistedBefore: boolean,
+  type: ResourceType
+): { success: boolean; error?: string } {
+  if (dirExistedBefore || !existsSync(resourceDir)) {
+    return { success: true };
+  }
+
+  const result = deleteResourceDir(resourceDir);
+  if (type === 'prompts') {
+    cleanupEmptyPromptCategory(resourceDir);
+  }
+  return result;
 }
 
 /**

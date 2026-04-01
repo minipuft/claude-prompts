@@ -75,7 +75,7 @@ export class Application {
   private _promptsData: PromptData[] = [];
   private _categories: Category[] = [];
   private _convertedPrompts: ConvertedPrompt[] = [];
-  private promptsFilePath?: string;
+  private promptsDirectory?: string;
   private hotReloadInitialized = false;
   private promptReloadInProgress: Promise<void> | undefined;
   private promptHotReloadHandler = (event: HotReloadEvent) => this.handlePromptHotReload(event);
@@ -316,7 +316,7 @@ export class Application {
     this._promptsData = result.promptsData;
     this._categories = result.categories;
     this._convertedPrompts = result.convertedPrompts;
-    this.promptsFilePath = result.promptsFilePath;
+    this.promptsDirectory = result.promptsDirectory;
   }
 
   /**
@@ -784,7 +784,7 @@ export class Application {
       return;
     }
 
-    if (!this.promptManager || !this.promptsFilePath || !this.mcpToolsManager) {
+    if (!this.promptManager || !this.promptsDirectory || !this.mcpToolsManager) {
       return;
     }
 
@@ -803,9 +803,7 @@ export class Application {
 
             // Build script tool auxiliary reload config
             const scriptLoader = this.promptManager.getModules().converter.getScriptToolLoader();
-            const promptsDir = this.promptsFilePath
-              ? path.dirname(this.promptsFilePath)
-              : undefined;
+            const promptsDir = this.promptsDirectory ?? undefined;
             const scriptAux = promptsDir
               ? buildScriptAuxiliaryReloadConfig(this.logger, scriptLoader, promptsDir)
               : undefined;
@@ -831,7 +829,7 @@ export class Application {
             }
 
             await this.promptManager.startHotReload(
-              this.promptsFilePath!,
+              this.promptsDirectory!,
               this.promptHotReloadHandler,
               hotReloadOptions
             );
@@ -879,7 +877,7 @@ export class Application {
         this._promptsData = result.promptsData;
         this._convertedPrompts = result.convertedPrompts;
         this._categories = result.categories;
-        this.promptsFilePath = result.promptsFilePath;
+        this.promptsDirectory = result.promptsDirectory;
 
         if (this.apiRouter) {
           this.apiRouter.updateData(this._promptsData, this._categories, this._convertedPrompts);

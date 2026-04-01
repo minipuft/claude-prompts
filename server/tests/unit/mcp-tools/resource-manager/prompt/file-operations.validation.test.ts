@@ -27,7 +27,7 @@ describe('FileOperations canonical prompt writes', () => {
       debug: jest.fn(),
     } as unknown as Logger;
     configManager = {
-      getResolvedPromptsFilePath: () => promptsDir,
+      getResolvedPromptsDirectory: () => promptsDir,
     } as unknown as ConfigManager;
   });
 

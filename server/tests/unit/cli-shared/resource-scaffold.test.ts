@@ -171,6 +171,22 @@ describe('resource-scaffold', () => {
       expect(result.success).toBe(true);
       expect(result.validation).toBeUndefined();
     });
+
+    it('reports rolledBack on write failure and cleans up partial directory', () => {
+      // Create a read-only directory so file writes inside it fail
+      const readOnlyDir = join(tempDir, 'readonly-parent', 'sub');
+      mkdirSync(readOnlyDir, { recursive: true });
+      const { chmodSync } = require('node:fs');
+      chmodSync(readOnlyDir, 0o444);
+
+      try {
+        const result = createResourceDir(readOnlyDir, 'gates', 'will-fail');
+        expect(result.success).toBe(false);
+        expect(result.rolledBack).toBe(true);
+      } finally {
+        chmodSync(readOnlyDir, 0o755);
+      }
+    });
   });
 
   describe('deleteResourceDir', () => {

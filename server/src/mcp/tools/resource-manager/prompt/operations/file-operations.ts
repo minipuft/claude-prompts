@@ -1,6 +1,7 @@
-// @lifecycle canonical - Handles prompt file read/write operations.
+// @lifecycle canonical - Handles prompt file read/write operations with transactional guarantees.
 /**
- * File system and category management operations for YAML-based prompts
+ * File system and category management operations for YAML-based prompts.
+ * Uses ResourceMutationTransaction for snapshot-based rollback on validation failure.
  */
 
 import { existsSync, readdirSync } from 'node:fs';
@@ -12,6 +13,10 @@ import {
   hasYamlPromptsInCategory,
   deleteYamlPrompt,
 } from '../../../../../modules/prompts/category-maintenance.js';
+import {
+  ResourceMutationTransaction,
+  ResourceVerificationService,
+} from '../../../../../modules/resources/services/index.js';
 import { safeWriteFile } from '../../../../../shared/utils/file-transactions.js';
 import { serializeYaml } from '../../../../../shared/utils/yaml/yaml-parser.js';
 import { OperationResult, PromptResourceDependencies } from '../core/types.js';
@@ -19,59 +24,93 @@ import { OperationResult, PromptResourceDependencies } from '../core/types.js';
 import type { ConfigManager, Logger } from '../../../../../shared/types/index.js';
 import type { ToolDefinitionInput } from '../../core/types.js';
 
+export interface FileOperationsDependencies extends Pick<
+  PromptResourceDependencies,
+  'logger' | 'configManager'
+> {
+  resourceVerificationService?: ResourceVerificationService;
+  resourceMutationTransaction?: ResourceMutationTransaction;
+}
+
 /**
  * File system operations for prompt management
  */
 export class FileOperations {
   private logger: Logger;
   private configManager: ConfigManager;
+  private readonly verificationService: ResourceVerificationService;
+  private readonly mutationTransaction: ResourceMutationTransaction;
 
-  constructor(dependencies: Pick<PromptResourceDependencies, 'logger' | 'configManager'>) {
+  constructor(dependencies: FileOperationsDependencies) {
     this.logger = dependencies.logger;
     this.configManager = dependencies.configManager;
+    this.verificationService =
+      dependencies.resourceVerificationService ?? new ResourceVerificationService();
+    this.mutationTransaction =
+      dependencies.resourceMutationTransaction ?? new ResourceMutationTransaction();
   }
 
   /**
    * Update prompt implementation (shared by create/update)
    * Creates YAML directory structure: {category}/{id}/prompt.yaml + message files
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
   async updatePromptImplementation(promptData: any): Promise<OperationResult> {
-    // Use resolved path that respects MCP_RESOURCES_PATH for user data persistence
-    const promptsDir = this.configManager.getResolvedPromptsFilePath();
-    const messages: string[] = [];
-    const affectedFiles: string[] = [];
-
-    // Normalize category ID (lowercase, hyphenated)
+    const promptsDir = this.configManager.getResolvedPromptsDirectory();
     const effectiveCategory = promptData.category.toLowerCase().replace(/\s+/g, '-');
-    const categoryDir = path.join(promptsDir, effectiveCategory);
+    const promptDir = path.join(promptsDir, effectiveCategory, promptData.id);
+    const yamlPath = path.join(promptDir, 'prompt.yaml');
 
-    // Ensure category directory exists
-    if (!existsSync(categoryDir)) {
-      await fs.mkdir(categoryDir, { recursive: true });
-      messages.push(`✅ Created category directory: '${effectiveCategory}'`);
+    const txResult = await this.mutationTransaction.run({
+      targets: [{ path: promptDir, kind: 'directory' }],
+      mutate: async () => {
+        const messages: string[] = [];
+        const affectedFiles: string[] = [];
+
+        // Ensure category directory exists
+        const categoryDir = path.join(promptsDir, effectiveCategory);
+        if (!existsSync(categoryDir)) {
+          await fs.mkdir(categoryDir, { recursive: true });
+          messages.push(`Created category directory: '${effectiveCategory}'`);
+        }
+
+        // Create/update YAML prompt
+        const { exists: promptExists, paths } = await this.createOrUpdateYamlPrompt(
+          promptData,
+          effectiveCategory,
+          promptsDir
+        );
+
+        messages.push(`${promptExists ? 'Updated' : 'Created'} prompt: ${promptData.id}`);
+        affectedFiles.push(...paths);
+
+        // Create/update tools if provided
+        if (Array.isArray(promptData.tools) && promptData.tools.length > 0) {
+          const toolResult = await this.createOrUpdateTools(
+            promptDir,
+            promptData.tools,
+            promptData.id
+          );
+          messages.push(...toolResult.messages);
+          affectedFiles.push(...toolResult.paths);
+        }
+
+        return { messages, affectedFiles };
+      },
+      validate: () => this.verificationService.validateFile('prompts', promptData.id, yamlPath),
+    });
+
+    if (!txResult.success) {
+      const errorMsg = txResult.rolledBack
+        ? `Prompt write failed and was rolled back: ${txResult.error}`
+        : `Prompt write failed: ${txResult.error}`;
+      throw new Error(errorMsg);
     }
 
-    // Create/update YAML prompt
-    const { exists: promptExists, paths } = await this.createOrUpdateYamlPrompt(
-      promptData,
-      effectiveCategory,
-      promptsDir
-    );
-
-    messages.push(`✅ ${promptExists ? 'Updated' : 'Created'} prompt: ${promptData.id}`);
-    affectedFiles.push(...paths);
-
-    // Create/update tools if provided
-    if (promptData.tools && promptData.tools.length > 0) {
-      const promptDir = path.join(promptsDir, effectiveCategory, promptData.id);
-      const toolResult = await this.createOrUpdateTools(promptDir, promptData.tools, promptData.id);
-      messages.push(...toolResult.messages);
-      affectedFiles.push(...toolResult.paths);
-    }
-
+    const result = txResult.result ?? { messages: [], affectedFiles: [] };
     return {
-      message: messages.join('\n'),
-      affectedFiles,
+      message: result.messages.join('\n'),
+      affectedFiles: result.affectedFiles,
     };
   }
 
@@ -85,68 +124,75 @@ export class FileOperations {
    * Automatically cleans up empty category directories.
    */
   async deletePromptImplementation(id: string): Promise<OperationResult> {
-    // Use resolved path that respects MCP_RESOURCES_PATH for user data persistence
-    const promptsDir = this.configManager.getResolvedPromptsFilePath();
-    const messages: string[] = [];
-    const affectedFiles: string[] = [];
-
-    let promptFound = false;
-    let deletedFromCategoryDir: string | null = null;
-    let deletedFromCategoryId: string | null = null;
-
-    // Discover all category directories
+    const promptsDir = this.configManager.getResolvedPromptsDirectory();
     const categoryDirs = this.discoverCategoryDirectories(promptsDir);
 
-    // Search for the prompt in each category
+    // Find the prompt first to determine the transaction target
+    let targetDir: string | null = null;
     for (const categoryDir of categoryDirs) {
       const yamlPrompt = findYamlPromptInCategory(categoryDir, id);
-
-      if (yamlPrompt) {
-        const deletedPaths = await deleteYamlPrompt(yamlPrompt);
-        if (deletedPaths.length > 0) {
-          const formatLabel = yamlPrompt.format === 'directory' ? 'directory' : 'file';
-          messages.push(`✅ Deleted prompt ${formatLabel}: ${yamlPrompt.id}`);
-          affectedFiles.push(...deletedPaths);
-          promptFound = true;
-          deletedFromCategoryDir = categoryDir;
-          deletedFromCategoryId = path.basename(categoryDir);
-          break;
-        }
+      if (yamlPrompt !== null) {
+        targetDir =
+          yamlPrompt.format === 'directory' ? yamlPrompt.path : path.dirname(yamlPrompt.path);
+        break;
       }
     }
 
-    if (!promptFound) {
+    if (targetDir === null) {
       throw new Error(`Prompt not found: ${id}`);
     }
 
-    // Check if category is now empty (no YAML prompts remaining)
-    if (deletedFromCategoryDir && deletedFromCategoryId) {
-      const hasRemainingPrompts = hasYamlPromptsInCategory(deletedFromCategoryDir);
+    const txResult = await this.mutationTransaction.run({
+      targets: [{ path: targetDir, kind: 'directory' }],
+      mutate: async () => {
+        const messages: string[] = [];
+        const affectedFiles: string[] = [];
+        let deletedFromCategoryDir: string | null = null;
+        let deletedFromCategoryId: string | null = null;
 
-      if (!hasRemainingPrompts) {
-        // Clean up empty category directory (but preserve category.yaml if exists)
-        const entries = readdirSync(deletedFromCategoryDir, { withFileTypes: true });
-        const nonMetadataEntries = entries.filter(
-          (e) => e.name !== 'category.yaml' && !e.name.startsWith('.')
-        );
-
-        if (nonMetadataEntries.length === 0) {
-          try {
-            await fs.rm(deletedFromCategoryDir, { recursive: true, force: true });
-            messages.push(`🧹 Cleaned up empty category directory: ${deletedFromCategoryId}`);
-            this.logger.info(`Deleted empty category directory: ${deletedFromCategoryId}`);
-          } catch (rmError: any) {
-            messages.push(`⚠️ Could not remove empty category: ${rmError.message}`);
+        for (const categoryDir of categoryDirs) {
+          const yamlPrompt = findYamlPromptInCategory(categoryDir, id);
+          if (yamlPrompt !== null) {
+            const deletedPaths = await deleteYamlPrompt(yamlPrompt);
+            if (deletedPaths.length > 0) {
+              const formatLabel = yamlPrompt.format === 'directory' ? 'directory' : 'file';
+              messages.push(`Deleted prompt ${formatLabel}: ${yamlPrompt.id}`);
+              affectedFiles.push(...deletedPaths);
+              deletedFromCategoryDir = categoryDir;
+              deletedFromCategoryId = path.basename(categoryDir);
+              break;
+            }
           }
         }
-      } else {
-        this.logger.debug(`Category ${deletedFromCategoryId} still has prompts, keeping directory`);
-      }
+
+        // Clean up empty category directory
+        if (deletedFromCategoryDir !== null && deletedFromCategoryId !== null) {
+          const hasRemainingPrompts = hasYamlPromptsInCategory(deletedFromCategoryDir);
+          if (!hasRemainingPrompts) {
+            const entries = readdirSync(deletedFromCategoryDir, { withFileTypes: true });
+            const nonMetadataEntries = entries.filter(
+              (e) => e.name !== 'category.yaml' && !e.name.startsWith('.')
+            );
+            if (nonMetadataEntries.length === 0) {
+              await fs.rm(deletedFromCategoryDir, { recursive: true, force: true });
+              messages.push(`Cleaned up empty category directory: ${deletedFromCategoryId}`);
+            }
+          }
+        }
+
+        return { messages, affectedFiles };
+      },
+      // No validation for delete — directory gone = success
+    });
+
+    if (!txResult.success) {
+      throw new Error(`Prompt deletion failed: ${txResult.error}`);
     }
 
+    const deleteResult = txResult.result ?? { messages: [], affectedFiles: [] };
     return {
-      message: messages.join('\n'),
-      affectedFiles,
+      message: deleteResult.messages.join('\n'),
+      affectedFiles: deleteResult.affectedFiles,
     };
   }
 
@@ -182,6 +228,7 @@ export class FileOperations {
    * - {category}/{id}/user-message.md - User message template (required)
    * - {category}/{id}/system-message.md - System message (optional)
    */
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/no-unsafe-member-access */
   async createOrUpdateYamlPrompt(
     promptData: any,
     effectiveCategory: string,
@@ -240,7 +287,7 @@ export class FileOperations {
 
     // Write user-message.md (required)
     const userMessagePath = path.join(promptDir, 'user-message.md');
-    await safeWriteFile(userMessagePath, promptData.userMessageTemplate || '', 'utf8');
+    await safeWriteFile(userMessagePath, promptData.userMessageTemplate ?? '', 'utf8');
     paths.push(userMessagePath);
 
     // Write system-message.md (optional)
@@ -257,6 +304,7 @@ export class FileOperations {
       paths,
     };
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/no-unsafe-member-access */
 
   /**
    * Create or update script tools for a prompt
@@ -287,15 +335,15 @@ export class FileOperations {
       const toolYaml: Record<string, unknown> = {
         id: tool.id,
         name: tool.name,
-        description: tool.description || '',
+        description: tool.description ?? '',
         script: this.getScriptFilename(tool.runtime),
-        runtime: tool.runtime || 'auto',
-        timeout: tool.timeout || 30000,
+        runtime: tool.runtime ?? 'auto',
+        timeout: tool.timeout ?? 30000,
         enabled: true,
         execution: {
-          trigger: tool.trigger || 'schema_match',
-          confirm: tool.confirm || false,
-          strict: tool.strict || false,
+          trigger: tool.trigger ?? 'schema_match',
+          confirm: tool.confirm ?? false,
+          strict: tool.strict ?? false,
         },
       };
 
@@ -306,7 +354,7 @@ export class FileOperations {
       paths.push(toolYamlPath);
 
       // Write schema.json if provided
-      if (tool.schema) {
+      if (tool.schema !== undefined) {
         const schemaPath = path.join(toolDir, 'schema.json');
         const schemaContent = JSON.stringify(tool.schema, null, 2);
         await safeWriteFile(schemaPath, schemaContent, 'utf8');

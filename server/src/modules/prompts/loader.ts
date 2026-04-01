@@ -1,20 +1,18 @@
 // @lifecycle canonical - Loads prompt and category definitions from disk into structured data.
 /**
  * Prompt Loader Module
- * Handles loading prompts from category-specific configuration files and markdown templates
+ * Handles loading prompts from YAML directory structure and markdown templates
  *
  * Features:
- * - Runtime JSON parsing for prompts.json files
+ * - YAML prompt discovery and loading (delegated to yaml-prompt-loader)
  * - Markdown file loading with section extraction
  * - Configurable caching for performance (parity with GateDefinitionLoader)
- * - Category-based organization
- * - YAML prompt discovery and loading (delegated to yaml-prompt-loader)
+ * - Category-based organization via directory structure
  *
  * @see GateDefinitionLoader for the caching pattern this follows
  */
 
 import { existsSync, readdirSync } from 'node:fs';
-import * as fs from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -28,10 +26,9 @@ import {
   loadAllYamlPrompts as loadAllYamlPromptsFn,
 } from './yaml-prompt-loader.js';
 import { type Logger } from '../../shared/types/index.js';
-import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 import { loadYamlFileSync } from '../../shared/utils/yaml/index.js';
 
-import type { Category, CategoryPromptsResult, PromptData, PromptsConfigFile } from './types.js';
+import type { Category, CategoryPromptsResult, PromptData } from './types.js';
 
 // Re-export types from yaml-prompt-loader for backward compatibility
 export type { LoadedPromptFile } from './yaml-prompt-loader.js';
@@ -108,196 +105,6 @@ export class PromptLoader {
       cacheMisses: this.stats.cacheMisses,
       loadErrors: this.stats.loadErrors,
     };
-  }
-
-  /**
-   * Load prompts from category-specific prompts.json files
-   */
-  async loadCategoryPrompts(configPath: string): Promise<CategoryPromptsResult> {
-    try {
-      this.logger.info(`[PromptLoader] Loading category prompts from: ${configPath}`);
-
-      const configContent = await readFile(configPath, 'utf8');
-      let promptsConfig: PromptsConfigFile;
-
-      try {
-        promptsConfig = JSON.parse(configContent) as PromptsConfigFile;
-      } catch (jsonError) {
-        this.logger.error(`Error parsing config file ${configPath}:`, jsonError);
-        throw new Error(
-          `Invalid JSON in config file: ${
-            jsonError instanceof Error ? jsonError.message : String(jsonError)
-          }`
-        );
-      }
-
-      this.logger.debug(
-        `Config: ${promptsConfig.categories?.length || 0} categories, ${promptsConfig.imports?.length || 0} imports`
-      );
-
-      // Ensure required properties exist
-      if (!promptsConfig.categories) {
-        this.logger.warn(`Config file ${configPath} missing 'categories' array. Initializing.`);
-        promptsConfig.categories = [];
-      }
-
-      if (!promptsConfig.imports || !Array.isArray(promptsConfig.imports)) {
-        this.logger.warn(`Config file ${configPath} missing valid 'imports' array. Initializing.`);
-        promptsConfig.imports = [];
-      }
-
-      // Load and validate categories using CategoryManager
-      const categoryValidation = await this.categoryManager.loadCategories(
-        promptsConfig.categories
-      );
-
-      if (!categoryValidation.isValid) {
-        this.logger.error('Category validation failed:');
-        categoryValidation.issues.forEach((issue) => this.logger.error(`  - ${issue}`));
-        throw new Error(`Category validation failed: ${categoryValidation.issues.join('; ')}`);
-      }
-
-      if (categoryValidation.warnings.length > 0) {
-        categoryValidation.warnings.forEach((warning) => this.logger.warn(`  - ${warning}`));
-      }
-
-      const categories = this.categoryManager.getCategories();
-      let allPrompts: PromptData[] = [];
-      let totalImportsFailed = 0;
-
-      // Load prompts from each import path
-      for (const importPath of promptsConfig.imports) {
-        try {
-          const fullImportPath = path.join(path.dirname(configPath), importPath);
-
-          // Check if the file exists
-          try {
-            await fs.access(fullImportPath);
-          } catch {
-            this.logger.warn(`Import file not found: ${importPath}. Creating empty file.`);
-            const dir = path.dirname(fullImportPath);
-            await fs.mkdir(dir, { recursive: true });
-            await safeWriteFile(fullImportPath, JSON.stringify({ prompts: [] }, null, 2), 'utf8');
-          }
-
-          const fileContent = await readFile(fullImportPath, 'utf8');
-          let categoryPromptsFile: any;
-
-          try {
-            categoryPromptsFile = JSON.parse(fileContent);
-          } catch (jsonError) {
-            this.logger.error(`Error parsing import file ${importPath}:`, jsonError);
-            categoryPromptsFile = { prompts: [] };
-            await safeWriteFile(
-              fullImportPath,
-              JSON.stringify(categoryPromptsFile, null, 2),
-              'utf8'
-            );
-          }
-
-          // Ensure prompts property exists and is an array
-          if (!categoryPromptsFile.prompts || !Array.isArray(categoryPromptsFile.prompts)) {
-            this.logger.warn(`Import file ${importPath} has invalid 'prompts'. Initializing.`);
-            categoryPromptsFile.prompts = [];
-            await safeWriteFile(
-              fullImportPath,
-              JSON.stringify(categoryPromptsFile, null, 2),
-              'utf8'
-            );
-          }
-
-          // Update the file path to be relative to the category folder
-          const categoryPath = path.dirname(importPath);
-
-          const categoryPrompts = categoryPromptsFile.prompts
-            .map((prompt: PromptData, index: number) => {
-              if (!prompt.id || !prompt.name || !prompt.file) {
-                this.logger.warn(
-                  `Skipping invalid prompt ${index + 1} in ${importPath}: missing required properties`
-                );
-                return null;
-              }
-
-              if (prompt.file.startsWith('/') || prompt.file.startsWith(categoryPath)) {
-                return prompt;
-              }
-
-              return {
-                ...prompt,
-                file: path.join(categoryPath, prompt.file),
-              };
-            })
-            .filter(Boolean);
-
-          allPrompts = [...allPrompts, ...categoryPrompts];
-        } catch (error) {
-          totalImportsFailed++;
-          this.logger.error(`Error loading prompts from ${importPath}:`, error);
-        }
-      }
-
-      this.logger.debug(
-        `JSON imports: ${promptsConfig.imports.length} processed, ${totalImportsFailed} failed, ${allPrompts.length} prompts`
-      );
-
-      // Phase 2: Load YAML-format prompts from category directories
-      const promptsBaseDir = path.dirname(configPath);
-      let yamlPromptsLoaded = 0;
-      const jsonPromptIds = new Set(allPrompts.map((p) => p.id));
-
-      for (const category of promptsConfig.categories) {
-        const categoryDir = path.join(promptsBaseDir, category.id);
-        if (!existsSync(categoryDir)) {
-          continue;
-        }
-
-        const yamlPrompts = this.loadAllYamlPrompts(categoryDir);
-        for (const yamlPrompt of yamlPrompts) {
-          if (jsonPromptIds.has(yamlPrompt.id)) {
-            continue;
-          }
-
-          yamlPrompt.category = category.id;
-          yamlPrompt.file = path.join(category.id, yamlPrompt.file);
-          allPrompts.push(yamlPrompt);
-          yamlPromptsLoaded++;
-        }
-      }
-
-      // Attach category's registerWithMcp default to each prompt
-      const categoryMap = new Map(categories.map((cat) => [cat.id, cat]));
-      allPrompts = allPrompts.map((prompt) => {
-        const category = categoryMap.get(prompt.category);
-        if (category?.registerWithMcp !== undefined) {
-          return { ...prompt, _categoryRegisterWithMcp: category.registerWithMcp } as PromptData & {
-            _categoryRegisterWithMcp?: boolean;
-          };
-        }
-        return prompt;
-      });
-
-      // Validate category-prompt relationships
-      const promptCategoryValidation = this.categoryManager.validatePromptCategories(allPrompts);
-
-      if (!promptCategoryValidation.isValid) {
-        promptCategoryValidation.issues.forEach((issue) => this.logger.error(`  - ${issue}`));
-        this.logger.warn('Continuing with loading but some prompts may not display correctly');
-      }
-
-      if (promptCategoryValidation.warnings.length > 0) {
-        promptCategoryValidation.warnings.forEach((warning) => this.logger.warn(`  - ${warning}`));
-      }
-
-      const categoryStats = this.categoryManager.getCategoryStatistics(allPrompts);
-      this.logger.info(
-        `[PromptLoader] Loaded ${allPrompts.length} prompts (${yamlPromptsLoaded} YAML) across ${categoryStats.categoriesWithPrompts}/${categoryStats.totalCategories} categories`
-      );
-
-      return { promptsData: allPrompts, categories };
-    } catch (error) {
-      this.logger.error(`PromptLoader.loadCategoryPrompts() FAILED:`, error);
-      throw error;
-    }
   }
 
   /**

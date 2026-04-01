@@ -652,14 +652,14 @@ export class FileObserver extends EventEmitter {
     const basename = path.basename(filename);
 
     // Standard config files
-    if (basename === 'prompts.json' || basename === 'config.json') {
+    if (basename === 'config.json') {
       return true;
     }
 
     // Main prompts config - get filename from ConfigManager if available
     if (this.configManager && fullPath) {
       try {
-        const mainConfigPath = this.configManager.getPromptsFilePath();
+        const mainConfigPath = this.configManager.getPromptsDirectory();
         const mainConfigFilename = path.basename(mainConfigPath);
         return basename === mainConfigFilename;
       } catch (error) {

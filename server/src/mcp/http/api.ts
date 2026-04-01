@@ -4,17 +4,17 @@
  * Handles Express app setup, middleware, and REST API endpoints
  */
 
-import { mkdir, readFile } from 'fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'path';
 
 import express, { Request, Response } from 'express';
 
 import { PromptAssetManager } from '../../modules/prompts/index.js';
 import { reloadPromptData as reloadPromptDataFromDisk } from '../../modules/prompts/prompt-refresh-service.js';
-import { safeWriteFile } from '../../shared/utils/file-transactions.js';
 import { McpToolRouter } from '../tools/index.js';
 
-import type { Category, PromptData, PromptsFile } from '../../modules/prompts/types.js';
+import type { Category, PromptData } from '../../modules/prompts/types.js';
 import type { ConfigManager, Logger, ToolResponse } from '../../shared/types/index.js';
 import type { ResourceManagerInput } from '../tools/resource-manager/core/types.js';
 
@@ -185,7 +185,6 @@ export class ApiRouter {
     try {
       this.logger.info('API request to create category:', req.body);
 
-      // Validate required fields
       if (!req.body.id || !req.body.name || !req.body.description) {
         res.status(400).json({
           error: 'Missing required fields. Please provide id, name, and description.',
@@ -193,34 +192,18 @@ export class ApiRouter {
         return;
       }
 
-      const { id, name, description } = req.body;
+      const { id, name } = req.body;
 
-      // Read the current prompts configuration file
-      const PROMPTS_FILE = this.configManager.getResolvedPromptsFilePath();
-      const fileContent = await readFile(PROMPTS_FILE, 'utf8');
-      const promptsFile = JSON.parse(fileContent) as PromptsFile;
+      // Categories are directory-based — create the category directory
+      const promptsDir = this.configManager.getPromptsDirectory();
+      const categoryDirPath = path.join(promptsDir, id);
 
-      // Check if the category already exists
-      const categoryExists = promptsFile.categories.some((cat) => cat.id === id);
-      if (categoryExists) {
+      if (existsSync(categoryDirPath)) {
         res.status(400).json({ error: `Category '${id}' already exists.` });
         return;
       }
 
-      // Add the new category
-      promptsFile.categories.push({ id, name, description });
-
-      // Write the updated file
-      await safeWriteFile(PROMPTS_FILE, JSON.stringify(promptsFile, null, 2), 'utf8');
-
-      // Create the category directory if it doesn't exist
-      const categoryDirPath = path.join(path.dirname(PROMPTS_FILE), id);
-      try {
-        await mkdir(categoryDirPath, { recursive: true });
-      } catch (error) {
-        this.logger.error(`Error creating directory ${categoryDirPath}:`, error);
-        // Continue even if directory creation fails
-      }
+      await mkdir(categoryDirPath, { recursive: true });
 
       try {
         await this.reloadPromptData();

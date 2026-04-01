@@ -14,9 +14,9 @@ const createMockLogger = (): Logger => ({
 function createTestService() {
   const logger = createMockLogger();
   const configManager = {
-    getPromptsFilePath: () => '/tmp/prompts.json',
     getServerRoot: () => process.cwd(),
     getPromptsDirectory: () => '/tmp/prompts',
+    getResolvedPromptsDirectory: () => '/tmp/prompts',
     getVersioningConfig: () => ({
       enabled: true,
       max_versions: 50,

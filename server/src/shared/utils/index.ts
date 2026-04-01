@@ -27,10 +27,7 @@ export function clearRequireCache(): void {
 
   // Filter for prompt files and configs
   const promptPaths = cachedModulePaths.filter(
-    (modulePath) =>
-      modulePath.includes('prompts/') ||
-      modulePath.includes('prompts.json') ||
-      modulePath.endsWith('.md')
+    (modulePath) => modulePath.includes('prompts/') || modulePath.endsWith('.md')
   );
 
   // Clear them from cache
